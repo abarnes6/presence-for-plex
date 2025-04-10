@@ -414,3 +414,6 @@ FodyWeavers.xsd
 *.sln
 *.vcxproj
 *.vcxproj.filters
+vcpkg_installed/
+build/
+out/
