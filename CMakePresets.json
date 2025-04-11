@@ -8,6 +8,31 @@
             "cacheVariables": {
                 "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
             }
+        },
+        {
+            "name": "github",
+            "description": "Configuration preset for GitHub Actions",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release"
+            },
+            "toolchainFile": "${sourceDir}/vcpkg/scripts/buildsystems/vcpkg.cmake"
+        }
+    ],
+    "buildPresets": [
+        {
+            "name": "github",
+            "description": "Build preset for GitHub Actions",
+            "configurePreset": "github",
+            "targets": ["all"]
+        }
+    ],
+    "testPresets": [
+        {
+            "name": "github",
+            "description": "Test preset for GitHub Actions",
+            "configurePreset": "github"
         }
     ]
 }
