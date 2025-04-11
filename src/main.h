@@ -1,8 +1,10 @@
-﻿// main.h : Include file for standard system include files,
-// or project specific include files.
-
-#pragma once
-
+﻿#pragma once
+#define DISCORDPP_IMPLEMENTATION
+#include "plex.h"
+#include "discord.h"
 #include <iostream>
-
-// TODO: Reference additional headers your program requires here.
+#include <thread>
+#include <atomic>
+#include <string>
+#include <functional>
+#include <csignal>

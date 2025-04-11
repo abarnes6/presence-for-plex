@@ -1,12 +1,25 @@
-﻿// main.cpp : Defines the entry point for the application.
-//
+﻿#include "main.h"
 
-#include "main.h"
+std::atomic<bool> running = true;
 
-using namespace std;
+static void signalHandler(int signum) {
+	std::cout << "Interrupt signal (" << signum << ") received.\n";
+	running = false;
+}
 
 int main()
 {
-	cout << "Hello CMake." << endl;
-	return 0;
+    std::signal(SIGINT, signalHandler);
+    //TrayIcon trayIcon = TrayIcon();
+    Plex plex = Plex();
+    DiscordClient discord = DiscordClient();
+
+	plex.startPolling();
+
+    while (running) {
+        discord.runDiscordCallbacks();
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    
+    return 0;
 }
