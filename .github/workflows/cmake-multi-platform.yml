@@ -60,6 +60,10 @@ jobs:
 
     - name: Run CMake consuming CMakePreset.json and run vcpkg to build packages
       uses: lukka/run-cmake@v10
+      with:
+        configurePreset: 'vcpkg'
+        buildPreset: 'vcpkg'
+        testPreset: 'vcpkg'
 
     - name: Build
       # Build your program with the given configuration. Note that --config is needed because the default Windows generator is a multi-config generator (Visual Studio generator).
