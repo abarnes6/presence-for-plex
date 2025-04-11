@@ -17,7 +17,7 @@ int main()
 	plex.startPolling();
 
     while (running) {
-        discord.runDiscordCallbacks();
+
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
     

@@ -4,7 +4,6 @@
 #include <string>
 #include <memory>
 #include <iostream>
-#include <discordpp.h>
 
 class DiscordClient {
 public:
@@ -12,6 +11,5 @@ public:
 	void updatePresence(const PlaybackInfo& info);
 	void runDiscordCallbacks();
 private:
-	std::shared_ptr<discordpp::Client> client;
 	std::string token;
 };

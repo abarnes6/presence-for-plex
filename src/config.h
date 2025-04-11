@@ -3,6 +3,7 @@
 #include <toml++/toml.hpp>
 #include <iostream>
 #include <fstream>
+#include <filesystem>
 
 class Config {
 public:
@@ -13,7 +14,7 @@ public:
 	int pollInterval;
 	uint64_t clientId;
 private:
-	Config() = default;
+	Config();
 	bool configExists();
 	bool generateConfig();
 	toml::v3::ex::parse_result config;

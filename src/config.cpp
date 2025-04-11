@@ -4,11 +4,17 @@ const std::string filename = "config.toml";
 
 Config& Config::getInstance() {
 	static Config instance;
-	if (!instance.loadConfig()) {
-		std::cerr << "Failed to load configuration. Exiting." << std::endl;
-		exit(EXIT_FAILURE);
-	}
 	return instance;
+}
+
+Config::Config() {
+	// Load the configuration
+	if (!loadConfig()) {
+		std::cerr << "Failed to load configuration." << std::endl;
+	}
+	else {
+		std::cout << "Configuration loaded successfully." << std::endl;
+	}
 }
 
 bool Config::loadConfig() {
@@ -25,7 +31,7 @@ bool Config::loadConfig() {
 		serverUrl = config["plex"]["server_url"].value_or("http://localhost:32400");
 		authToken = config["plex"]["auth_token"].value_or("");
 		pollInterval = config["plex"]["poll_interval"].value_or(5);
-		clientId = config["discord"]["client_id"].value_or(0);
+		clientId = config["discord"]["client_id"].value_or(1359742002618564618);
 		return true;
 	}
 	catch (const toml::parse_error& err) {
@@ -40,8 +46,7 @@ bool Config::loadConfig() {
 
 bool Config::configExists() {
 	try {
-		struct stat buffer;
-		return (stat(filename.c_str(), &buffer) == 0);
+		return std::filesystem::exists(std::filesystem::path{ filename });
 	}
 	catch (const std::exception& e) {
 		std::cerr << "Error checking configuration file: " << e.what() << std::endl;
@@ -62,7 +67,7 @@ bool Config::generateConfig() {
 		configFile << "auth_token = \"\"\n";
 		configFile << "poll_interval = 5\n\n";
 		configFile << "[discord]\n";
-		configFile << "client_id = 0\n";
+		configFile << "client_id = 1359742002618564618\n";
 		configFile.close();
 		std::cout << "Configuration file created: " << filename << std::endl;
 		return true;
