@@ -15,17 +15,23 @@
             "generator": "Ninja",
             "binaryDir": "${sourceDir}/build",
             "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Release"
-            },
-            "toolchainFile": "${sourceDir}/vcpkg/scripts/buildsystems/vcpkg.cmake"
+                "CMAKE_BUILD_TYPE": "Release",
+                "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/vcpkg/scripts/buildsystems/vcpkg.cmake"
+            }
         }
     ],
     "buildPresets": [
         {
+            "name": "vcpkg",
+            "description": "Build preset for vcpkg",
+            "configurePreset": "vcpkg",
+            "targets": [ "all" ]
+        },
+        {
             "name": "github",
             "description": "Build preset for GitHub Actions",
             "configurePreset": "github",
-            "targets": ["all"]
+            "targets": [ "all" ]
         }
     ],
     "testPresets": [
