@@ -263,7 +263,7 @@ bool Plex::parseSessionsResponse(const std::string &response, PlaybackInfo &info
             {
                 std::cerr << "Response begins with: " << response.substr(0, std::min(50, (int)response.size())) << "..." << std::endl;
             }
-            info.isPlaying = false;
+            info.state = PlaybackState::Stopped;
             return false;
         }
 
@@ -364,11 +364,42 @@ bool Plex::parseSessionsResponse(const std::string &response, PlaybackInfo &info
 
                 if (isAuthenticatedUser)
                 {
-                    // This is the authenticated user's session, set the playback info
-                    info.isPlaying = true;
-
                     info.title = session["title"].get<std::string>();
                     info.mediaType = session["type"].get<std::string>();
+
+                    // Check for playback state if Player information is available
+                    if (session.contains("Player"))
+                    {
+                        // Get the playback state
+                        if (session["Player"].contains("state"))
+                        {
+                            std::string state = session["Player"]["state"].get<std::string>();
+                            if (state == "playing")
+                            {
+                                info.state = PlaybackState::Playing;
+                            }
+                            else if (state == "paused")
+                            {
+                                info.state = PlaybackState::Paused;
+                            }
+                            else if (state == "buffering")
+                            {
+                                info.state = PlaybackState::Buffering;
+                            }
+                            else
+                            {
+                                info.state = PlaybackState::Stopped;
+                            }
+                        }
+                        else
+                        {
+                            info.state = PlaybackState::Playing; // Default to playing if state is not specified
+                        }
+                    }
+                    else
+                    {
+                        info.state = PlaybackState::Playing; // Default to playing if Player is not available
+                    }
 
                     if (session.contains("User"))
                     {
@@ -445,13 +476,13 @@ bool Plex::parseSessionsResponse(const std::string &response, PlaybackInfo &info
         }
 
         // No matching session found
-        info.isPlaying = false;
+        info.state = PlaybackState::Stopped;
         return false;
     }
     catch (const std::exception &e)
     {
         std::cerr << "Error parsing Plex response: " << e.what() << std::endl;
-        info.isPlaying = false;
+        info.state = PlaybackState::Stopped;
         return false;
     }
 }

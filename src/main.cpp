@@ -19,16 +19,29 @@ int main()
     while (running)
     {
         PlaybackInfo info = plex.getCurrentPlayback();
-        if (!info.isPlaying)
+        if (info.state == PlaybackState::Playing)
         {
-            std::cout << "No active playback" << std::endl;
-            if (discord.isConnected())
-                discord.clearPresence();
+            std::cout << "Playing: " << info.title << std::endl;
+            discord.updatePresence(info);
+        }
+        else if (info.state == PlaybackState::Paused)
+        {
+            std::cout << "Paused: " << info.title << std::endl;
+            discord.updatePresence(info);
+        }
+        else if (info.state == PlaybackState::Stopped)
+        {
+            std::cout << "Stopped: " << info.title << std::endl;
+            discord.updatePresence(info);
+        }
+        else if (info.state == PlaybackState::Buffering)
+        {
+            std::cout << "Buffering: " << info.title << std::endl;
+            discord.updatePresence(info);
         }
         else
         {
-            std::cout << "Now playing: " << info.title << std::endl;
-            discord.updatePresence(info);
+            std::cout << "Unknown state: " << info.title << std::endl;
         }
         std::this_thread::sleep_for(std::chrono::seconds(1));
     }
