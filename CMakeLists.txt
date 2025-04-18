@@ -13,7 +13,7 @@ project ("PlexRichPresence")
 file(GLOB_RECURSE SOURCES src/*.cpp)
 file(GLOB_RECURSE HEADERS src/*.h)
 
-find_package(CURL REQUIRED) 
+find_package(CURL CONFIG REQUIRED) 
 find_package(nlohmann_json REQUIRED)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(tomlplusplus REQUIRED IMPORTED_TARGET tomlplusplus)

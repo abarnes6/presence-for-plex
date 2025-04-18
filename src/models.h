@@ -12,7 +12,8 @@ struct PlaybackInfo
     std::string thumbnailUrl = "";
     std::string userId = "";
     std::string username = "";
-    int progress = 0; // in seconds
-    int duration = 0; // in seconds
+    std::string state = ""; // "playing", "paused", etc.
+    int64_t progress = 0;   // in seconds
+    int64_t duration = 0;   // in seconds
     time_t startTime = 0;
 };

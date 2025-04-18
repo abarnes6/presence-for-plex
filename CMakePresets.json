@@ -6,7 +6,8 @@
             "generator": "Ninja",
             "binaryDir": "${sourceDir}/build",
             "cacheVariables": {
-                "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
+                "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+                "VCPKG_TARGET_ARCHITECTURE": "x64-windows"
             }
         },
         {
@@ -35,7 +36,7 @@
             "name": "vcpkg",
             "description": "Build preset for vcpkg",
             "configurePreset": "vcpkg",
-            "targets": [ "all" ]
+            "targets": ["all"]
         },
         {
             "name": "github",
