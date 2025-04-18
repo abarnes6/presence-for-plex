@@ -18,6 +18,16 @@
                 "CMAKE_BUILD_TYPE": "Release"
             },
             "toolchainFile": "${sourceDir}/vcpkg/scripts/buildsystems/vcpkg.cmake"
+        },
+        {
+            "name": "debug",
+            "description": "Debug configuration preset",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug"
+            },
+            "inherits": "vcpkg"
         }
     ],
     "buildPresets": [
@@ -26,6 +36,12 @@
             "description": "Build preset for GitHub Actions",
             "configurePreset": "github",
             "targets": ["all"]
+        },
+        {
+            "name": "debug",
+            "description": "Debug build preset",
+            "configurePreset": "debug",
+            "targets": ["PlexRichPresence"]
         }
     ],
     "testPresets": [

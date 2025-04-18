@@ -29,10 +29,3 @@ target_link_libraries(PlexRichPresence PRIVATE CURL::libcurl PkgConfig::tomlplus
 if (CMAKE_VERSION VERSION_GREATER 3.12)
   set_property(TARGET PlexRichPresence PROPERTY CXX_STANDARD 20)
 endif()
-
-
-add_custom_command(TARGET PlexRichPresence POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-    $<TARGET_FILE_DIR:PlexRichPresence>
-)
-# TODO: Add tests and install targets if needed.
