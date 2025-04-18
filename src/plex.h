@@ -15,6 +15,10 @@
 #include <fstream>
 #include <regex>
 
+#ifdef _WIN32
+#include <winsock2.h>
+#endif
+
 class Plex
 {
 public:

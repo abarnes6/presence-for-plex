@@ -29,6 +29,19 @@ Plex::Plex()
             // Show instructions to the user
             LOG_INFO("Plex", "Please open the following URL in your browser to authorize this application:");
             LOG_INFO("Plex", authUrl);
+            LOG_INFO("Plex", "Opening browser automatically...");
+            
+            // Open the URL in the default browser
+            #ifdef _WIN32
+                ShellExecuteA(NULL, "open", authUrl.c_str(), NULL, NULL, SW_SHOWNORMAL);
+            #elif defined(__APPLE__)
+                std::string command = "open \"" + authUrl + "\"";
+                system(command.c_str());
+            #elif defined(__linux__)
+                std::string command = "xdg-open \"" + authUrl + "\"";
+                system(command.c_str());
+            #endif
+            
             LOG_INFO("Plex", "Waiting for authorization...");
 
             // Poll for the auth token

@@ -1,13 +1,28 @@
 #pragma once
 #define NOMINMAX
+#include "logger.h"
+#include "config.h"
+#include "models.h"
+#include "discord_ipc.h"
 #include <string>
 #include <mutex>
 #include <thread>
 #include <atomic>
-#include "config.h"
-#include "models.h"
-#include "discord_ipc.h"
-#include "logger.h"
+#include <iostream>
+#include <sstream>
+#include <cstring>
+#include <nlohmann/json.hpp>
+#include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <iomanip>
+
+#ifdef _WIN32
+#include <winsock2.h>
+#else
+#include <unistd.h>
+#endif
+
 
 class Discord
 {

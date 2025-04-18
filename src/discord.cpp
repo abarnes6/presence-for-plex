@@ -1,18 +1,4 @@
 #include "discord.h"
-#include <iostream>
-#include <sstream>
-#include <cstring>
-#include <nlohmann/json.hpp>
-#include <algorithm>
-#include <atomic>
-#include <chrono>
-#include <iomanip>
-
-#ifdef _WIN32
-#include <windows.h>
-#else
-#include <unistd.h>
-#endif
 
 using json = nlohmann::json;
 
@@ -159,7 +145,6 @@ void Discord::connectionThread()
 			std::this_thread::sleep_for(std::chrono::seconds(1));
 		}
 	}
-	LOG_DEBUG("Discord", "Connection thread exiting");
 }
 
 void Discord::calculateBackoffTime()
@@ -173,7 +158,7 @@ void Discord::calculateBackoffTime()
 
 void Discord::updatePresence(const PlaybackInfo &playbackInfo)
 {
-    LOG_DEBUG_STREAM("Discord", "updatePresence called for: " << playbackInfo.title);
+	LOG_DEBUG_STREAM("Discord", "updatePresence called for title: " << playbackInfo.title);
 
     if (!connected || !ipc.isConnected())
     {
