@@ -1,7 +1,9 @@
 ﻿#pragma once
-#define DISCORDPP_IMPLEMENTATION
 #include "plex.h"
 #include "discord.h"
+#include "discord_ipc.h"
+#include "models.h"
+#include "config.h"
 #include <iostream>
 #include <thread>
 #include <atomic>

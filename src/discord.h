@@ -6,6 +6,8 @@
 #include <atomic>
 #include "config.h"
 #include "models.h"
+#include "discord_ipc.h"
+#include "logger.h"
 
 class Discord
 {
@@ -19,15 +21,14 @@ public:
 	bool isConnected() const;
 	void updatePresence(const PlaybackInfo &playbackInfo);
 	void clearPresence();
+	void keepAlive();
 
 private:
 	void connectionThread();
-	bool connectToDiscord();
-	void disconnectFromDiscord();
-	bool writeFrame(int opcode, const std::string &data);
-	bool readFrame(int &opcode, std::string &data);
-	void keepAlive();
 	void calculateBackoffTime();
+
+	// Component responsible for Discord IPC communication
+	DiscordIPC ipc;
 
 	std::thread conn_thread;
 	std::atomic<bool> running;
@@ -41,15 +42,7 @@ private:
 	int64_t last_successful_update;
 	std::string last_activity_payload;
 
-#ifdef _WIN32
-	void *pipe_handle;
-#else
-	int pipe_fd;
-#endif
-
 	// State tracking
-	std::string current_details;
-	std::string current_state;
-	int64_t start_timestamp;
 	std::atomic<bool> is_playing;
+	PlaybackInfo previous_playback_info; // Store previous playback info to detect changes
 };

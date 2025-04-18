@@ -1,5 +1,6 @@
 #include <random>
 #include <sstream>
+#include <iomanip>
 
 namespace uuid
 {
@@ -12,32 +13,32 @@ namespace uuid
     {
         std::stringstream ss;
         int i;
-        ss << std::hex;
+        ss << std::hex << std::setfill('0');
         for (i = 0; i < 8; i++)
         {
-            ss << dis(gen);
+            ss << std::setw(2) << dis(gen);
         }
         ss << "-";
         for (i = 0; i < 4; i++)
         {
-            ss << dis(gen);
+            ss << std::setw(2) << dis(gen);
         }
         ss << "-4";
         for (i = 0; i < 3; i++)
         {
-            ss << dis(gen);
+            ss << std::setw(2) << dis(gen);
         }
         ss << "-";
-        ss << dis2(gen);
+        ss << std::setw(2) << dis2(gen);
         for (i = 0; i < 3; i++)
         {
-            ss << dis(gen);
+            ss << std::setw(2) << dis(gen);
         }
         ss << "-";
         for (i = 0; i < 12; i++)
         {
-            ss << dis(gen);
-        };
+            ss << std::setw(2) << dis(gen);
+        }
         return ss.str();
     }
 }

@@ -3,6 +3,7 @@
 #include "models.h"
 #include "config.h"
 #include "uuid.h"
+#include "logger.h"
 #include <string>
 #include <iostream>
 #include <mutex>
@@ -21,9 +22,13 @@ public:
 	~Plex();
 	void startPolling();
 	void stopPolling();
+	
+	// Updated methods to use the shared wrapper
+	PlaybackInfo getCurrentPlayback() const;
+	
+	// We'll keep these methods for backward compatibility
 	void setPlaybackInfo(const PlaybackInfo &info);
 	void getPlaybackInfo(PlaybackInfo &info) const;
-	PlaybackInfo getCurrentPlayback() const;
 
 private:
 	static size_t WriteCallback(void *contents, size_t size, size_t nmemb, std::string *s);
@@ -36,7 +41,9 @@ private:
 
 	std::atomic<bool> running{false};
 	std::thread pollingThread;
-	mutable std::shared_mutex playback_mutex;
-	PlaybackInfo currentPlayback;
+	
+	// Replace raw mutex and PlaybackInfo with SharedPlaybackInfo
+	SharedPlaybackInfo sharedPlayback;
+	
 	std::string authToken;
 };
