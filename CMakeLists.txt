@@ -1,7 +1,4 @@
-﻿# CMakeList.txt : CMake project for PlexRichPresence, include source and define
-# project specific logic here.
-#
-cmake_minimum_required (VERSION 3.10)
+﻿cmake_minimum_required (VERSION 3.11)
 
 set(CMAKE_SUPPRESS_REGENERATION true)
 

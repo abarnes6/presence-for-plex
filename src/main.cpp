@@ -12,7 +12,7 @@ int main()
     std::signal(SIGINT, signalHandler);
     //TrayIcon trayIcon = TrayIcon();
     Plex plex = Plex();
-    DiscordClient discord = DiscordClient();
+    //DiscordClient discord = DiscordClient();
 
 	plex.startPolling();
 
