@@ -1,4 +1,4 @@
-﻿{
+{
     "version": 3,
     "configurePresets": [
         {
@@ -36,19 +36,25 @@
             "name": "vcpkg",
             "description": "Build preset for vcpkg",
             "configurePreset": "vcpkg",
-            "targets": ["all"]
+            "targets": [
+                "all"
+            ]
         },
         {
             "name": "github",
             "description": "Build preset for GitHub Actions",
             "configurePreset": "github",
-            "targets": ["all"]
+            "targets": [
+                "all"
+            ]
         },
         {
             "name": "debug",
             "description": "Debug build preset",
             "configurePreset": "debug",
-            "targets": ["PlexRichPresence"]
+            "targets": [
+                "PlexRichPresence"
+            ]
         }
     ],
     "testPresets": [

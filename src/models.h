@@ -5,7 +5,6 @@
 
 enum class PlaybackState
 {
-    Unknown,
     Stopped,
     Playing,
     Paused,
@@ -15,7 +14,7 @@ enum class PlaybackState
 // Playback information
 struct PlaybackInfo
 {
-    PlaybackState state = PlaybackState::Unknown; // "playing", "paused", etc.
+    PlaybackState state = PlaybackState::Stopped; // "playing", "paused", etc.
     std::string userId = "";
     std::string username = "";
     std::string title = "";

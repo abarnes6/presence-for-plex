@@ -42,7 +42,7 @@ int main()
     plex.startPolling();
 
     // Keep track of last state to avoid unnecessary logging
-    PlaybackState lastState = PlaybackState::Unknown;
+    PlaybackState lastState = PlaybackState::Stopped;
 
     // Main application loop
     while (running)
@@ -52,40 +52,32 @@ int main()
         // Only log when state changes
         if (info.state != lastState)
         {
-            const char *stateStr = "Unknown";
+            lastState = info.state;
             switch (info.state)
             {
             case PlaybackState::Playing:
-                stateStr = "Playing";
                 trayIcon.setTooltip("Plex Rich Presence - Playing: " + info.title);
                 break;
             case PlaybackState::Paused:
-                stateStr = "Paused";
                 trayIcon.setTooltip("Plex Rich Presence - Paused: " + info.title);
                 break;
             case PlaybackState::Stopped:
-                stateStr = "Stopped";
                 trayIcon.setTooltip("Plex Rich Presence - Stopped");
                 break;
             case PlaybackState::Buffering:
-                stateStr = "Buffering";
                 trayIcon.setTooltip("Plex Rich Presence - Buffering: " + info.title);
-                break;
-            default:
-                stateStr = "Unknown";
-                trayIcon.setTooltip("Plex Rich Presence - Unknown state");
                 break;
             }
 
-            LOG_INFO_STREAM("Main", "Playback state changed to: " << stateStr);
+            LOG_INFO_STREAM("Main", "Playback state changed to: " 
+                << (info.state == PlaybackState::Paused ? " (Paused)" : "")
+                << (info.state == PlaybackState::Buffering ? " (Buffering)" : "")
+                << (info.state == PlaybackState::Playing ? " (Playing)" : "")
+                << (info.state == PlaybackState::Stopped ? " (Stopped)" : ""));
             lastState = info.state;
         }
 
-        // Update Discord Rich Presence based on playback state
-        if (info.state != PlaybackState::Unknown)
-        {
-            discord.updatePresence(info);
-        }
+        discord.updatePresence(info);
 
         // Avoid hammering the CPU
         std::this_thread::sleep_for(std::chrono::milliseconds(500));

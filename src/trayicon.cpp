@@ -1,4 +1,5 @@
 #include "trayicon.h"
+#include "resources.h"
 
 // Initialize static instance pointer
 TrayIcon* TrayIcon::s_instance = nullptr;
@@ -71,7 +72,7 @@ void TrayIcon::setTooltip(const std::string& tooltip) {
             
             // Update the tooltip
             if (m_hWnd) {
-                LOG_INFO_STREAM("TrayIcon", "Updating tooltip to: " << tooltip);
+                LOG_DEBUG_STREAM("TrayIcon", "Updating tooltip to: " << tooltip);
                 Shell_NotifyIconW(NIM_MODIFY, &m_nid);
             }
         }
@@ -162,7 +163,31 @@ void TrayIcon::uiThreadFunction() {
     wc.lpfnWndProc = WndProc;
     wc.hInstance = GetModuleHandle(NULL);
     wc.lpszClassName = className;
-    wc.hIcon = LoadIconW(NULL, MAKEINTRESOURCEW(IDI_APPLICATION));
+    
+    // Load icon with error checking - try multiple methods
+    HICON hIcon = NULL;
+    
+    // First try loading by resource ID
+    hIcon = LoadIconW(GetModuleHandle(NULL), MAKEINTRESOURCEW(IDI_APPICON));
+    
+    // If that fails, try loading by name
+    if (!hIcon) {
+        LOG_INFO("TrayIcon", "Failed to load icon by ID, trying by name");
+        hIcon = LoadIconW(GetModuleHandle(NULL), L"IDI_APPICON");
+    }
+    
+    // If still no icon, try the default system icon
+    if (!hIcon) {
+        DWORD error = GetLastError();
+        LOG_ERROR_STREAM("TrayIcon", "Failed to load application icon, error code: " << error);
+        // Try to load a default system icon instead
+        hIcon = LoadIconW(NULL, MAKEINTRESOURCEW(IDI_APPLICATION));
+        LOG_INFO("TrayIcon", "Using default system icon instead");
+    } else {
+        LOG_INFO("TrayIcon", "Application icon loaded successfully");
+    }
+    
+    wc.hIcon = hIcon;
     wc.hCursor = LoadCursorW(NULL, MAKEINTRESOURCEW(IDC_ARROW));
     
     if (!RegisterClassExW(&wc)) {
@@ -206,7 +231,25 @@ void TrayIcon::uiThreadFunction() {
     m_nid.uID = ID_TRAY_APP_ICON;
     m_nid.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
     m_nid.uCallbackMessage = WM_TRAYICON;
-    m_nid.hIcon = LoadIconW(NULL, MAKEINTRESOURCEW(IDI_APPLICATION));
+    
+    // Use the same icon for the tray as we used for the window
+    m_nid.hIcon = hIcon;
+    
+    // If we still don't have an icon, try one more time specifically for the tray
+    if (!m_nid.hIcon) {
+        LOG_INFO("TrayIcon", "Trying to load tray icon separately");
+        m_nid.hIcon = LoadIconW(GetModuleHandle(NULL), MAKEINTRESOURCEW(IDI_APPICON));
+        
+        if (!m_nid.hIcon) {
+            DWORD error = GetLastError();
+            LOG_ERROR_STREAM("TrayIcon", "Failed to load tray icon, error code: " << error);
+            // Try to load a default system icon instead
+            m_nid.hIcon = LoadIconW(NULL, MAKEINTRESOURCEW(IDI_APPLICATION));
+            LOG_INFO("TrayIcon", "Using default system icon for tray");
+        } else {
+            LOG_INFO("TrayIcon", "Tray icon loaded successfully");
+        }
+    }
     
     // Set initial tooltip
     wcscpy_s(m_nid.szTip, _countof(m_nid.szTip), L"Plex Rich Presence");
