@@ -11,7 +11,11 @@ Plex::~Plex()
 Plex::Plex()
 {
     curl_global_init(CURL_GLOBAL_ALL);
-    authToken = Config::getInstance().getAuthToken();
+    auto http = Config::getInstance().isForceHttps() ? "https://" : "http://";
+    auto ip = Config::getInstance().getServerIp();
+    auto port = Config::getInstance().getPort();
+    url = http + ip + ":" + std::to_string(port);
+    authToken = Config::getInstance().getPlexToken();
     if (authToken.empty())
     {
         // Generate a random UUID
@@ -101,7 +105,7 @@ std::string Plex::getPlexDirectHash() const
     curl = curl_easy_init();
     if (curl)
     {
-        std::string identityUrl = Config::getInstance().serverUrl + "/web/identity";
+        std::string identityUrl = url + "/web/identity";
         std::string serverCert;
 
         // Configure curl to get the certificate information
@@ -160,7 +164,7 @@ std::string Plex::getPlexDirectHash() const
 }
 
 // Function to perform HTTP request to Plex API
-std::string Plex::makeRequest(const std::string &url) const
+std::string Plex::makeRequest(const std::string &requestUrl) const
 {
     CURL *curl;
     CURLcode res;
@@ -173,71 +177,22 @@ std::string Plex::makeRequest(const std::string &url) const
         headers = curl_slist_append(headers, "Accept: application/json");
         headers = curl_slist_append(headers, ("X-Plex-Token: " + this->authToken).c_str());
 
-        std::string requestUrl = url;
-
-        // Parse server URL to extract IP and port
-        std::string serverUrl = Config::getInstance().serverUrl;
-        size_t protocolEnd = serverUrl.find("://");
-        std::string serverIp;
-        std::string serverPort = "32400"; // Default Plex port
-
-        if (protocolEnd != std::string::npos)
-        {
-            size_t portPos = serverUrl.find(":", protocolEnd + 3);
-            if (portPos != std::string::npos)
-            {
-                serverIp = serverUrl.substr(protocolEnd + 3, portPos - (protocolEnd + 3));
-                size_t pathPos = serverUrl.find("/", portPos);
-                if (pathPos != std::string::npos)
-                {
-                    serverPort = serverUrl.substr(portPos + 1, pathPos - (portPos + 1));
-                }
-                else
-                {
-                    serverPort = serverUrl.substr(portPos + 1);
-                }
-            }
-            else
-            {
-                size_t pathPos = serverUrl.find("/", protocolEnd + 3);
-                if (pathPos != std::string::npos)
-                {
-                    serverIp = serverUrl.substr(protocolEnd + 3, pathPos - (protocolEnd + 3));
-                }
-                else
-                {
-                    serverIp = serverUrl.substr(protocolEnd + 3);
-                }
-            }
-        }
-
         // Use Plex Direct URL if we can get the hash
         std::string plexDirectHash = getPlexDirectHash();
 
-        if (!plexDirectHash.empty() && !serverIp.empty())
+        if (!plexDirectHash.empty())
         {
-            // Format: https://IP-WITH-DASHES.HASH.plex.direct:PORT/path
-            std::string ipWithDashes = serverIp;
-            std::replace(ipWithDashes.begin(), ipWithDashes.end(), '.', '-');
-
-            // Create Plex Direct URL
-            std::string plexDirectUrl = "https://" + ipWithDashes + "." + plexDirectHash + ".plex.direct:" + serverPort;
-
-            // Replace the server URL part with the Plex Direct URL
-            size_t pathPos = url.find("/", protocolEnd + 3);
-            if (pathPos != std::string::npos)
-            {
-                requestUrl = plexDirectUrl + url.substr(pathPos);
+            std::string ipWithDashes = Config::getInstance().getServerIp();
+            size_t pos = 0;
+            while ((pos = ipWithDashes.find(".", pos)) != std::string::npos) {
+                ipWithDashes.replace(pos, 1, "-");
+                pos += 1;
             }
-            else
-            {
-                requestUrl = plexDirectUrl;
-            }
+            std::string plexDirectUrl = "https://" + ipWithDashes + "." + plexDirectHash + ".plex.direct:" + std::to_string(Config::getInstance().getPort());
 
-            // Set up DNS resolution for the Plex Direct hostname
-            std::string resolve = ipWithDashes + "." + plexDirectHash + ".plex.direct:" + serverPort + ":" + serverIp;
-
-            curl_easy_setopt(curl, CURLOPT_RESOLVE, curl_slist_append(NULL, resolve.c_str()));
+            struct curl_slist *resolveList = curl_slist_append(NULL, plexDirectUrl.c_str());
+            curl_easy_setopt(curl, CURLOPT_RESOLVE, resolveList);
+            curl_slist_free_all(resolveList);
         }
 
         curl_easy_setopt(curl, CURLOPT_URL, requestUrl.c_str());
@@ -474,8 +429,8 @@ bool Plex::parseSessionsResponse(const std::string &response, PlaybackInfo &info
 
                     if (session.contains("thumb"))
                     {
-                        info.thumbnailUrl = Config::getInstance().serverUrl + session["thumb"].get<std::string>() +
-                                            "?X-Plex-Token=" + this->authToken;
+                        info.thumbnailUrl = url + session["thumb"].get<std::string>() +
+                                            "?X-Plex-Token=" + authToken;
                     }
 
                     // Convert viewOffset and duration from milliseconds to seconds
@@ -524,8 +479,8 @@ void Plex::plexPollingThread()
 {
     while (running)
     {
-        std::string url = Config::getInstance().serverUrl + "/status/sessions";
-        std::string response = makeRequest(url);
+        std::string reqUrl = this->url + "/status/sessions";
+        std::string response = makeRequest(reqUrl);
 
         if (!response.empty())
         {
@@ -545,7 +500,7 @@ void Plex::plexPollingThread()
         }
 
         // Wait for next poll interval
-        std::this_thread::sleep_for(std::chrono::seconds(Config::getInstance().pollInterval));
+        std::this_thread::sleep_for(std::chrono::seconds(Config::getInstance().getPollInterval()));
     }
 }
 
@@ -669,7 +624,7 @@ bool Plex::pollForAuthToken(const std::string &pinId, std::string &clientId)
                         std::string token = response["authToken"].get<std::string>();
                         authToken = token;
 
-                        Config::getInstance().setConfigValue("auth_token", token);
+                        Config::getInstance().setPlexToken(token);
 
                         LOG_DEBUG("Plex", "Auth token received and saved");
                         return true;

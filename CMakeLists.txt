@@ -51,12 +51,16 @@ if(WIN32)
     # Add option for startup
     set(CPACK_NSIS_EXTRA_INSTALL_COMMANDS "
         CreateShortCut \\\"$DESKTOP\\\\Plex Rich Presence.lnk\\\" \\\"$INSTDIR\\\\PlexRichPresence.exe\\\" 
+        CreateDirectory \\\"$SMPROGRAMS\\\\Plex Rich Presence\\\"
+        CreateShortCut \\\"$SMPROGRAMS\\\\Plex Rich Presence\\\\Plex Rich Presence.lnk\\\" \\\"$INSTDIR\\\\PlexRichPresence.exe\\\"
         WriteRegStr HKCU \\\"Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Run\\\" \\\"PlexRichPresence\\\" \\\"$INSTDIR\\\\PlexRichPresence.exe\\\" 
     ")
     
-    # Add uninstaller commands to remove startup entry
+    # Add uninstaller commands to remove startup entry and Start Menu shortcut
     set(CPACK_NSIS_EXTRA_UNINSTALL_COMMANDS "
         Delete \\\"$DESKTOP\\\\Plex Rich Presence.lnk\\\" 
+        Delete \\\"$SMPROGRAMS\\\\Plex Rich Presence\\\\Plex Rich Presence.lnk\\\"
+        RMDir \\\"$SMPROGRAMS\\\\Plex Rich Presence\\\"
         DeleteRegValue HKCU \\\"Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Run\\\" \\\"PlexRichPresence\\\" 
     ")
 elseif(APPLE)

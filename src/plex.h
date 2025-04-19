@@ -50,4 +50,5 @@ private:
 	SharedPlaybackInfo sharedPlayback;
 	
 	std::string authToken;
+	std::string url;
 };

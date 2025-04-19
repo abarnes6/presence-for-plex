@@ -34,6 +34,7 @@ public:
 	void start();
 	void stop();
 	bool isConnected() const;
+	bool isWaitingForDiscord() const; // Add new method to check if waiting for Discord
 	void updatePresence(const PlaybackInfo &playbackInfo);
 	void clearPresence();
 	void keepAlive();
@@ -49,6 +50,7 @@ private:
 	std::atomic<bool> running;
 	std::atomic<bool> connected;
 	std::atomic<bool> needs_reconnect;
+	std::atomic<bool> waiting_for_discord; // New state variable
 	std::mutex mutex;
 
 	// Connection info
@@ -59,5 +61,4 @@ private:
 
 	// State tracking
 	std::atomic<bool> is_playing;
-	PlaybackInfo previous_playback_info; // Store previous playback info to detect changes
 };

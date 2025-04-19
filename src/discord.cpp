@@ -2,12 +2,16 @@
 
 using json = nlohmann::json;
 
-Discord::Discord() : running(false),
-					 connected(false),
-					 needs_reconnect(false),
-					 is_playing(false),
-					 reconnect_attempts(0),
-					 last_successful_update(0)
+Discord::Discord() : 
+	running(false),
+	connected(false),
+	needs_reconnect(false),
+	waiting_for_discord(false),
+	client_id(0),
+	reconnect_attempts(0),
+	last_successful_update(0),
+	is_playing(false)
+
 {
 }
 
@@ -20,9 +24,9 @@ bool Discord::init()
 {
 	LOG_INFO("Discord", "Initializing Discord Rich Presence");
 	running = true;
-	conn_thread = std::thread(&Discord::connectionThread, this);
-	client_id = Config::getInstance().clientId;
+	client_id = Config::getInstance().getClientId();
 	LOG_DEBUG("Discord", "Using client ID: " + std::to_string(client_id));
+	conn_thread = std::thread(&Discord::connectionThread, this);
 	return true;
 }
 
@@ -36,6 +40,8 @@ void Discord::connectionThread()
 			LOG_DEBUG("Discord", "Not connected, attempting connection");
 			if (ipc.connect())
 			{
+				// Successfully connected to the Discord pipe
+				waiting_for_discord = false;
 				LOG_DEBUG("Discord", "Connection established, sending handshake");
 
 				// Send handshake to Discord
@@ -69,19 +75,47 @@ void Discord::connectionThread()
 				json ready;
 				try
 				{
+					LOG_DEBUG("Discord", "Parsing response: " + response);
 					ready = json::parse(response);
+					
+					if (!ready.contains("evt"))
+					{
+						LOG_ERROR("Discord", "Discord response missing 'evt' field");
+						LOG_DEBUG("Discord", "Complete response: " + response);
+						ipc.disconnect();
+						calculateBackoffTime();
+						continue;
+					}
+					
 					if (ready["evt"] != "READY")
 					{
-						LOG_ERROR("Discord", "Discord did not respond with READY event");
+						LOG_ERROR("Discord", "Discord did not respond with READY event: " + ready["evt"].dump());
 						ipc.disconnect();
 						calculateBackoffTime();
 						continue;
 					}
 					LOG_DEBUG("Discord", "Handshake READY event confirmed");
 				}
+				catch (const json::parse_error& e)
+				{
+					LOG_ERROR_STREAM("Discord", "JSON parse error in READY response: " << e.what() << " at position " << e.byte);
+					LOG_ERROR_STREAM("Discord", "Response that caused the error: " << response);
+					ipc.disconnect();
+					calculateBackoffTime();
+					continue;
+				}
+				catch (const json::type_error& e)
+				{
+					LOG_ERROR_STREAM("Discord", "JSON type error in READY response: " << e.what());
+					LOG_ERROR_STREAM("Discord", "Response that caused the error: " << response);
+					ipc.disconnect();
+					calculateBackoffTime();
+					continue;
+				}
 				catch (const std::exception &e)
 				{
 					LOG_ERROR("Discord", "Failed to parse READY response: " + std::string(e.what()));
+					LOG_ERROR("Discord", "Response that caused the error: " + response);
 					ipc.disconnect();
 					calculateBackoffTime();
 					continue;
@@ -118,6 +152,8 @@ void Discord::connectionThread()
 			{
 				// Wait before retrying with exponential backoff
 				LOG_WARNING("Discord", "Failed to connect to Discord IPC");
+				waiting_for_discord = true; // Set the waiting state
+				LOG_INFO("Discord", "Waiting for Discord to open...");
 				calculateBackoffTime();
 			}
 		}
@@ -180,85 +216,47 @@ void Discord::updatePresence(const PlaybackInfo &playbackInfo)
     // Acquire lock only for accessing shared resources
     std::lock_guard<std::mutex> lock(mutex);
 
-    // Check if any relevant information has changed before sending an update
-    bool has_changes = false;
-    
-    // If state changed between playing, paused, or stopped
-    if (playbackInfo.state != previous_playback_info.state)
-    {
-        LOG_DEBUG("Discord", "Playback state changed, updating presence");
-        has_changes = true;
-    }
-    // If title changed
-    else if (playbackInfo.title != previous_playback_info.title)
-    {
-        LOG_DEBUG("Discord", "Title changed, updating presence");
-        has_changes = true;
-    }
-    // If media type changed
-    else if (playbackInfo.mediaType != previous_playback_info.mediaType)
-    {
-        LOG_DEBUG("Discord", "Media type changed, updating presence");
-        has_changes = true;
-    }
-    // If username changed
-    else if (playbackInfo.username != previous_playback_info.username)
-    {
-        LOG_DEBUG("Discord", "Username changed, updating presence");
-        has_changes = true;
-    }
-    // If thumbnail changed
-    else if (playbackInfo.thumbnailUrl != previous_playback_info.thumbnailUrl)
-    {
-        LOG_DEBUG("Discord", "Thumbnail changed, updating presence");
-        has_changes = true;
-    }
-    // If progress changed significantly (more than 5 seconds difference)
-	else if (std::abs(playbackInfo.progress - previous_playback_info.progress) > 5)
-    {
-        LOG_DEBUG_STREAM("Discord", "Progress changed significantly: " 
-            << previous_playback_info.progress << " -> " << playbackInfo.progress);
-        has_changes = true;
-    }
-    // If duration changed
-	else if (std::abs(playbackInfo.duration - previous_playback_info.duration) > 0)
-	{
-		LOG_DEBUG("Discord", "Duration changed, updating presence");
-		has_changes = true;
-	}
-    
-    // If no changes and we're already displaying something, don't update
-    if (!has_changes && is_playing)
-    {
-        LOG_DEBUG("Discord", "No significant changes detected, skipping presence update");
-        return;
-    }
-
 	int64_t start_timestamp = 0;
 	int64_t end_timestamp = 0;
 
-	if (playbackInfo.state == PlaybackState::Playing)
+	if (playbackInfo.state == PlaybackState::Playing || playbackInfo.state == PlaybackState::Paused)
 	{
 		is_playing = true;
-		LOG_DEBUG("Discord", "Media is playing, updating presence");
+		LOG_DEBUG_STREAM("Discord", "Media is " << 
+            (playbackInfo.state == PlaybackState::Playing ? "playing" : "paused") << 
+            ", updating presence");
 
 		// Calculate timestamps
 		auto now = std::chrono::system_clock::now();
 		int64_t current_time = std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch()).count();
 		
-		// Calculate start time (current time minus progress)
-		start_timestamp = current_time - static_cast<int64_t>(playbackInfo.progress);
-		
-		// Calculate end time (current time plus remaining time)
-		end_timestamp = current_time + static_cast<int64_t>(playbackInfo.duration - playbackInfo.progress);
+		// Calculate timestamps differently based on playback state
+        if (playbackInfo.state == PlaybackState::Playing) {
+            // For "Playing" state, show elapsed and remaining time with counting timestamps
+            start_timestamp = current_time - static_cast<int64_t>(playbackInfo.progress);
+            end_timestamp = current_time + static_cast<int64_t>(playbackInfo.duration - playbackInfo.progress);
+        } else if (playbackInfo.state == PlaybackState::Paused) {
+            // For "Paused" state, use a fixed timestamp showing current progress
+            // By setting a timestamp in the past without an end timestamp, Discord shows a fixed elapsed time
+            start_timestamp = 1;
+			end_timestamp = 1;
+            // No end_timestamp for paused state - this makes Discord show only elapsed time that doesn't count up
+        }
 
 		LOG_DEBUG("Discord", "Updating presence");
 		
-		// Create timestamps object with start timestamp
+		// Create timestamps object 
 		json timestamps = {
 			{"start", start_timestamp},
 			{"end", end_timestamp}
 		};
+
+        // Create state text with paused indicator if needed
+        std::string state_text = playbackInfo.seasonEpisode + " · " + playbackInfo.episodeName;
+        if (playbackInfo.state == PlaybackState::Paused) {
+            state_text = "⏸️ " + state_text;  // Add pause emoji
+        }
+        
 		json presence = {
 			{"cmd", "SET_ACTIVITY"},
 			{"args", {
@@ -273,9 +271,9 @@ void Discord::updatePresence(const PlaybackInfo &playbackInfo)
 					{"type",  3},
 					{"timestamps", timestamps},
 					{"details", playbackInfo.title},
-					{"state", playbackInfo.seasonEpisode + " · " + playbackInfo.episodeName},
+					{"state", state_text},
 					{"assets", {
-						{"large_image", playbackInfo.thumbnailUrl.empty() ? "plex_logo" : playbackInfo.thumbnailUrl},
+						{"large_image", "plex_logo"},
 						{"large_text", playbackInfo.title}
 					}}
 				}}
@@ -331,11 +329,10 @@ void Discord::updatePresence(const PlaybackInfo &playbackInfo)
 
 					// Update the last update timestamp only if successful
 					last_successful_update = now_seconds;
-					LOG_INFO_STREAM("Discord", "Updated presence: " << playbackInfo.title
-																 << " - " << playbackInfo.username);
+					LOG_DEBUG_STREAM("Discord", "Updated presence: " << playbackInfo.title
+																 << " - " << playbackInfo.username
+                                                                 << (playbackInfo.state == PlaybackState::Paused ? " (Paused)" : ""));
 					
-					// Store the current playback info as previous for future comparisons
-					previous_playback_info = playbackInfo;
 				}
 				catch (const std::exception &e)
 				{
@@ -356,9 +353,6 @@ void Discord::updatePresence(const PlaybackInfo &playbackInfo)
 			LOG_INFO("Discord", "Media stopped, clearing presence");
 			clearPresence();
 			last_successful_update = now_seconds;
-			
-			// Update previous playback info
-			previous_playback_info = playbackInfo;
 		}
 	}
 }
@@ -458,4 +452,9 @@ void Discord::stop()
 bool Discord::isConnected() const
 {
 	return connected && ipc.isConnected();
+}
+
+bool Discord::isWaitingForDiscord() const
+{
+	return waiting_for_discord;
 }
