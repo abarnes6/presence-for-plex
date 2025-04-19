@@ -9,7 +9,8 @@ Plex::~Plex()
 }
 
 // Platform-specific browser opener
-void openBrowser(const std::string& url) {
+void openBrowser(const std::string &url)
+{
 #ifdef _WIN32
     ShellExecuteA(NULL, "open", url.c_str(), NULL, NULL, SW_SHOWNORMAL);
 #elif defined(__APPLE__)
@@ -19,33 +20,40 @@ void openBrowser(const std::string& url) {
     // Try different methods on Linux (xdg-open, gio, firefox, etc.)
     std::string escaped_url = url;
     // Basic escaping for command line
-    for (size_t i = 0; i < escaped_url.length(); i++) {
-        if (escaped_url[i] == '\"' || escaped_url[i] == '\\' || escaped_url[i] == '`' || 
-            escaped_url[i] == '$' || escaped_url[i] == '!') {
+    for (size_t i = 0; i < escaped_url.length(); i++)
+    {
+        if (escaped_url[i] == '\"' || escaped_url[i] == '\\' || escaped_url[i] == '`' ||
+            escaped_url[i] == '$' || escaped_url[i] == '!')
+        {
             escaped_url.insert(i, "\\");
             i++;
         }
     }
-    
+
     // Try xdg-open first (most common)
     std::string command = "xdg-open \"" + escaped_url + "\" > /dev/null 2>&1";
-    if (system(command.c_str()) != 0) {
+    if (system(command.c_str()) != 0)
+    {
         // Try gio
         command = "gio open \"" + escaped_url + "\" > /dev/null 2>&1";
-        if (system(command.c_str()) != 0) {
+        if (system(command.c_str()) != 0)
+        {
             // Try common browsers
-            const char* browsers[] = {"firefox", "google-chrome", "chromium", "brave", "opera"};
+            const char *browsers[] = {"firefox", "google-chrome", "chromium", "brave", "opera"};
             bool success = false;
-            
-            for (const auto& browser : browsers) {
+
+            for (const auto &browser : browsers)
+            {
                 command = std::string(browser) + " \"" + escaped_url + "\" > /dev/null 2>&1";
-                if (system(command.c_str()) == 0) {
+                if (system(command.c_str()) == 0)
+                {
                     success = true;
                     break;
                 }
             }
-            
-            if (!success) {
+
+            if (!success)
+            {
                 LOG_ERROR("Plex", "Failed to open browser. Please open this URL manually: " + url);
             }
         }
@@ -57,41 +65,53 @@ void openBrowser(const std::string& url) {
 Plex::Plex()
 {
     // Get configuration
-    Config& config = Config::getInstance();
-    
+    Config &config = Config::getInstance();
+
     // Check if we need to build the URL with https
     std::string protocol = config.isForceHttps() ? "https://" : "http://";
     url = protocol + config.getServerIp() + ":" + std::to_string(config.getPort());
-    
+
     // Check if we already have a Plex token
     authToken = config.getPlexToken();
-    
+
     // If no token, we need to authenticate with Plex
-    if (authToken.empty()) {
+    if (authToken.empty())
+    {
         LOG_INFO("Plex", "No Plex token found. Requesting authorization...");
         std::string pinCode, pinId;
-        
+
         // Generate a UUID for client identification
         std::string uuid = uuid::generate_uuid_v4();
-        
+
         LOG_DEBUG("Plex", "Generated UUID: " + uuid);
-        
+
         // Request a PIN from Plex
-        if (requestPlexPin(uuid, pinCode, pinId)) {
+        if (requestPlexPin(uuid, pinCode, pinId))
+        {
             LOG_INFO("Plex", "Generated PIN code: " + pinCode);
-            
-            // Generate auth URL
-            std::string authUrl = "https://app.plex.tv/auth#?clientID=" + uuid + 
-                                 "&code=" + pinCode + 
-                                 "&context%5Bdevice%5D%5Bproduct%5D=Plex%20Rich%20Presence";
-            
+
+            // Generate auth URL with the same headers used in requestPlexPin
+            std::string authUrl = "https://app.plex.tv/auth#?clientID=" + uuid +
+                                  "&code=" + pinCode +
+                                  "&context%5Bdevice%5D%5Bproduct%5D=Plex%20Rich%20Presence" +
+                                  "&X-Plex-Product=Plex%20Rich%20Presence" +
+                                  "&X-Plex-Version=0.1";
+
+#if defined(_WIN32)
+            authUrl += "&X-Plex-Device=Windows";
+#elif defined(__APPLE__)
+            authUrl += "&X-Plex-Device=macOS";
+#elif defined(__linux__)
+            authUrl += "&X-Plex-Device=Linux";
+#endif
+
             LOG_INFO("Plex", "Please open the following URL in your browser to authorize this application:");
             LOG_INFO("Plex", authUrl);
             LOG_INFO("Plex", "Opening browser automatically...");
-            
+
             // Open the URL in the default browser using our platform-specific function
             openBrowser(authUrl);
-            
+
             LOG_INFO("Plex", "Waiting for authorization...");
 
             // Poll for the auth token
@@ -104,11 +124,12 @@ Plex::Plex()
                 LOG_ERROR("Plex", "Failed to get authorization from Plex.");
             }
         }
-        else {
+        else
+        {
             LOG_ERROR("Plex", "Failed to request PIN from Plex.");
         }
     }
-    
+
     // Initialize CURL
     curl_global_init(CURL_GLOBAL_DEFAULT);
 }
@@ -295,7 +316,7 @@ bool Plex::parseSessionsResponse(const std::string &response, PlaybackInfo &info
                 {
                     // Reset all fields before populating
                     info = PlaybackInfo{};
-                    
+
                     info.title = session["title"].get<std::string>();
                     info.mediaType = session["type"].get<std::string>();
 
@@ -307,7 +328,7 @@ bool Plex::parseSessionsResponse(const std::string &response, PlaybackInfo &info
                         {
                             std::string state = session["Player"]["state"].get<std::string>();
                             // Map the state to PlaybackState enum
-                            
+
                             if (state == "playing")
                             {
                                 info.state = PlaybackState::Playing;
@@ -363,27 +384,23 @@ bool Plex::parseSessionsResponse(const std::string &response, PlaybackInfo &info
                     if (info.mediaType == "episode")
                     {
                         // Extract season and episode number
-                        std::string seasonNum = session["parentIndex"].is_string() ? 
-                            session["parentIndex"].get<std::string>() : 
-                            std::to_string(session["parentIndex"].get<int>());
-                        
-                        std::string episodeNum = session["index"].is_string() ? 
-                            session["index"].get<std::string>() : 
-                            std::to_string(session["index"].get<int>());
-                        
+                        std::string seasonNum = session["parentIndex"].is_string() ? session["parentIndex"].get<std::string>() : std::to_string(session["parentIndex"].get<int>());
+
+                        std::string episodeNum = session["index"].is_string() ? session["index"].get<std::string>() : std::to_string(session["index"].get<int>());
+
                         // Format as S01E01
-                        info.seasonEpisode = "S" + (seasonNum.size() == 1 ? "0" + seasonNum : seasonNum) + 
-                                           "E" + (episodeNum.size() == 1 ? "0" + episodeNum : episodeNum);
-                        
+                        info.seasonEpisode = "S" + (seasonNum.size() == 1 ? "0" + seasonNum : seasonNum) +
+                                             "E" + (episodeNum.size() == 1 ? "0" + episodeNum : episodeNum);
+
                         // Get episode title
                         info.episodeName = info.title;
-                        
+
                         // Get show title and set as main title
                         if (session.contains("grandparentTitle"))
                         {
                             info.title = session["grandparentTitle"].get<std::string>();
                         }
-                        
+
                         // Set subtitle with season/episode info and episode name
                         info.subtitle = info.seasonEpisode + " - " + info.episodeName;
                     }
@@ -498,8 +515,16 @@ bool Plex::requestPlexPin(const std::string &clientId, std::string &pinCode, std
         headers = curl_slist_append(headers, "Content-Type: application/x-www-form-urlencoded");
 
         std::string postData = "strong=true";
-        postData += "&X-Plex-Product=PlexRichPresence";
+        postData += "&X-Plex-Product=Plex Rich Presence";
+        postData += "&X-Plex-Version: 0.1";
         postData += "&X-Plex-Client-Identifier=" + clientId;
+#if defined(_WIN32)
+        postData += "&X-Plex-Device: Windows";
+#elif defined(__APPLE__)
+        postData += "&X-Plex-Device: macOS";
+#elif defined(__linux__)
+        postData += "&X-Plex-Device: Linux";
+#endif
 
         curl_easy_setopt(curl, CURLOPT_URL, "https://plex.tv/api/v2/pins");
         curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
@@ -520,6 +545,7 @@ bool Plex::requestPlexPin(const std::string &clientId, std::string &pinCode, std
                 json response = json::parse(readBuffer);
                 if (response.contains("id") && response.contains("code"))
                 {
+                    LOG_DEBUG_STREAM("Plex", "PIN response: " << response);
                     pinId = std::to_string(response["id"].get<int>());
                     pinCode = response["code"].get<std::string>();
                     return true;

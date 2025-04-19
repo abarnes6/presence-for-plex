@@ -18,7 +18,8 @@ int main()
 #ifdef _WIN32
     // Hide console window on Windows
     HWND consoleWindow = GetConsoleWindow();
-    if (consoleWindow) {
+    if (consoleWindow)
+    {
         ShowWindow(consoleWindow, SW_HIDE);
     }
 #endif
@@ -31,40 +32,40 @@ int main()
 #endif
     // Set up logging to a file in the config directory
     Logger::getInstance().initFileLogging(Config::getConfigDirectory(), true); // true = clear existing file
-    
+
     LOG_INFO("Main", "Plex Rich Presence starting up");
-    
+
     // Apply log level from config
     Logger::getInstance().setLogLevel(static_cast<LogLevel>(Config::getInstance().getLogLevel()));
 
+    TrayIcon trayIcon("Plex Rich Presence");
     Plex plex = Plex();
     Discord discord = Discord();
-    
+
     LOG_INFO("Main", "Creating tray icon");
-    
+
     // Create the tray icon
-    TrayIcon trayIcon("Plex Rich Presence");
-    
+
     // Set exit callback
-    trayIcon.setExitCallback([&]() {
+    trayIcon.setExitCallback([&]()
+                             {
         LOG_INFO("Main", "Exit requested from tray");
-        running = false;
-    });
-    
+        running = false; });
+
     // Show the tray icon - this must be done after initialization
     trayIcon.setTooltip("Plex Rich Presence - Running");
     trayIcon.show();
-    
+
     // A short delay to make sure the tray icon appears
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    
+
     // Start the Discord and Plex components
     discord.start();
     plex.startPolling();
 
     // Keep track of last state to avoid unnecessary logging
     PlaybackState lastState = PlaybackState::Stopped;
-    
+
     // Main loop
     LOG_INFO("Main", "Entering main loop");
     while (running)
@@ -83,19 +84,19 @@ int main()
         {
             trayIcon.setTooltip("Plex Rich Presence - Disconnected");
         }
-        
+
         // Get current playback information
         PlaybackInfo info = plex.getCurrentPlayback();
-        
+
         // Only log state changes
         if (info.state != lastState)
         {
             LOG_INFO_STREAM("Main", "Playback state changed to: "
-                << std::string(info.title)
-                << (info.state == PlaybackState::Paused ? " (Paused)" : "") 
-                << (info.state == PlaybackState::Buffering ? " (Buffering)" : "")
-                << (info.state == PlaybackState::Playing ? " (Playing)" : "")
-                << (info.state == PlaybackState::Stopped ? " (Stopped)" : ""));
+                                        << std::string(info.title)
+                                        << (info.state == PlaybackState::Paused ? " (Paused)" : "")
+                                        << (info.state == PlaybackState::Buffering ? " (Buffering)" : "")
+                                        << (info.state == PlaybackState::Playing ? " (Playing)" : "")
+                                        << (info.state == PlaybackState::Stopped ? " (Stopped)" : ""));
             lastState = info.state;
         }
 
