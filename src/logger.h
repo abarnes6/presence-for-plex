@@ -5,6 +5,8 @@
 #include <iomanip>
 #include <mutex>
 #include <sstream>
+#include <fstream>
+#include <filesystem>
 
 enum class LogLevel
 {
@@ -25,15 +27,22 @@ public:
     void info(const std::string &component, const std::string &message);
     void warning(const std::string &component, const std::string &message);
     void error(const std::string &component, const std::string &message);
+    
+    // Initialize logging to file
+    void initFileLogging(const std::filesystem::path& logFilePath, bool clearExisting = true);
 
 private:
-    Logger() : logLevel(LogLevel::Info) {}
+    Logger() : logLevel(LogLevel::Info), logToFile(false) {}
     Logger(const Logger &) = delete;
     Logger &operator=(const Logger &) = delete;
 
     void log(const std::string &component, const std::string &level, const std::string &message);
     LogLevel logLevel;
     std::mutex logMutex;
+    
+    // File logging
+    bool logToFile;
+    std::ofstream logFile;
 };
 
 // Convenience macros for logging

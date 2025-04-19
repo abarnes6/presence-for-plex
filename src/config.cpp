@@ -18,7 +18,7 @@ Config &Config::getInstance()
 }
 
 // Get platform-appropriate config directory
-std::filesystem::path Config::getConfigDirectory() const
+std::filesystem::path Config::getConfigDirectory()
 {
     std::filesystem::path configDir;
     

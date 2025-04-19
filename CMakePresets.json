@@ -1,67 +1,128 @@
 {
-    "version": 3,
+    "version": 9,
     "configurePresets": [
         {
-            "name": "vcpkg",
+            "name": "vcpkg-base",
+            "hidden": true,
             "generator": "Ninja",
             "binaryDir": "${sourceDir}/build",
             "cacheVariables": {
                 "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
-                "VCPKG_TARGET_ARCHITECTURE": "x64-windows"
+                "VCPKG_ROOT": "${sourceDir}/vcpkg_installed"
+            }
+        },
+        {
+            "name": "debug",
+            "displayName": "Debug",
+            "description": "Debug build with symbols for development",
+            "inherits": "vcpkg-base",
+            "binaryDir": "${sourceDir}/build/debug",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug"
+            }
+        },
+        {
+            "name": "release",
+            "displayName": "Release",
+            "description": "Optimized release build",
+            "inherits": "vcpkg-base",
+            "binaryDir": "${sourceDir}/build/release",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release"
             }
         },
         {
             "name": "github",
-            "description": "Configuration preset for GitHub Actions",
+            "displayName": "GitHub CI",
+            "description": "Configuration preset for GitHub Actions CI",
             "generator": "Ninja",
-            "binaryDir": "${sourceDir}/build",
+            "binaryDir": "${sourceDir}/build/github",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
                 "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/vcpkg/scripts/buildsystems/vcpkg.cmake"
             }
-        },
-        {
-            "name": "debug",
-            "description": "Debug configuration preset",
-            "generator": "Ninja",
-            "binaryDir": "${sourceDir}/build",
-            "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Debug"
-            },
-            "inherits": "vcpkg"
         }
     ],
     "buildPresets": [
         {
-            "name": "vcpkg",
-            "description": "Build preset for vcpkg",
-            "configurePreset": "vcpkg",
+            "name": "debug",
+            "displayName": "Debug Build",
+            "description": "Debug build with symbols for development",
+            "configurePreset": "debug",
+            "targets": [
+                "all"
+            ]
+        },
+        {
+            "name": "release",
+            "displayName": "Release Build",
+            "description": "Optimized release build",
+            "configurePreset": "release",
             "targets": [
                 "all"
             ]
         },
         {
             "name": "github",
-            "description": "Build preset for GitHub Actions",
+            "displayName": "GitHub CI Build",
+            "description": "Build preset for GitHub Actions CI",
             "configurePreset": "github",
             "targets": [
                 "all"
-            ]
-        },
-        {
-            "name": "debug",
-            "description": "Debug build preset",
-            "configurePreset": "debug",
-            "targets": [
-                "PlexRichPresence"
             ]
         }
     ],
     "testPresets": [
         {
+            "name": "debug",
+            "displayName": "Debug Tests",
+            "description": "Run tests in debug mode",
+            "configurePreset": "debug",
+            "output": {
+                "verbosity": "verbose"
+            }
+        },
+        {
+            "name": "release",
+            "displayName": "Release Tests",
+            "description": "Run tests in release mode",
+            "configurePreset": "release"
+        },
+        {
             "name": "github",
-            "description": "Test preset for GitHub Actions",
-            "configurePreset": "github"
+            "displayName": "GitHub CI Tests",
+            "description": "Run tests for GitHub Actions CI",
+            "configurePreset": "github",
+            "output": {
+                "verbosity": "verbose"
+            },
+            "execution": {
+                "noTestsAction": "error",
+                "stopOnFailure": true
+            }
+        }
+    ],
+    "packagePresets": [
+        {
+            "name": "debug",
+            "displayName": "Debug Package",
+            "description": "Create debug package with symbols",
+            "configurePreset": "debug",
+            "generators": ["CPack"]
+        },
+        {
+            "name": "release",
+            "displayName": "Release Package",
+            "description": "Create optimized release package",
+            "configurePreset": "release",
+            "generators": ["NSIS"]
+        },
+        {
+            "name": "github",
+            "displayName": "GitHub CI Package",
+            "description": "Create release package for GitHub Actions CI",
+            "configurePreset": "github",
+            "generators": ["CPack"]
         }
     ]
 }

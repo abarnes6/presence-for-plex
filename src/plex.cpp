@@ -8,43 +8,89 @@ Plex::~Plex()
     curl_global_cleanup();
 }
 
+// Platform-specific browser opener
+void openBrowser(const std::string& url) {
+#ifdef _WIN32
+    ShellExecuteA(NULL, "open", url.c_str(), NULL, NULL, SW_SHOWNORMAL);
+#elif defined(__APPLE__)
+    std::string command = "open \"" + url + "\"";
+    system(command.c_str());
+#elif defined(__linux__)
+    // Try different methods on Linux (xdg-open, gio, firefox, etc.)
+    std::string escaped_url = url;
+    // Basic escaping for command line
+    for (size_t i = 0; i < escaped_url.length(); i++) {
+        if (escaped_url[i] == '\"' || escaped_url[i] == '\\' || escaped_url[i] == '`' || 
+            escaped_url[i] == '$' || escaped_url[i] == '!') {
+            escaped_url.insert(i, "\\");
+            i++;
+        }
+    }
+    
+    // Try xdg-open first (most common)
+    std::string command = "xdg-open \"" + escaped_url + "\" > /dev/null 2>&1";
+    if (system(command.c_str()) != 0) {
+        // Try gio
+        command = "gio open \"" + escaped_url + "\" > /dev/null 2>&1";
+        if (system(command.c_str()) != 0) {
+            // Try common browsers
+            const char* browsers[] = {"firefox", "google-chrome", "chromium", "brave", "opera"};
+            bool success = false;
+            
+            for (const auto& browser : browsers) {
+                command = std::string(browser) + " \"" + escaped_url + "\" > /dev/null 2>&1";
+                if (system(command.c_str()) == 0) {
+                    success = true;
+                    break;
+                }
+            }
+            
+            if (!success) {
+                LOG_ERROR("Plex", "Failed to open browser. Please open this URL manually: " + url);
+            }
+        }
+    }
+#endif
+}
+
+// Modify Plex constructor to use the new function
 Plex::Plex()
 {
-    curl_global_init(CURL_GLOBAL_ALL);
-    auto http = Config::getInstance().isForceHttps() ? "https://" : "http://";
-    auto ip = Config::getInstance().getServerIp();
-    auto port = Config::getInstance().getPort();
-    url = http + ip + ":" + std::to_string(port);
-    authToken = Config::getInstance().getPlexToken();
-    if (authToken.empty())
-    {
-        // Generate a random UUID
+    // Get configuration
+    Config& config = Config::getInstance();
+    
+    // Check if we need to build the URL with https
+    std::string protocol = config.isForceHttps() ? "https://" : "http://";
+    url = protocol + config.getServerIp() + ":" + std::to_string(config.getPort());
+    
+    // Check if we already have a Plex token
+    authToken = config.getPlexToken();
+    
+    // If no token, we need to authenticate with Plex
+    if (authToken.empty()) {
+        LOG_INFO("Plex", "No Plex token found. Requesting authorization...");
+        std::string pinCode, pinId;
+        
+        // Generate a UUID for client identification
         std::string uuid = uuid::generate_uuid_v4();
-        LOG_INFO("Plex", "Generated UUID: " + uuid);
-
-        // Request a new PIN from Plex
-        std::string pinCode;
-        std::string pinId;
-        if (requestPlexPin(uuid, pinCode, pinId))
-        {
-            // Construct the auth URL for the user
-            std::string authUrl = "https://app.plex.tv/auth#?clientID=" + uuid + "&code=" + pinCode;
-
-            // Show instructions to the user
+        
+        LOG_DEBUG("Plex", "Generated UUID: " + uuid);
+        
+        // Request a PIN from Plex
+        if (requestPlexPin(uuid, pinCode, pinId)) {
+            LOG_INFO("Plex", "Generated PIN code: " + pinCode);
+            
+            // Generate auth URL
+            std::string authUrl = "https://app.plex.tv/auth#?clientID=" + uuid + 
+                                 "&code=" + pinCode + 
+                                 "&context%5Bdevice%5D%5Bproduct%5D=Plex%20Rich%20Presence";
+            
             LOG_INFO("Plex", "Please open the following URL in your browser to authorize this application:");
             LOG_INFO("Plex", authUrl);
             LOG_INFO("Plex", "Opening browser automatically...");
             
-            // Open the URL in the default browser
-            #ifdef _WIN32
-                ShellExecuteA(NULL, "open", authUrl.c_str(), NULL, NULL, SW_SHOWNORMAL);
-            #elif defined(__APPLE__)
-                std::string command = "open \"" + authUrl + "\"";
-                system(command.c_str());
-            #elif defined(__linux__)
-                std::string command = "xdg-open \"" + authUrl + "\"";
-                system(command.c_str());
-            #endif
+            // Open the URL in the default browser using our platform-specific function
+            openBrowser(authUrl);
             
             LOG_INFO("Plex", "Waiting for authorization...");
 
@@ -58,12 +104,13 @@ Plex::Plex()
                 LOG_ERROR("Plex", "Failed to get authorization from Plex.");
             }
         }
-        else
-        {
+        else {
             LOG_ERROR("Plex", "Failed to request PIN from Plex.");
-            exit(1);
         }
     }
+    
+    // Initialize CURL
+    curl_global_init(CURL_GLOBAL_DEFAULT);
 }
 
 // Start the polling thread
@@ -95,74 +142,6 @@ size_t Plex::WriteCallback(void *contents, size_t size, size_t nmemb, std::strin
     }
 }
 
-// Function to get Plex Direct hash from server identity
-std::string Plex::getPlexDirectHash() const
-{
-    CURL *curl;
-    CURLcode res;
-    std::string hash;
-
-    curl = curl_easy_init();
-    if (curl)
-    {
-        std::string identityUrl = url + "/web/identity";
-        std::string serverCert;
-
-        // Configure curl to get the certificate information
-        curl_easy_setopt(curl, CURLOPT_URL, identityUrl.c_str());
-        curl_easy_setopt(curl, CURLOPT_NOBODY, 1L);
-        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
-        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
-        curl_easy_setopt(curl, CURLOPT_CERTINFO, 1L);
-        curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10);
-
-        res = curl_easy_perform(curl);
-        if (res == CURLE_OK)
-        {
-            struct curl_certinfo *certinfo;
-            res = curl_easy_getinfo(curl, CURLINFO_CERTINFO, &certinfo);
-
-            if (res == CURLE_OK && certinfo)
-            {
-                // Look for the subject field in certificate info
-                for (int i = 0; i < certinfo->num_of_certs; i++)
-                {
-                    struct curl_slist *slist = certinfo->certinfo[i];
-                    while (slist)
-                    {
-                        std::string certData = slist->data;
-
-                        // Look for subject line with the hash
-                        if (certData.find("subject:") != std::string::npos &&
-                            certData.find("plex.direct") != std::string::npos)
-                        {
-                            // Parse out the hash from the subject format: CN=*.HASH.plex.direct
-                            size_t start = certData.find("CN=*.");
-                            if (start != std::string::npos)
-                            {
-                                start += 5; // Skip "CN=*."
-                                size_t end = certData.find(".plex.direct", start);
-                                if (end != std::string::npos)
-                                {
-                                    hash = certData.substr(start, end - start);
-                                    break;
-                                }
-                            }
-                        }
-                        slist = slist->next;
-                    }
-                    if (!hash.empty())
-                        break;
-                }
-            }
-        }
-
-        curl_easy_cleanup(curl);
-    }
-
-    return hash;
-}
-
 // Function to perform HTTP request to Plex API
 std::string Plex::makeRequest(const std::string &requestUrl) const
 {
@@ -176,24 +155,6 @@ std::string Plex::makeRequest(const std::string &requestUrl) const
         struct curl_slist *headers = NULL;
         headers = curl_slist_append(headers, "Accept: application/json");
         headers = curl_slist_append(headers, ("X-Plex-Token: " + this->authToken).c_str());
-
-        // Use Plex Direct URL if we can get the hash
-        std::string plexDirectHash = getPlexDirectHash();
-
-        if (!plexDirectHash.empty())
-        {
-            std::string ipWithDashes = Config::getInstance().getServerIp();
-            size_t pos = 0;
-            while ((pos = ipWithDashes.find(".", pos)) != std::string::npos) {
-                ipWithDashes.replace(pos, 1, "-");
-                pos += 1;
-            }
-            std::string plexDirectUrl = "https://" + ipWithDashes + "." + plexDirectHash + ".plex.direct:" + std::to_string(Config::getInstance().getPort());
-
-            struct curl_slist *resolveList = curl_slist_append(NULL, plexDirectUrl.c_str());
-            curl_easy_setopt(curl, CURLOPT_RESOLVE, resolveList);
-            curl_slist_free_all(resolveList);
-        }
 
         curl_easy_setopt(curl, CURLOPT_URL, requestUrl.c_str());
         curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);

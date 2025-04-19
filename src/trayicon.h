@@ -1,7 +1,5 @@
 #pragma once
 #include "logger.h"
-#include <winsock2.h>
-#include <shellapi.h>
 #include <string>
 #include <functional>
 #include <atomic>
@@ -9,10 +7,17 @@
 #include <iostream>
 #include <chrono>
 
-// Constants
+#ifdef _WIN32
+#include <winsock2.h>
+#include <shellapi.h>
+// Constants for Windows
 #define ID_TRAY_APP_ICON 1000
 #define ID_TRAY_EXIT     1001
 #define WM_TRAYICON      (WM_USER + 1)
+#elif defined(__linux__)
+#include <gtk/gtk.h>
+#include <libappindicator/app-indicator.h>
+#endif
 
 class TrayIcon {
 public:
@@ -28,6 +33,8 @@ public:
     bool setIcon(HICON hIcon);
 
 private:
+#ifdef _WIN32
+    // Windows specific members
     static LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);
     void uiThreadFunction();
 
@@ -40,4 +47,15 @@ private:
     std::thread m_uiThread;
     
     static TrayIcon* s_instance; // To access instance from static WndProc
+#elif defined(__linux__)
+    // Linux specific members
+    AppIndicator* indicator;
+    GtkWidget* menu;
+    GtkWidget* quit_item;
+    static void quit_activate(GtkMenuItem *item, gpointer user_data);
+    std::function<void()> exitCallback;
+    bool initialized;
+#endif
+    // Common members
+    std::string tooltip;
 };

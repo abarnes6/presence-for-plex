@@ -28,11 +28,19 @@ inline void safe_localtime(std::tm *tm_ptr, const std::time_t *time_ptr)
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <fcntl.h>
+#include <unistd.h>
+#include <errno.h>
+#include <sys/types.h>
+#include <pwd.h>
 #endif
 
 #if defined(_WIN32) && !defined(htole32)
 #define htole32(x) (x) // little-endian host
 #define le32toh(x) (x)
+#endif
+
+#ifndef _WIN32
+#include <endian.h>
 #endif
 
 using json = nlohmann::json;
@@ -99,8 +107,17 @@ bool DiscordIPC::connect()
     for (int i = 0; i < 10; i++)
     {
         std::string socket_path;
+        // Check environment variables first (XDG standard)
         const char *temp = getenv("XDG_RUNTIME_DIR");
         const char *home = getenv("HOME");
+        
+        // If HOME is not available (unlikely), try to get it from passwd
+        if (!home) {
+            struct passwd *pw = getpwuid(getuid());
+            if (pw) {
+                home = pw->pw_dir;
+            }
+        }
 
         if (temp)
         {
@@ -112,6 +129,7 @@ bool DiscordIPC::connect()
         }
         else
         {
+            LOG_WARNING("DiscordIPC", "Could not determine user home directory, skipping socket " + std::to_string(i));
             continue;
         }
 
@@ -120,26 +138,89 @@ bool DiscordIPC::connect()
         pipe_fd = socket(AF_UNIX, SOCK_STREAM, 0);
         if (pipe_fd == -1)
         {
-            LOG_DEBUG("DiscordIPC", "Failed to create socket");
+            LOG_DEBUG("DiscordIPC", "Failed to create socket: " + std::string(strerror(errno)));
             continue;
         }
 
         struct sockaddr_un addr;
         memset(&addr, 0, sizeof(addr));
         addr.sun_family = AF_UNIX;
+        
+        // Make sure we don't overflow the sun_path buffer
+        if (socket_path.length() >= sizeof(addr.sun_path)) {
+            LOG_WARNING("DiscordIPC", "Socket path too long: " + socket_path);
+            close(pipe_fd);
+            pipe_fd = -1;
+            continue;
+        }
+        
         strncpy(addr.sun_path, socket_path.c_str(), sizeof(addr.sun_path) - 1);
 
         if (::connect(pipe_fd, (struct sockaddr *)&addr, sizeof(addr)) == 0)
         {
             LOG_DEBUG("DiscordIPC", "Successfully connected to Discord socket: " + socket_path);
+            
+            // Set socket to non-blocking mode
+            int flags = fcntl(pipe_fd, F_GETFL, 0);
+            if (flags == -1) {
+                LOG_WARNING("DiscordIPC", "Failed to get socket flags: " + std::string(strerror(errno)));
+            } else if (fcntl(pipe_fd, F_SETFL, flags | O_NONBLOCK) == -1) {
+                LOG_WARNING("DiscordIPC", "Failed to set socket to non-blocking mode: " + std::string(strerror(errno)));
+            }
+            
             connected = true;
             return true;
         }
 
-        LOG_DEBUG("DiscordIPC", "Failed to connect to socket: " + socket_path);
+        LOG_DEBUG("DiscordIPC", "Failed to connect to socket: " + socket_path + ": " + std::string(strerror(errno)));
         close(pipe_fd);
         pipe_fd = -1;
     }
+    
+    // Try snap-specific Discord socket paths
+    std::string snap_path = "/run/user/" + std::to_string(getuid()) + "/snap.discord/discord-ipc-0";
+    LOG_DEBUG("DiscordIPC", "Trying Snap socket: " + snap_path);
+    
+    pipe_fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (pipe_fd != -1) {
+        struct sockaddr_un addr;
+        memset(&addr, 0, sizeof(addr));
+        addr.sun_family = AF_UNIX;
+        strncpy(addr.sun_path, snap_path.c_str(), sizeof(addr.sun_path) - 1);
+        
+        if (::connect(pipe_fd, (struct sockaddr *)&addr, sizeof(addr)) == 0) {
+            LOG_DEBUG("DiscordIPC", "Successfully connected to Discord Snap socket: " + snap_path);
+            connected = true;
+            return true;
+        }
+        
+        LOG_DEBUG("DiscordIPC", "Failed to connect to Snap socket: " + snap_path + ": " + std::string(strerror(errno)));
+        close(pipe_fd);
+        pipe_fd = -1;
+    }
+    
+    // Try flatpak-specific Discord socket paths
+    std::string flatpak_path = "/run/user/" + std::to_string(getuid()) + "/app/com.discordapp.Discord/discord-ipc-0";
+    LOG_DEBUG("DiscordIPC", "Trying Flatpak socket: " + flatpak_path);
+    
+    pipe_fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (pipe_fd != -1) {
+        struct sockaddr_un addr;
+        memset(&addr, 0, sizeof(addr));
+        addr.sun_family = AF_UNIX;
+        strncpy(addr.sun_path, flatpak_path.c_str(), sizeof(addr.sun_path) - 1);
+        
+        if (::connect(pipe_fd, (struct sockaddr *)&addr, sizeof(addr)) == 0) {
+            LOG_DEBUG("DiscordIPC", "Successfully connected to Discord Flatpak socket: " + flatpak_path);
+            connected = true;
+            return true;
+        }
+        
+        LOG_DEBUG("DiscordIPC", "Failed to connect to Flatpak socket: " + flatpak_path + ": " + std::string(strerror(errno)));
+        close(pipe_fd);
+        pipe_fd = -1;
+    }
+    
     LOG_ERROR("DiscordIPC", "Could not connect to any Discord socket. Is Discord running?");
     return false;
 #endif

@@ -17,6 +17,7 @@
 
 #ifdef _WIN32
 #include <winsock2.h>
+#include <shellapi.h>
 #endif
 
 class Plex
@@ -39,7 +40,6 @@ private:
 	void plexPollingThread();
 	bool parseSessionsResponse(const std::string &response, PlaybackInfo &info);
 	std::string makeRequest(const std::string &url) const;
-	std::string getPlexDirectHash() const;
 	bool requestPlexPin(const std::string &clientId, std::string &pinCode, std::string &pinId);
 	bool pollForAuthToken(const std::string &pinId, std::string &clientId);
 

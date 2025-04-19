@@ -1,12 +1,13 @@
 #include "trayicon.h"
 #include "resources.h"
 
-// Initialize static instance pointer
+#ifdef _WIN32
+// Static instance pointer for Windows callback
 TrayIcon* TrayIcon::s_instance = nullptr;
 
 TrayIcon::TrayIcon(const std::string& appName) 
     : m_appName(appName), m_running(false), m_hWnd(NULL), m_hMenu(NULL) {
-    // Store instance for static WndProc access
+    // Set static instance for callback
     s_instance = this;
     
     // Start UI thread
@@ -265,3 +266,83 @@ void TrayIcon::uiThreadFunction() {
     
     LOG_INFO("TrayIcon", "UI thread exiting");
 }
+
+#elif defined(__linux__)
+// Linux implementation using AppIndicator
+
+// Callback for quit menu item
+void TrayIcon::quit_activate(GtkMenuItem *item, gpointer user_data) {
+    TrayIcon* tray = static_cast<TrayIcon*>(user_data);
+    if (tray && tray->exitCallback) {
+        tray->exitCallback();
+    }
+}
+
+TrayIcon::TrayIcon(const std::string& appName) : initialized(false) {
+    LOG_DEBUG("TrayIcon", "Creating tray icon for Linux");
+    
+    // Initialize GTK if not already initialized
+    if (!gtk_init_check(nullptr, nullptr)) {
+        LOG_ERROR("TrayIcon", "Failed to initialize GTK");
+        return;
+    }
+    
+    // Create menu
+    menu = gtk_menu_new();
+    quit_item = gtk_menu_item_new_with_label("Exit");
+    gtk_menu_shell_append(GTK_MENU_SHELL(menu), quit_item);
+    g_signal_connect(quit_item, "activate", G_CALLBACK(quit_activate), this);
+    gtk_widget_show_all(menu);
+    
+    // Create app indicator
+    indicator = app_indicator_new("plex-rich-presence", 
+                                 "indicator-messages", 
+                                 APP_INDICATOR_CATEGORY_APPLICATION_STATUS);
+    
+    // Set properties
+    app_indicator_set_status(indicator, APP_INDICATOR_STATUS_ACTIVE);
+    app_indicator_set_menu(indicator, GTK_MENU(menu));
+    
+    // Try to set the icon to the app icon
+    app_indicator_set_icon(indicator, "plex-rich-presence");
+    
+    initialized = true;
+    LOG_INFO("TrayIcon", "Linux tray icon created successfully");
+}
+
+TrayIcon::~TrayIcon() {
+    if (initialized) {
+        LOG_DEBUG("TrayIcon", "Destroying Linux tray icon");
+        g_object_unref(indicator);
+        gtk_widget_destroy(menu);
+    }
+}
+
+void TrayIcon::show() {
+    if (initialized) {
+        LOG_DEBUG("TrayIcon", "Showing Linux tray icon");
+        app_indicator_set_status(indicator, APP_INDICATOR_STATUS_ACTIVE);
+    }
+}
+
+void TrayIcon::hide() {
+    if (initialized) {
+        LOG_DEBUG("TrayIcon", "Hiding Linux tray icon");
+        app_indicator_set_status(indicator, APP_INDICATOR_STATUS_PASSIVE);
+    }
+}
+
+void TrayIcon::setTooltip(const std::string& tip) {
+    tooltip = tip;
+}
+
+void TrayIcon::setExitCallback(std::function<void()> callback) {
+    exitCallback = callback;
+}
+
+bool TrayIcon::setIcon(HICON hIcon) {
+    // Not applicable for Linux
+    return false;
+}
+
+#endif

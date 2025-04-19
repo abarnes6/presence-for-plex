@@ -1,3 +1,8 @@
 {
-    "dependencies": ["nlohmann-json", "pkgconf", "tomlplusplus", "curl"]
+  "dependencies": [
+    "curl",
+    "nlohmann-json",
+    "pkgconf",
+    "tomlplusplus"
+  ]
 }

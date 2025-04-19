@@ -32,7 +32,7 @@ private:
     Config();
     
     // Get configuration directory
-    std::filesystem::path getConfigDirectory() const;
+    std::filesystem::path getConfigFilePath() const;
     bool setConfigValue(const std::string &key, const std::string &value);
     bool generateConfig();
     bool loadConfig();
@@ -46,7 +46,7 @@ public:
     Config& operator=(const Config&) = delete;
     
     // Configuration methods
-    std::filesystem::path getConfigFilePath() const;
+    static std::filesystem::path getConfigDirectory();
     bool configExists();
     
     // Getters/Setters

@@ -1,21 +1,42 @@
 ﻿#include "main.h"
 
+#ifdef _WIN32
+// For hiding console window
+#include <windows.h>
+#endif
+
 std::atomic<bool> running = true;
 
 static void signalHandler(int signum)
 {
-    LOG_INFO_STREAM("SignalHandler", "Interrupt signal (" << signum << ") received.");
+    LOG_INFO("Main", "Received signal: " + std::to_string(signum));
     running = false;
 }
 
 int main()
 {
-    // Set log level based on configuration or default to INFO
-    Logger::getInstance().setLogLevel(LogLevel::Info);
+#ifdef _WIN32
+    // Hide console window on Windows
+    HWND consoleWindow = GetConsoleWindow();
+    if (consoleWindow) {
+        ShowWindow(consoleWindow, SW_HIDE);
+    }
+#endif
 
-    LOG_INFO("Main", "Plex Rich Presence starting up");
-
+    // Register signal handlers for clean shutdown
     std::signal(SIGINT, signalHandler);
+    std::signal(SIGTERM, signalHandler);
+#ifdef _WIN32
+    std::signal(SIGBREAK, signalHandler);
+#endif
+    // Set up logging to a file in the config directory
+    Logger::getInstance().initFileLogging(Config::getConfigDirectory(), true); // true = clear existing file
+    
+    LOG_INFO("Main", "Plex Rich Presence starting up");
+    
+    // Apply log level from config
+    Logger::getInstance().setLogLevel(static_cast<LogLevel>(Config::getInstance().getLogLevel()));
+
     Plex plex = Plex();
     Discord discord = Discord();
     
@@ -43,34 +64,35 @@ int main()
 
     // Keep track of last state to avoid unnecessary logging
     PlaybackState lastState = PlaybackState::Stopped;
-
-    // Main application loop
+    
+    // Main loop
+    LOG_INFO("Main", "Entering main loop");
     while (running)
     {
+        // Check if Discord is waiting or needs reconnection
+        if (discord.isWaitingForDiscord())
+        {
+            LOG_INFO("Main", "Waiting for Discord to start...");
+            trayIcon.setTooltip("Plex Rich Presence - Waiting for Discord");
+        }
+        else if (discord.isConnected())
+        {
+            trayIcon.setTooltip("Plex Rich Presence - Connected");
+        }
+        else
+        {
+            trayIcon.setTooltip("Plex Rich Presence - Disconnected");
+        }
+        
+        // Get current playback information
         PlaybackInfo info = plex.getCurrentPlayback();
-
-        // Only log when state changes
+        
+        // Only log state changes
         if (info.state != lastState)
         {
-            lastState = info.state;
-            switch (info.state)
-            {
-            case PlaybackState::Playing:
-                trayIcon.setTooltip("Plex Rich Presence - Playing: " + info.title);
-                break;
-            case PlaybackState::Paused:
-                trayIcon.setTooltip("Plex Rich Presence - Paused: " + info.title);
-                break;
-            case PlaybackState::Stopped:
-                trayIcon.setTooltip("Plex Rich Presence - Stopped");
-                break;
-            case PlaybackState::Buffering:
-                trayIcon.setTooltip("Plex Rich Presence - Buffering: " + info.title);
-                break;
-            }
-
-            LOG_INFO_STREAM("Main", "Playback state changed to: " 
-                << (info.state == PlaybackState::Paused ? " (Paused)" : "")
+            LOG_INFO_STREAM("Main", "Playback state changed to: "
+                << std::string(info.title)
+                << (info.state == PlaybackState::Paused ? " (Paused)" : "") 
                 << (info.state == PlaybackState::Buffering ? " (Buffering)" : "")
                 << (info.state == PlaybackState::Playing ? " (Playing)" : "")
                 << (info.state == PlaybackState::Stopped ? " (Stopped)" : ""));
@@ -91,3 +113,10 @@ int main()
 
     return 0;
 }
+
+#ifdef _WIN32
+int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
+{
+    return main();
+}
+#endif
