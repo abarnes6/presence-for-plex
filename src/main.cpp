@@ -1,6 +1,8 @@
 ﻿#include "main.h"
 
+#ifdef _WIN32
 TrayIcon *g_trayIcon = nullptr;
+#endif
 Discord *g_discord = nullptr;
 Plex *g_plex = nullptr;
 
@@ -20,11 +22,13 @@ static void signalHandler(int signum)
         g_plex->stopPolling();
     }
 
+#ifdef _WIN32
     if (g_trayIcon)
     {
         LOG_INFO("Main", "Hiding tray icon");
         g_trayIcon->hide();
     }
+#endif
 
     LOG_INFO("Main", "Signal received, exiting immediately");
     exit(0);
@@ -70,7 +74,6 @@ int main()
     g_trayIcon = &trayIcon;
     trayIcon.setTooltip("Plex Rich Presence");
     trayIcon.show();
-#endif
     trayIcon.setExitCallback([&]()
                              {
         LOG_INFO("Main", "Exit triggered from tray icon");
@@ -82,6 +85,7 @@ int main()
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
             exit(0);
         }).detach(); });
+#endif
 
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
