@@ -42,7 +42,7 @@ std::filesystem::path Config::getConfigDirectory()
     const char *home = std::getenv("HOME");
     if (home)
     {
-        configDir = std::filesystem::path(home) / "Library/Application Support/PlexRichPresence/";
+        configDir = std::filesystem::path(home) / ".config/plex-rich-presence/";
     }
     else
     {
