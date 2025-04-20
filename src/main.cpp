@@ -65,9 +65,12 @@ int main()
     Discord discord = Discord();
     g_discord = &discord;
 
+#ifdef _WIN32
     TrayIcon trayIcon("Plex Rich Presence");
     g_trayIcon = &trayIcon;
-
+    trayIcon.setTooltip("Plex Rich Presence");
+    trayIcon.show();
+#endif
     trayIcon.setExitCallback([&]()
                              {
         LOG_INFO("Main", "Exit triggered from tray icon");
@@ -79,9 +82,6 @@ int main()
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
             exit(0);
         }).detach(); });
-
-    trayIcon.setTooltip("Plex Rich Presence");
-    trayIcon.show();
 
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
@@ -95,13 +95,17 @@ int main()
     {
         if (!discord.isConnected())
         {
+#ifdef _WIN32
             trayIcon.setTooltip("Plex Rich Presence - Disconnected");
+#endif
             std::this_thread::sleep_for(std::chrono::milliseconds(1500));
             continue;
         }
         else
         {
+#ifdef _WIN32
             trayIcon.setTooltip("Plex Rich Presence - Connected");
+#endif
         }
 
         PlaybackInfo info = plex.getCurrentPlayback();

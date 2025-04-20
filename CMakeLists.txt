@@ -10,20 +10,8 @@ endif()
 
 project ("PlexRichPresence" VERSION 1.0.0 LANGUAGES CXX)
 
-# Enable Objective-C/C++ for macOS builds
-if(APPLE)
-  enable_language(OBJC)
-  enable_language(OBJCXX)
-endif()
-
 file(GLOB_RECURSE SOURCES src/*.cpp)
 file(GLOB_RECURSE HEADERS src/*.h)
-
-# Add Objective-C/C++ sources for macOS
-if(APPLE)
-  file(GLOB_RECURSE OBJC_SOURCES src/*.m src/*.mm)
-  list(APPEND SOURCES ${OBJC_SOURCES})
-endif()
 
 # Add resource file for Windows
 if(WIN32)
@@ -46,19 +34,6 @@ target_include_directories(tomlplusplus::tomlplusplus
   INTERFACE "${_TP_INC}"
 )
 
-# Linux-specific dependencies
-if(UNIX AND NOT APPLE)
-  pkg_check_modules(GTK3 REQUIRED gtk+-3.0)
-  pkg_check_modules(APPINDICATOR3 REQUIRED appindicator3-0.1)
-  include_directories(${GTK3_INCLUDE_DIRS})
-  include_directories(${APPINDICATOR3_INCLUDE_DIRS})
-endif()
-
-# macOS-specific dependencies
-if(APPLE)
-  find_library(COCOA_LIBRARY Cocoa REQUIRED)
-endif()
-
 # Add source to this project's executable.
 if(WIN32)
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /SUBSYSTEM:WINDOWS")
@@ -69,22 +44,6 @@ else()
 endif()
 
 target_link_libraries(PlexRichPresence PRIVATE CURL::libcurl tomlplusplus::tomlplusplus)
-
-# Link Linux-specific libraries
-if(UNIX AND NOT APPLE)
-  target_link_libraries(PlexRichPresence PRIVATE ${GTK3_LIBRARIES} ${APPINDICATOR3_LIBRARIES})
-endif()
-
-# Link macOS-specific libraries
-if(APPLE)
-  target_link_libraries(PlexRichPresence PRIVATE ${COCOA_LIBRARY})
-  
-  # Set properties for Objective-C/C++ compilation
-  set_target_properties(PlexRichPresence PROPERTIES
-    XCODE_ATTRIBUTE_CLANG_ENABLE_OBJC_ARC YES
-    COMPILE_FLAGS "-fobjc-arc"
-  )
-endif()
 
 if (CMAKE_VERSION VERSION_GREATER 3.12)
   set_property(TARGET PlexRichPresence PROPERTY CXX_STANDARD 20)
