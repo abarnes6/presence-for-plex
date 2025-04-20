@@ -49,57 +49,21 @@
             "displayName": "Debug Build",
             "description": "Debug build with symbols for development",
             "configurePreset": "debug",
-            "targets": [
-                "all"
-            ]
+            "targets": ["all"]
         },
         {
             "name": "release",
             "displayName": "Release Build",
             "description": "Optimized release build",
             "configurePreset": "release",
-            "targets": [
-                "all"
-            ]
+            "targets": ["all"]
         },
         {
             "name": "github",
             "displayName": "GitHub CI Build",
             "description": "Build preset for GitHub Actions CI",
             "configurePreset": "github",
-            "targets": [
-                "all"
-            ]
-        }
-    ],
-    "testPresets": [
-        {
-            "name": "debug",
-            "displayName": "Debug Tests",
-            "description": "Run tests in debug mode",
-            "configurePreset": "debug",
-            "output": {
-                "verbosity": "verbose"
-            }
-        },
-        {
-            "name": "release",
-            "displayName": "Release Tests",
-            "description": "Run tests in release mode",
-            "configurePreset": "release"
-        },
-        {
-            "name": "github",
-            "displayName": "GitHub CI Tests",
-            "description": "Run tests for GitHub Actions CI",
-            "configurePreset": "github",
-            "output": {
-                "verbosity": "verbose"
-            },
-            "execution": {
-                "noTestsAction": "error",
-                "stopOnFailure": true
-            }
+            "targets": ["all"]
         }
     ],
     "packagePresets": [

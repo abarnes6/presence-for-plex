@@ -129,7 +129,14 @@ LRESULT CALLBACK TrayIcon::WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARA
             LOG_INFO("TrayIcon", "Exit selected from menu via WM_COMMAND");
             if (instance->m_exitCallback)
             {
-                instance->m_exitCallback();
+                // Execute the callback on a separate thread to avoid blocking WndProc
+                std::thread([callback = instance->m_exitCallback]()
+                            {
+                    if (callback)
+                    {
+                        callback();
+                    } })
+                    .detach();
             }
             break;
         }
@@ -151,7 +158,13 @@ LRESULT CALLBACK TrayIcon::WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARA
                 LOG_INFO("TrayIcon", "Exit selected from tray menu");
                 if (instance->m_exitCallback)
                 {
-                    instance->m_exitCallback();
+                    std::thread([callback = instance->m_exitCallback]()
+                                {
+                        if (callback)
+                        {
+                            callback();
+                        } })
+                        .detach();
                 }
             }
         }
