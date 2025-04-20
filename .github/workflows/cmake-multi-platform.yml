@@ -42,7 +42,7 @@ jobs:
 
       - name: Setup vcpkg
         uses: friendlyanon/setup-vcpkg@v1
-        with: { committish: 63aa65e65b9d2c08772ea15d25fb8fdb0d32e557 }
+        with: { committish: b3e2e9a85d653be314d326a87e2ed9fff889517d }
 
       - name: Set reusable strings
         id: strings
