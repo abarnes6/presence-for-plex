@@ -28,13 +28,14 @@ void Logger::initFileLogging(const std::filesystem::path &logFilePath, bool clea
 {
     std::lock_guard<std::mutex> lock(logMutex);
 
-    logFile = std::ofstream(logFilePath / "log.txt", std::ios::out | std::ios::app);
-
     // Close the file if it's already open
     if (logFile.is_open())
     {
         logFile.close();
     }
+
+    // Reinitialize the logFile stream
+    logFile = std::ofstream(logFilePath, std::ios::out | std::ios::app);
 
     // Create the directory if it doesn't exist
     if (!std::filesystem::exists(logFilePath.parent_path()))
@@ -76,7 +77,7 @@ void Logger::initFileLogging(const std::filesystem::path &logFilePath, bool clea
     }
     else
     {
-        std::cerr << "Failed to open log file: " << logFilePath.string() << "log.txt" << std::endl;
+        std::cerr << "Failed to open log file: " << logFilePath.string() << std::endl;
         logToFile = false;
     }
 }

@@ -23,7 +23,6 @@
 #include <unistd.h>
 #endif
 
-
 class Discord
 {
 public:
@@ -34,7 +33,6 @@ public:
 	void start();
 	void stop();
 	bool isConnected() const;
-	bool isWaitingForDiscord() const; // Add new method to check if waiting for Discord
 	void updatePresence(const PlaybackInfo &playbackInfo);
 	void clearPresence();
 	void keepAlive();

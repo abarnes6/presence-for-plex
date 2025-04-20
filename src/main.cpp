@@ -6,11 +6,40 @@
 #endif
 
 std::atomic<bool> running = true;
+TrayIcon *g_trayIcon = nullptr;
+Discord *g_discord = nullptr;
+Plex *g_plex = nullptr;
 
 static void signalHandler(int signum)
 {
     LOG_INFO("Main", "Received signal: " + std::to_string(signum));
     running = false;
+
+    // Force immediate cleanup of key resources
+    if (g_discord)
+    {
+        LOG_INFO("Main", "Stopping Discord connection");
+        g_discord->stop();
+    }
+
+    if (g_plex)
+    {
+        LOG_INFO("Main", "Stopping Plex polling");
+        g_plex->stopPolling();
+    }
+
+    if (g_trayIcon)
+    {
+        LOG_INFO("Main", "Hiding tray icon");
+        g_trayIcon->hide();
+    }
+
+    // Exit immediately if it's SIGTERM
+    if (signum == SIGTERM)
+    {
+        LOG_INFO("Main", "SIGTERM received, exiting immediately");
+        exit(0);
+    }
 }
 
 int main()
@@ -31,26 +60,27 @@ int main()
     std::signal(SIGBREAK, signalHandler);
 #endif
     // Set up logging to a file in the config directory
-    Logger::getInstance().initFileLogging(Config::getConfigDirectory(), true); // true = clear existing file
+    Logger::getInstance().initFileLogging(Config::getConfigDirectory() / "log.txt", true); // true = clear existing file
 
     LOG_INFO("Main", "Plex Rich Presence starting up");
 
     // Apply log level from config
     Logger::getInstance().setLogLevel(static_cast<LogLevel>(Config::getInstance().getLogLevel()));
 
-    TrayIcon trayIcon("Plex Rich Presence");
-    Plex plex = Plex();
-    Discord discord = Discord();
+    // Plex plex = Plex();
+    // g_plex = &plex;
 
-    LOG_INFO("Main", "Creating tray icon");
+    // Discord discord = Discord();
+    // g_discord = &discord;
+
+    TrayIcon trayIcon("Plex Rich Presence");
+    g_trayIcon = &trayIcon;
 
     // Create the tray icon
 
     // Set exit callback
     trayIcon.setExitCallback([&]()
-                             {
-        LOG_INFO("Main", "Exit requested from tray");
-        running = false; });
+                             { running = false; });
 
     // Show the tray icon - this must be done after initialization
     trayIcon.setTooltip("Plex Rich Presence - Running");
@@ -60,8 +90,8 @@ int main()
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     // Start the Discord and Plex components
-    discord.start();
-    plex.startPolling();
+    // discord.start();
+    // plex.startPolling();
 
     // Keep track of last state to avoid unnecessary logging
     PlaybackState lastState = PlaybackState::Stopped;
@@ -71,36 +101,33 @@ int main()
     while (running)
     {
         // Check if Discord is waiting or needs reconnection
-        if (discord.isWaitingForDiscord())
-        {
-            LOG_INFO("Main", "Waiting for Discord to start...");
-            trayIcon.setTooltip("Plex Rich Presence - Waiting for Discord");
-        }
-        else if (discord.isConnected())
-        {
-            trayIcon.setTooltip("Plex Rich Presence - Connected");
-        }
-        else
-        {
-            trayIcon.setTooltip("Plex Rich Presence - Disconnected");
-        }
+        // if (!discord.isConnected())
+        // {
+        //     trayIcon.setTooltip("Plex Rich Presence - Disconnected");
+        //     std::this_thread::sleep_for(std::chrono::milliseconds(1500));
+        //     continue;
+        // }
+        // else
+        // {
+        //     trayIcon.setTooltip("Plex Rich Presence - Connected");
+        // }
 
-        // Get current playback information
-        PlaybackInfo info = plex.getCurrentPlayback();
+        // // Get current playback information
+        // PlaybackInfo info = plex.getCurrentPlayback();
 
-        // Only log state changes
-        if (info.state != lastState)
-        {
-            LOG_INFO_STREAM("Main", "Playback state changed to: "
-                                        << std::string(info.title)
-                                        << (info.state == PlaybackState::Paused ? " (Paused)" : "")
-                                        << (info.state == PlaybackState::Buffering ? " (Buffering)" : "")
-                                        << (info.state == PlaybackState::Playing ? " (Playing)" : "")
-                                        << (info.state == PlaybackState::Stopped ? " (Stopped)" : ""));
-            lastState = info.state;
-        }
+        // // Only log state changes
+        // if (info.state != lastState)
+        // {
+        //     LOG_INFO_STREAM("Main", "Playback state changed to: "
+        //                                 << std::string(info.title)
+        //                                 << (info.state == PlaybackState::Paused ? " (Paused)" : "")
+        //                                 << (info.state == PlaybackState::Buffering ? " (Buffering)" : "")
+        //                                 << (info.state == PlaybackState::Playing ? " (Playing)" : "")
+        //                                 << (info.state == PlaybackState::Stopped ? " (Stopped)" : ""));
+        //     lastState = info.state;
+        // }
 
-        discord.updatePresence(info);
+        // discord.updatePresence(info);
 
         // Avoid hammering the CPU
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
@@ -108,9 +135,16 @@ int main()
 
     // Clean up resources
     LOG_INFO("Main", "Shutting down");
-    discord.stop();
-    plex.stopPolling();
+    // discord.stop();
+    // plex.stopPolling();
     trayIcon.hide();
+
+    // Reset global pointers
+    g_trayIcon = nullptr;
+    g_discord = nullptr;
+    g_plex = nullptr;
+
+    LOG_INFO("Main", "Shutdown complete");
 
     return 0;
 }

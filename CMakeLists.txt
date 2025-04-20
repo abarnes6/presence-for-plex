@@ -10,8 +10,20 @@ endif()
 
 project ("PlexRichPresence" VERSION 1.0.0 LANGUAGES CXX)
 
+# Enable Objective-C/C++ for macOS builds
+if(APPLE)
+  enable_language(OBJC)
+  enable_language(OBJCXX)
+endif()
+
 file(GLOB_RECURSE SOURCES src/*.cpp)
 file(GLOB_RECURSE HEADERS src/*.h)
+
+# Add Objective-C/C++ sources for macOS
+if(APPLE)
+  file(GLOB_RECURSE OBJC_SOURCES src/*.m src/*.mm)
+  list(APPEND SOURCES ${OBJC_SOURCES})
+endif()
 
 # Add resource file for Windows
 if(WIN32)
@@ -42,6 +54,11 @@ if(UNIX AND NOT APPLE)
   include_directories(${APPINDICATOR3_INCLUDE_DIRS})
 endif()
 
+# macOS-specific dependencies
+if(APPLE)
+  find_library(COCOA_LIBRARY Cocoa REQUIRED)
+endif()
+
 # Add source to this project's executable.
 if(WIN32)
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /SUBSYSTEM:WINDOWS")
@@ -56,6 +73,17 @@ target_link_libraries(PlexRichPresence PRIVATE CURL::libcurl tomlplusplus::tomlp
 # Link Linux-specific libraries
 if(UNIX AND NOT APPLE)
   target_link_libraries(PlexRichPresence PRIVATE ${GTK3_LIBRARIES} ${APPINDICATOR3_LIBRARIES})
+endif()
+
+# Link macOS-specific libraries
+if(APPLE)
+  target_link_libraries(PlexRichPresence PRIVATE ${COCOA_LIBRARY})
+  
+  # Set properties for Objective-C/C++ compilation
+  set_target_properties(PlexRichPresence PROPERTIES
+    XCODE_ATTRIBUTE_CLANG_ENABLE_OBJC_ARC YES
+    COMPILE_FLAGS "-fobjc-arc"
+  )
 endif()
 
 if (CMAKE_VERSION VERSION_GREATER 3.12)
