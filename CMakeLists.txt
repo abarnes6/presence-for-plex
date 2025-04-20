@@ -45,8 +45,8 @@ endif()
 
 target_link_libraries(PlexRichPresence PRIVATE CURL::libcurl tomlplusplus::tomlplusplus)
 
-if (CMAKE_VERSION VERSION_GREATER 3.12)
-  set_property(TARGET PlexRichPresence PROPERTY CXX_STANDARD 20)
+if (CMAKE_VERSION VERSION_GREATER 3.25)
+  set_property(TARGET PlexRichPresence PROPERTY CXX_STANDARD 17)
 endif()
 
 install(TARGETS PlexRichPresence
@@ -88,14 +88,8 @@ elseif(APPLE)
 elseif(UNIX)
     set(CPACK_GENERATOR "DEB;RPM")
     set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Andrew Barnes")
-    set(CPACK_DEBIAN_PACKAGE_DEPENDS "libgtk-3-0, libappindicator3-1, libcurl4, libc6")
-    set(CPACK_RPM_PACKAGE_REQUIRES "gtk3, libappindicator, libcurl")
-    
-    # Desktop integration for Linux
-    install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/assets/plex-rich-presence.desktop"
-            DESTINATION "share/applications")
-    install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/assets/plex-rich-presence.png"
-            DESTINATION "share/icons/hicolor/256x256/apps")
+    set(CPACK_DEBIAN_PACKAGE_DEPENDS "libcurl4, libc6")
+    set(CPACK_RPM_PACKAGE_REQUIRES "libcurl")
     
     # Install to standard Linux locations
     set(CPACK_SET_DESTDIR ON)
