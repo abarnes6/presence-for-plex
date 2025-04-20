@@ -27,10 +27,11 @@ public:
 	~Plex();
 	void startPolling();
 	void stopPolling();
-	
+	void init();
+
 	// Updated methods to use the shared wrapper
 	PlaybackInfo getCurrentPlayback() const;
-	
+
 	// We'll keep these methods for backward compatibility
 	void setPlaybackInfo(const PlaybackInfo &info);
 	void getPlaybackInfo(PlaybackInfo &info) const;
@@ -42,13 +43,15 @@ private:
 	std::string makeRequest(const std::string &url) const;
 	bool requestPlexPin(const std::string &clientId, std::string &pinCode, std::string &pinId);
 	bool pollForAuthToken(const std::string &pinId, std::string &clientId);
+	bool checkToken(std::string &response) const;
+	bool authenticateWithPlex();
 
 	std::atomic<bool> running{false};
 	std::thread pollingThread;
-	
+
 	// Replace raw mutex and PlaybackInfo with SharedPlaybackInfo
 	SharedPlaybackInfo sharedPlayback;
-	
+
 	std::string authToken;
 	std::string url;
 };

@@ -65,7 +65,15 @@ int main()
 
     Plex plex = Plex();
     g_plex = &plex;
-
+    try
+    {
+        plex.init();
+    }
+    catch (const std::exception &e)
+    {
+        LOG_ERROR("Main", "Failed to initialize Plex: " + std::string(e.what()));
+        return 1;
+    }
     Discord discord = Discord();
     g_discord = &discord;
 

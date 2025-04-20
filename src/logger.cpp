@@ -28,15 +28,6 @@ void Logger::initFileLogging(const std::filesystem::path &logFilePath, bool clea
 {
     std::lock_guard<std::mutex> lock(logMutex);
 
-    // Close the file if it's already open
-    if (logFile.is_open())
-    {
-        logFile.close();
-    }
-
-    // Reinitialize the logFile stream
-    logFile = std::ofstream(logFilePath, std::ios::out | std::ios::app);
-
     // Create the directory if it doesn't exist
     if (!std::filesystem::exists(logFilePath.parent_path()))
     {
@@ -52,6 +43,12 @@ void Logger::initFileLogging(const std::filesystem::path &logFilePath, bool clea
     else
     {
         openMode |= std::ios::app; // Append to the file
+    }
+
+    // Close the file if it's already open
+    if (logFile.is_open())
+    {
+        logFile.close();
     }
 
     logFile.open(logFilePath, openMode);
@@ -74,6 +71,7 @@ void Logger::initFileLogging(const std::filesystem::path &logFilePath, bool clea
         logFile << "==================================================================" << std::endl;
         logFile << "Log session started at " << std::put_time(&now_tm, "%Y-%m-%d %H:%M:%S") << std::endl;
         logFile << "==================================================================" << std::endl;
+        logFile.flush(); // Ensure the header is written immediately
     }
     else
     {
@@ -140,8 +138,7 @@ void Logger::log(const std::string &component, const std::string &level, const s
               << "[" << level << "] "
               << message;
 
-    // Still print to console
-#ifndef _WIN32
+#if !defined(NDEBUG) || !defined(_WIN32)
     std::cout << formatted.str() << std::endl;
 #endif
 
@@ -149,6 +146,6 @@ void Logger::log(const std::string &component, const std::string &level, const s
     if (logToFile && logFile.is_open())
     {
         logFile << formatted.str() << std::endl;
-        logFile.flush(); // Ensure logs are written immediately
+        logFile.flush(); // Ensure immediate writing
     }
 }

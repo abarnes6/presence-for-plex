@@ -9,6 +9,13 @@ constexpr long long DEFAULT_CLIENT_ID = 1359742002618564618;
 
 Config::Config()
 {
+    serverIp = "";
+    port = 32400;
+    forceHttps = true;
+    serverIpConfigured = false;
+    pollInterval = 5;
+    logLevel = 1;
+    clientId = DEFAULT_CLIENT_ID;
     loadConfig();
 }
 
@@ -105,7 +112,7 @@ bool Config::generateConfig()
 
         toml::table config;
         config.insert("plex", toml::table{});
-        config["plex"].as_table()->insert("server_ip", "127.0.0.1");
+        config["plex"].as_table()->insert("server_ip", ""); // Empty IP by default
         config["plex"].as_table()->insert("port", 32400);
         config["plex"].as_table()->insert("force_https", true);
         config["plex"].as_table()->insert("poll_interval", 5);
@@ -151,13 +158,15 @@ bool Config::loadConfig()
         config = toml::parse_file(configPath.string());
 
         // Load all configuration values with defaults if missing
-        serverIp = config["plex"]["server_ip"].value_or("127.0.0.1");
+        serverIp = config["plex"]["server_ip"].value_or("");
+        serverIpConfigured = !serverIp.empty(); // Check if IP is actually configured
+
         port = config["plex"]["port"].value_or(32400);
         forceHttps = config["plex"]["force_https"].value_or(false);
         pollInterval = config["plex"]["poll_interval"].value_or(5);
         plexToken = config["plex"]["plex_token"].value_or(std::string{});
 
-        clientId = config["discord"]["client_id"].value_or(1359742002618564618);
+        clientId = config["discord"]["client_id"].value_or(DEFAULT_CLIENT_ID);
 
         logLevel = config["app"]["log_level"].value_or(static_cast<int>(LogLevel::Info));
 
@@ -222,10 +231,18 @@ std::string Config::getServerIp() const
     return serverIp;
 }
 
+bool Config::isServerIpConfigured() const
+{
+    std::shared_lock<std::shared_mutex> lock(mutex);
+    return serverIpConfigured;
+}
+
 void Config::setServerIp(const std::string &url)
 {
     std::unique_lock<std::shared_mutex> lock(mutex);
     serverIp = url;
+    serverIpConfigured = !url.empty();
+    setConfigValue("plex.server_ip", url);
 }
 
 int Config::getPort() const

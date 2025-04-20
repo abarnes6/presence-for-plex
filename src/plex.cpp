@@ -64,8 +64,26 @@ void openBrowser(const std::string &url)
 // Modify Plex constructor to use the new function
 Plex::Plex()
 {
+}
+
+void Plex::init()
+{
+
     // Get configuration
     Config &config = Config::getInstance();
+
+    // Check if server IP is configured
+    if (!config.isServerIpConfigured())
+    {
+#ifdef _WIN32
+        // Display error message to the user on Windows
+        std::string errorMsg = "No Plex server IP configured.\n\n"
+                               "Configuration file is located at:\n" +
+                               config.getConfigDirectory().string() + "\\config.toml";
+        MessageBoxA(NULL, errorMsg.c_str(), "Plex Rich Presence - Configuration Error", MB_OK | MB_ICONERROR);
+#endif
+        throw std::runtime_error("No Plex server IP configured");
+    }
 
     // Check if we need to build the URL with https
     std::string protocol = config.isForceHttps() ? "https://" : "http://";
@@ -78,56 +96,7 @@ Plex::Plex()
     if (authToken.empty())
     {
         LOG_INFO("Plex", "No Plex token found. Requesting authorization...");
-        std::string pinCode, pinId;
-
-        // Generate a UUID for client identification
-        std::string uuid = uuid::generate_uuid_v4();
-
-        LOG_DEBUG("Plex", "Generated UUID: " + uuid);
-
-        // Request a PIN from Plex
-        if (requestPlexPin(uuid, pinCode, pinId))
-        {
-            LOG_INFO("Plex", "Generated PIN code: " + pinCode);
-
-            // Generate auth URL with the same headers used in requestPlexPin
-            std::string authUrl = "https://app.plex.tv/auth#?clientID=" + uuid +
-                                  "&code=" + pinCode +
-                                  "&context%5Bdevice%5D%5Bproduct%5D=Plex%20Rich%20Presence" +
-                                  "&X-Plex-Product=Plex%20Rich%20Presence" +
-                                  "&X-Plex-Version=0.1";
-
-#if defined(_WIN32)
-            authUrl += "&X-Plex-Device=Windows";
-#elif defined(__APPLE__)
-            authUrl += "&X-Plex-Device=macOS";
-#elif defined(__linux__)
-            authUrl += "&X-Plex-Device=Linux";
-#endif
-
-            LOG_INFO("Plex", "Please open the following URL in your browser to authorize this application:");
-            LOG_INFO("Plex", authUrl);
-            LOG_INFO("Plex", "Opening browser automatically...");
-
-            // Open the URL in the default browser using our platform-specific function
-            openBrowser(authUrl);
-
-            LOG_INFO("Plex", "Waiting for authorization...");
-
-            // Poll for the auth token
-            if (pollForAuthToken(pinId, uuid))
-            {
-                LOG_INFO("Plex", "Successfully authorized with Plex!");
-            }
-            else
-            {
-                LOG_ERROR("Plex", "Failed to get authorization from Plex.");
-            }
-        }
-        else
-        {
-            LOG_ERROR("Plex", "Failed to request PIN from Plex.");
-        }
+        authenticateWithPlex();
     }
 
     // Initialize CURL
@@ -194,6 +163,18 @@ std::string Plex::makeRequest(const std::string &requestUrl) const
         {
             LOG_ERROR("Plex", "curl_easy_perform() failed: " + std::string(curl_easy_strerror(res)));
             return "";
+        }
+
+        // Check if the response indicates an unauthorized token
+        if (!checkToken(readBuffer))
+        {
+            // Token is unauthorized, request a new one
+            Plex *nonConstThis = const_cast<Plex *>(this);
+            if (nonConstThis->authenticateWithPlex())
+            {
+                // Try the request again with the new token
+                return nonConstThis->makeRequest(requestUrl);
+            }
         }
     }
 
@@ -630,4 +611,84 @@ bool Plex::pollForAuthToken(const std::string &pinId, std::string &clientId)
 
     LOG_ERROR("Plex", "Timed out waiting for Plex authorization");
     return false;
+}
+
+// Add a method to authenticate with Plex when the token is unauthorized
+bool Plex::authenticateWithPlex()
+{
+    LOG_INFO("Plex", "Authenticating with Plex...");
+    std::string pinCode, pinId;
+
+    // Generate a UUID for client identification
+    std::string uuid = uuid::generate_uuid_v4();
+    LOG_DEBUG("Plex", "Generated UUID: " + uuid);
+
+    // Request a PIN from Plex
+    // Request a PIN from Plex
+    if (requestPlexPin(uuid, pinCode, pinId))
+    {
+        LOG_INFO("Plex", "Generated PIN code: " + pinCode);
+
+        // Generate auth URL with the same headers used in requestPlexPin
+        std::string authUrl = "https://app.plex.tv/auth#?clientID=" + uuid +
+                              "&code=" + pinCode +
+                              "&context%5Bdevice%5D%5Bproduct%5D=Plex%20Rich%20Presence" +
+                              "&X-Plex-Product=Plex%20Rich%20Presence" +
+                              "&X-Plex-Version=0.1";
+
+#if defined(_WIN32)
+        authUrl += "&X-Plex-Device=Windows";
+#elif defined(__APPLE__)
+        authUrl += "&X-Plex-Device=macOS";
+#elif defined(__linux__)
+        authUrl += "&X-Plex-Device=Linux";
+#endif
+
+        LOG_INFO("Plex", "Please open the following URL in your browser to authorize this application:");
+        LOG_INFO("Plex", authUrl);
+        LOG_INFO("Plex", "Opening browser automatically...");
+
+        // Open the URL in the default browser using our platform-specific function
+        openBrowser(authUrl);
+
+        LOG_INFO("Plex", "Waiting for authorization...");
+
+        // Poll for the auth token
+        if (pollForAuthToken(pinId, uuid))
+        {
+            LOG_INFO("Plex", "Successfully authorized with Plex!");
+            return true;
+        }
+        else
+        {
+            LOG_ERROR("Plex", "Failed to get authorization from Plex.");
+        }
+    }
+    else
+    {
+        LOG_ERROR("Plex", "Failed to request PIN from Plex.");
+    }
+    return false;
+}
+
+// Check if the response indicates an unauthorized token
+bool Plex::checkToken(std::string &response) const
+{
+    try
+    {
+        // Check if response contains unauthorized error
+        if (response.find("\"status\":\"401\"") != std::string::npos ||
+            response.find("\"code\":401") != std::string::npos ||
+            response.find("Unauthorized") != std::string::npos)
+        {
+            LOG_ERROR("Plex", "Plex token is unauthorized. Requesting a new token...");
+            return false;
+        }
+        return true;
+    }
+    catch (const std::exception &e)
+    {
+        LOG_ERROR("Plex", "Error checking token: " + std::string(e.what()));
+        return true; // Default to not handling as unauthorized to avoid endless loop
+    }
 }
