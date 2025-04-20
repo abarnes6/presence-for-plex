@@ -1,50 +1,65 @@
-# This starter workflow is for a CMake project running on multiple platforms. There is a different starter workflow if you just want a single platform.
-# See: https://github.com/actions/starter-workflows/blob/main/ci/cmake-single-platform.yml
 name: CMake on multiple platforms
 
 on:
-    push:
-        branches: ["main"]
-    pull_request:
-        branches: ["main"]
+  push:
+    branches: [ $default-branch ]
+  pull_request:
+    branches: [ $default-branch ]
 
 jobs:
-    build:
-        runs-on: ${{ matrix.os }}
+  build:
+    name: ${{ matrix.os }}-${{ matrix.label }}-${{ matrix.build_type }}
+    runs-on: ${{ matrix.os }}
 
-        strategy:
-            # Set fail-fast to false to ensure that feedback is delivered for all matrix combinations. Consider changing this to true when your workflow is stable.
-            fail-fast: false
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        build_type: [Release]
+        include:
+          - os: ubuntu-latest
+            cpp_compiler: g++
+            vcpkg_triplet: x64-linux
+            label: gcc
 
-            matrix:
-                os: [ubuntu-latest, windows-latest]
-                build_type: [Release]
-                include:
-                    - os: windows-latest
-                      cpp_compiler: cl
-                    - os: ubuntu-latest
-                      cpp_compiler: g++
+          - os: ubuntu-latest
+            cpp_compiler: clang++
+            vcpkg_triplet: x64-linux
+            label: clang
 
-        steps:
-            - uses: actions/checkout@v4
+          - os: windows-latest
+            cpp_compiler: cl
+            vcpkg_triplet: x64-windows
+            label: msvc
 
-            - name: Set reusable strings
-              # Turn repeated input strings (such as the build output directory) into step outputs. These step outputs can be used throughout the workflow file.
-              id: strings
-              shell: bash
-              run: |
-                  echo "build-output-dir=${{ github.workspace }}/build" >> "$GITHUB_OUTPUT"
+          - os: macos-latest
+            cpp_compiler: clang++
+            vcpkg_triplet: x64-osx
+            label: clang
 
-            - uses: lukka/get-cmake@latest
-            - name: run-vcpkg
-              uses: lukka/run-vcpkg@v11
+    steps:
+      - uses: actions/checkout@v4
 
-            - name: Run CMake consuming CMakePreset.json and run vcpkg to build packages
-              uses: lukka/run-cmake@v10
-              with:
-                  configurePreset: "github"
-                  buildPreset: "github"
+      - name: Setup vcpkg
+        uses: friendlyanon/setup-vcpkg@v1
+        with:
+          committish: '2025.01.12'
 
-            - name: Build
-              # Build your program with the given configuration. Note that --config is needed because the default Windows generator is a multi-config generator (Visual Studio generator).
-              run: cmake --build ${{ steps.strings.outputs.build-output-dir }} --config ${{ matrix.build_type }}
+      - name: Set reusable strings
+        id: strings
+        shell: bash
+        run: echo "build-output-dir=${{ github.workspace }}/build" >> "$GITHUB_OUTPUT"
+
+      - name: Configure CMake
+        shell: bash
+        run: |
+          cmake -B "${{ steps.strings.outputs.build-output-dir }}" \
+                -S "${{ github.workspace }}" \
+                -DCMAKE_CXX_COMPILER="${{ matrix.cpp_compiler }}" \
+                -DCMAKE_BUILD_TYPE="${{ matrix.build_type }}" \
+                -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+                -DVCPKG_TARGET_TRIPLET="${{ matrix.vcpkg_triplet }}"
+
+      - name: Build
+        shell: bash
+        run: cmake --build "${{ steps.strings.outputs.build-output-dir }}" --config "${{ matrix.build_type }}"
