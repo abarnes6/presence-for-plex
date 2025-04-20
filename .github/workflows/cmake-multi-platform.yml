@@ -2,12 +2,13 @@ name: CMake on multiple platforms
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ $default-branch ]
   pull_request:
-    branches: [ "main" ]
+    branches: [ $default-branch ]
 
 jobs:
   build:
+    name: ${{ matrix.os }}-${{ matrix.label }}-${{ matrix.build_type }}
     runs-on: ${{ matrix.os }}
 
     strategy:
@@ -16,17 +17,33 @@ jobs:
         os: [ubuntu-latest, windows-latest, macos-latest]
         build_type: [Release]
         include:
-          - os: windows-latest
-            cpp_compiler: cl
           - os: ubuntu-latest
             cpp_compiler: g++
+            vcpkg_triplet: x64-linux
+            label: gcc
+
           - os: ubuntu-latest
             cpp_compiler: clang++
+            vcpkg_triplet: x64-linux
+            label: clang
+
+          - os: windows-latest
+            cpp_compiler: cl
+            vcpkg_triplet: x64-windows
+            label: msvc
+
           - os: macos-latest
             cpp_compiler: clang++
+            vcpkg_triplet: x64-osx
+            label: clang
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Setup vcpkg
+        uses: friendlyanon/setup-vcpkg@v1
+        with:
+          committish: '2025.01.12'
 
       - name: Set reusable strings
         id: strings
@@ -34,11 +51,15 @@ jobs:
         run: echo "build-output-dir=${{ github.workspace }}/build" >> "$GITHUB_OUTPUT"
 
       - name: Configure CMake
-        run: >
-          cmake -B ${{ steps.strings.outputs.build-output-dir }}
-          -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }}
-          -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
-          -S ${{ github.workspace }}
+        shell: bash
+        run: |
+          cmake -B "${{ steps.strings.outputs.build-output-dir }}" \
+                -S "${{ github.workspace }}" \
+                -DCMAKE_CXX_COMPILER="${{ matrix.cpp_compiler }}" \
+                -DCMAKE_BUILD_TYPE="${{ matrix.build_type }}" \
+                -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+                -DVCPKG_TARGET_TRIPLET="${{ matrix.vcpkg_triplet }}"
 
       - name: Build
-        run: cmake --build ${{ steps.strings.outputs.build-output-dir }} --config ${{ matrix.build_type }}
+        shell: bash
+        run: cmake --build "${{ steps.strings.outputs.build-output-dir }}" --config "${{ matrix.build_type }}"
