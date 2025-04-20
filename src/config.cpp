@@ -37,7 +37,7 @@ std::filesystem::path Config::getConfigDirectory()
     _dupenv_s(&appdata, &requiredSize, "APPDATA");
     if (appdata)
     {
-        configDir = std::filesystem::path(appdata) / "PlexRichPresence";
+        configDir = std::filesystem::path(appdata) / "Plex Rich Presence";
         free(appdata); // Free the allocated memory
     }
     else
