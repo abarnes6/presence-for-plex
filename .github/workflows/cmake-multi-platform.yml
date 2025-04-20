@@ -2,9 +2,9 @@ name: CMake on multiple platforms
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
 
 jobs:
   build:
@@ -34,7 +34,7 @@ jobs:
 
           - os: macos-latest
             cpp_compiler: clang++
-            vcpkg_triplet: x64-osx
+            vcpkg_triplet: arm64-osx
             label: clang
 
     steps:
@@ -42,7 +42,7 @@ jobs:
 
       - name: run-vcpkg
         uses: lukka/run-vcpkg@v11
-        
+
       - name: Set reusable strings
         id: strings
         shell: bash
