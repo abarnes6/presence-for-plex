@@ -40,10 +40,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup vcpkg
-        uses: friendlyanon/setup-vcpkg@v1
-        with: { committish: b3e2e9a85d653be314d326a87e2ed9fff889517d }
-
+      - name: run-vcpkg
+        uses: lukka/run-vcpkg@v11
+        
       - name: Set reusable strings
         id: strings
         shell: bash
