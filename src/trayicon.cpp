@@ -104,6 +104,16 @@ void TrayIcon::setExitCallback(std::function<void()> callback)
     m_exitCallback = callback;
 }
 
+void TrayIcon::setReloadConfigCallback(std::function<void()> callback)
+{
+    m_reloadConfigCallback = callback;
+}
+
+void TrayIcon::setOpenConfigLocationCallback(std::function<void()> callback)
+{
+    m_openConfigLocationCallback = callback;
+}
+
 // Static window procedure
 LRESULT CALLBACK TrayIcon::WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
@@ -119,12 +129,43 @@ LRESULT CALLBACK TrayIcon::WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARA
     case WM_CREATE:
         // Create the icon menu
         instance->m_hMenu = CreatePopupMenu();
+        AppendMenuW(instance->m_hMenu, MF_STRING, ID_TRAY_RELOAD_CONFIG, L"Reload Config");
+        AppendMenuW(instance->m_hMenu, MF_STRING, ID_TRAY_OPEN_CONFIG_LOCATION, L"Open Config Location");
+        AppendMenuW(instance->m_hMenu, MF_SEPARATOR, 0, NULL); // Add separator
         AppendMenuW(instance->m_hMenu, MF_STRING, ID_TRAY_EXIT, L"Exit");
         break;
 
     case WM_COMMAND:
         switch (LOWORD(wParam))
         {
+        case ID_TRAY_RELOAD_CONFIG:
+            LOG_INFO("TrayIcon", "Reload configuration selected from menu");
+            if (instance->m_reloadConfigCallback)
+            {
+                // Execute the callback on a separate thread to avoid blocking WndProc
+                std::thread([callback = instance->m_reloadConfigCallback]()
+                            {
+                    if (callback)
+                    {
+                        callback();
+                    } })
+                    .detach();
+            }
+            break;
+        case ID_TRAY_OPEN_CONFIG_LOCATION:
+            LOG_INFO("TrayIcon", "Open config location selected from menu");
+            if (instance->m_openConfigLocationCallback)
+            {
+                // Execute the callback on a separate thread to avoid blocking WndProc
+                std::thread([callback = instance->m_openConfigLocationCallback]()
+                            {
+                    if (callback)
+                    {
+                        callback();
+                    } })
+                    .detach();
+            }
+            break;
         case ID_TRAY_EXIT:
             LOG_INFO("TrayIcon", "Exit selected from menu via WM_COMMAND");
             if (instance->m_exitCallback)
@@ -153,8 +194,35 @@ LRESULT CALLBACK TrayIcon::WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARA
                 instance->m_hMenu, TPM_RETURNCMD | TPM_NONOTIFY,
                 pt.x, pt.y, 0, hwnd, NULL);
 
-            if (clicked == ID_TRAY_EXIT)
+            switch (clicked)
             {
+            case ID_TRAY_RELOAD_CONFIG:
+                LOG_INFO("TrayIcon", "Reload configuration selected from tray menu");
+                if (instance->m_reloadConfigCallback)
+                {
+                    std::thread([callback = instance->m_reloadConfigCallback]()
+                                {
+                        if (callback)
+                        {
+                            callback();
+                        } })
+                        .detach();
+                }
+                break;
+            case ID_TRAY_OPEN_CONFIG_LOCATION:
+                LOG_INFO("TrayIcon", "Open config location selected from tray menu");
+                if (instance->m_openConfigLocationCallback)
+                {
+                    std::thread([callback = instance->m_openConfigLocationCallback]()
+                                {
+                        if (callback)
+                        {
+                            callback();
+                        } })
+                        .detach();
+                }
+                break;
+            case ID_TRAY_EXIT:
                 LOG_INFO("TrayIcon", "Exit selected from tray menu");
                 if (instance->m_exitCallback)
                 {
@@ -166,6 +234,7 @@ LRESULT CALLBACK TrayIcon::WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARA
                         } })
                         .detach();
                 }
+                break;
             }
         }
         break;

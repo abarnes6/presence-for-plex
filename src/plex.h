@@ -54,7 +54,9 @@ private:
 	SharedPlaybackInfo sharedPlayback;
 
 	std::string authToken;
-	std::string url;
+
+	// Add new helper method
+	std::string getServerUrl() const;
 
 	// Variables for progress estimation
 	int64_t lastProgress = 0;

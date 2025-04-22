@@ -13,6 +13,8 @@
 // Constants for Windows
 #define ID_TRAY_APP_ICON 1000
 #define ID_TRAY_EXIT 1001
+#define ID_TRAY_RELOAD_CONFIG 1002
+#define ID_TRAY_OPEN_CONFIG_LOCATION 1003
 #define WM_TRAYICON (WM_USER + 1)
 
 class TrayIcon
@@ -25,6 +27,8 @@ public:
     void hide();
     void setTooltip(const std::string &tooltip);
     void setExitCallback(std::function<void()> callback);
+    void setReloadConfigCallback(std::function<void()> callback);
+    void setOpenConfigLocationCallback(std::function<void()> callback);
 
 private:
     // Windows specific members
@@ -36,6 +40,8 @@ private:
     NOTIFYICONDATAW m_nid;
     std::string m_appName;
     std::function<void()> m_exitCallback;
+    std::function<void()> m_reloadConfigCallback;
+    std::function<void()> m_openConfigLocationCallback;
     std::atomic<bool> m_running;
     std::thread m_uiThread;
 

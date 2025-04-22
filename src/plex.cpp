@@ -78,17 +78,12 @@ void Plex::init()
 #ifdef _WIN32
         // Display error message to the user on Windows
         std::string errorMsg = "No Plex server IP configured.\n\n"
-                               "Configuration file is located at:\n" +
-                               config.getConfigDirectory().string() + "\\config.toml";
+                               "Open the configuration file folder using the tray icon.\n";
         MessageBoxA(NULL, errorMsg.c_str(), "Plex Rich Presence - Configuration Error", MB_OK | MB_ICONERROR);
 #endif
         LOG_ERROR("Plex", "No Plex server IP configured. Please configure it in the config file.");
-        throw std::runtime_error("No Plex server IP configured.");
+        return;
     }
-
-    // Check if we need to build the URL with https
-    std::string protocol = config.isForceHttps() ? "https://" : "http://";
-    url = protocol + config.getServerIp() + ":" + std::to_string(config.getPort());
 
     // Check if we already have a Plex token
     authToken = config.getPlexToken();
@@ -102,6 +97,14 @@ void Plex::init()
 
     // Initialize CURL
     curl_global_init(CURL_GLOBAL_DEFAULT);
+}
+
+// Helper method to get the current server URL from config
+std::string Plex::getServerUrl() const
+{
+    Config &config = Config::getInstance();
+    std::string protocol = config.isForceHttps() ? "https://" : "http://";
+    return protocol + config.getServerIp() + ":" + std::to_string(config.getPort());
 }
 
 // Start the polling thread
@@ -389,7 +392,7 @@ bool Plex::parseSessionsResponse(const std::string &response, PlaybackInfo &info
 
                     if (session.contains("thumb"))
                     {
-                        info.thumbnailUrl = url + session["thumb"].get<std::string>() +
+                        info.thumbnailUrl = getServerUrl() + session["thumb"].get<std::string>() +
                                             "?X-Plex-Token=" + authToken;
                     }
 
@@ -466,7 +469,7 @@ void Plex::plexPollingThread()
 {
     while (running)
     {
-        std::string reqUrl = this->url + "/status/sessions";
+        std::string reqUrl = getServerUrl() + "/status/sessions";
         std::string response = makeRequest(reqUrl);
 
         if (!response.empty())
@@ -522,18 +525,10 @@ bool Plex::requestPlexPin(const std::string &clientId, std::string &pinCode, std
         struct curl_slist *headers = NULL;
         headers = curl_slist_append(headers, "Accept: application/json");
         headers = curl_slist_append(headers, "Content-Type: application/x-www-form-urlencoded");
+        headers = curl_slist_append(headers, "X-Plex-Product: Plex Rich Presence");
+        headers = curl_slist_append(headers, ("X-Plex-Client-Identifier: " + clientId).c_str());
 
         std::string postData = "strong=true";
-        postData += "&X-Plex-Product=Plex Rich Presence";
-        postData += "&X-Plex-Version: 0.1";
-        postData += "&X-Plex-Client-Identifier=" + clientId;
-#if defined(_WIN32)
-        postData += "&X-Plex-Device: Windows";
-#elif defined(__APPLE__)
-        postData += "&X-Plex-Device: macOS";
-#elif defined(__linux__)
-        postData += "&X-Plex-Device: Linux";
-#endif
 
         curl_easy_setopt(curl, CURLOPT_URL, "https://plex.tv/api/v2/pins");
         curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);

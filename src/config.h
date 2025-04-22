@@ -37,7 +37,6 @@ private:
     std::filesystem::path getConfigFilePath() const;
     bool setConfigValue(const std::string &key, const std::string &value);
     bool generateConfig();
-    bool loadConfig();
 
 public:
     // Singleton pattern
@@ -76,4 +75,6 @@ public:
 
     int getLogLevel() const;
     void setLogLevel(int logLevel);
+
+    bool loadConfig();
 };

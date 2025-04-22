@@ -34,6 +34,16 @@ bool Application::initialize()
                                   {
             LOG_INFO("Application", "Exit triggered from tray icon");
             stop(); });
+        trayIcon->setReloadConfigCallback([this]()
+                                          {
+            LOG_INFO("Application", "Reload configuration triggered from tray icon");
+            Config::getInstance().loadConfig(); });
+        trayIcon->setOpenConfigLocationCallback([]()
+                                                {
+            LOG_INFO("Application", "Open config location triggered from tray icon");
+            std::wstring wPath = std::filesystem::path(Config::getInstance().getConfigDirectory()).wstring();
+            ShellExecuteW(NULL, L"open", wPath.c_str(), NULL, NULL, SW_SHOWNORMAL); });
+
 #endif
 
         plex->init();
