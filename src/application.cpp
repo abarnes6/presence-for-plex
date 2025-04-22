@@ -49,14 +49,18 @@ bool Application::initialize()
 
         discord->setConnectedCallback([this]()
                                       {
-            trayIcon->setConnectionStatus("Status: Waiting for Plex...");
+#ifdef _WIN32
+            trayIcon->setConnectionStatus("Status: Connecting to Plex...");
+#endif
             plex->startPolling();
             std::unique_lock<std::mutex> lock(discordConnectMutex);
             discordConnectCv.notify_all(); });
 
         discord->setDisconnectedCallback([this]()
-                                         { 
+                                         {
+#ifdef _WIN32
                                             trayIcon->setConnectionStatus("Status: Waiting for Discord...");
+#endif
                                             plex->stopPolling(); });
 
         discord->start();
@@ -95,6 +99,8 @@ void Application::run()
             }
 
             PlaybackInfo info = plex->getCurrentPlayback();
+
+#ifdef _WIN32
             if (info.state == PlaybackState::Stopped)
             {
                 trayIcon->setConnectionStatus("Status: No active sessions");
@@ -119,6 +125,7 @@ void Application::run()
             {
                 trayIcon->setConnectionStatus("Status: Connecting to Plex...");
             }
+#endif
 
             if (info.state != PlaybackState::BadUrl)
             {
