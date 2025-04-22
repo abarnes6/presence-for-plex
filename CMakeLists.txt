@@ -82,6 +82,7 @@ if(WIN32)
         RMDir \\\"$SMPROGRAMS\\\\Plex Rich Presence\\\" 
         DeleteRegValue HKCU \\\"Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Run\\\" \\\"PlexRichPresence\\\" 
     ")
+    set(CPACK_NSIS_ENABLE_UNINSTALL_BEFORE_INSTALL ON)
 elseif(APPLE)
     set(CPACK_GENERATOR "DragNDrop")
     set(CPACK_DMG_VOLUME_NAME "PlexRichPresence")
@@ -102,5 +103,6 @@ set(CPACK_PACKAGE_VENDOR "Andrew Barnes")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Plex Rich Presence for Discord")
 set(CPACK_PACKAGE_EXECUTABLES "PlexRichPresence" "Plex Rich Presence")
 set(CPACK_PACKAGE_INSTALL_DIRECTORY "Plex Rich Presence")
+set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
 
 include(CPack)

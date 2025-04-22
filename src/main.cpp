@@ -1,6 +1,4 @@
 ﻿#include "main.h"
-#include "Application.h"
-#include <signal.h>
 
 static Application *g_app = nullptr;
 

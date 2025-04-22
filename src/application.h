@@ -1,10 +1,13 @@
 #pragma once
 
+#include "plex.h"
+#include "discord.h"
+#include "config.h"
+#include "trayicon.h"
 #include <memory>
 #include <atomic>
 #include <condition_variable>
 #include <mutex>
-#include "main.h"
 
 class Application
 {
