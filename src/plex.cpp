@@ -79,7 +79,7 @@ void Plex::init()
         // Display error message to the user on Windows
         std::string errorMsg = "No Plex server IP configured.\n\n"
                                "Open the configuration file folder using the tray icon.\n";
-        MessageBoxA(NULL, errorMsg.c_str(), "Plex Rich Presence - Configuration Error", MB_OK | MB_ICONERROR);
+        MessageBoxA(NULL, errorMsg.c_str(), "Plex Presence - Configuration Error", MB_OK | MB_ICONERROR);
 #endif
         LOG_ERROR("Plex", "No Plex server IP configured. Please configure it in the config file.");
         return;
@@ -103,6 +103,11 @@ void Plex::init()
 std::string Plex::getServerUrl() const
 {
     Config &config = Config::getInstance();
+    if (config.getServerIp().empty())
+    {
+        LOG_DEBUG("Plex", "Server IP is empty. Cannot construct server URL.");
+        return "";
+    }
     std::string protocol = config.isForceHttps() ? "https://" : "http://";
     return protocol + config.getServerIp() + ":" + std::to_string(config.getPort());
 }
@@ -420,32 +425,28 @@ bool Plex::parseSessionsResponse(const std::string &response, PlaybackInfo &info
 
                     auto now = std::chrono::system_clock::now();
                     auto nowSeconds = std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch()).count();
+                    int64_t estimatedProgress = info.progress;
 
-                    // Store the last progress and timestamp
-                    if (info.progress != lastProgress || info.title != lastTitle)
+                    if (info.progress != lastProgress)
                     {
-                        // Progress has changed or different content is playing, update the timestamp
                         lastProgressTimestamp = nowSeconds;
                         lastProgress = info.progress;
-                        lastTitle = info.title;
                     }
-                    else
+                    else if (info.state == PlaybackState::Playing)
                     {
-                        // Progress hasn't changed, estimate actual progress
-                        // Add the time elapsed since the last update
-                        int64_t estimatedProgress = info.progress + (nowSeconds - lastProgressTimestamp);
-
-                        // Make sure we don't exceed the duration
-                        if (info.duration > 0 && estimatedProgress > info.duration)
-                        {
-                            estimatedProgress = info.duration;
-                        }
-
-                        // Use the estimated progress
-                        info.progress = estimatedProgress;
+                        // If the playback state is playing and the progress hasn't changed,
+                        // estimate the progress based on the elapsed time since the last update
+                        estimatedProgress = info.progress + (nowSeconds - lastProgressTimestamp);
+                    }
+                    else if (info.state == PlaybackState::Paused)
+                    {
+                        lastProgressTimestamp = nowSeconds;
+                        estimatedProgress = info.progress;
                     }
 
-                    info.startTime = nowSeconds - info.progress;
+                    LOG_DEBUG("Plex", "Actual progress: " + std::to_string(info.progress) + " seconds");
+                    LOG_DEBUG("Plex", "Estimated progress: " + std::to_string(estimatedProgress) + " seconds");
+                    info.startTime = estimatedProgress;
 
                     return true;
                 }
@@ -469,7 +470,18 @@ void Plex::plexPollingThread()
 {
     while (running)
     {
-        std::string reqUrl = getServerUrl() + "/status/sessions";
+        std::string serverUrl = getServerUrl();
+        if (serverUrl.empty())
+        {
+            sharedPlayback.update(PlaybackInfo{PlaybackState::BadUrl});
+            for (int i = 0; i < 15 && running; i++)
+            {
+                std::this_thread::sleep_for(std::chrono::seconds(1));
+            }
+            continue;
+        }
+        std::string reqUrl = serverUrl + "/status/sessions";
+
         std::string response = makeRequest(reqUrl);
 
         if (!response.empty())
@@ -484,7 +496,7 @@ void Plex::plexPollingThread()
             else
             {
                 LOG_DEBUG("Plex", "No active sessions found or error parsing response.");
-                PlaybackInfo emptyInfo{};
+                PlaybackInfo emptyInfo{PlaybackState::Stopped};
                 sharedPlayback.update(emptyInfo);
             }
         }
@@ -525,7 +537,7 @@ bool Plex::requestPlexPin(const std::string &clientId, std::string &pinCode, std
         struct curl_slist *headers = NULL;
         headers = curl_slist_append(headers, "Accept: application/json");
         headers = curl_slist_append(headers, "Content-Type: application/x-www-form-urlencoded");
-        headers = curl_slist_append(headers, "X-Plex-Product: Plex Rich Presence");
+        headers = curl_slist_append(headers, "X-Plex-Product: Plex Presence");
         headers = curl_slist_append(headers, ("X-Plex-Client-Identifier: " + clientId).c_str());
 
         std::string postData = "strong=true";
@@ -654,10 +666,7 @@ bool Plex::authenticateWithPlex()
 
         // Generate auth URL with the same headers used in requestPlexPin
         std::string authUrl = "https://app.plex.tv/auth#?clientID=" + uuid +
-                              "&code=" + pinCode +
-                              "&context%5Bdevice%5D%5Bproduct%5D=Plex%20Rich%20Presence" +
-                              "&X-Plex-Product=Plex%20Rich%20Presence" +
-                              "&X-Plex-Version=0.1";
+                              "&code=" + pinCode;
 
 #if defined(_WIN32)
         authUrl += "&X-Plex-Device=Windows";

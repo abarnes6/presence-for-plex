@@ -9,13 +9,15 @@ enum class PlaybackState
     Stopped,
     Playing,
     Paused,
-    Buffering
+    Buffering,
+    BadUrl,
+    Unknown
 };
 
 // Playback information
 struct PlaybackInfo
 {
-    PlaybackState state = PlaybackState::Stopped; // "playing", "paused", etc.
+    PlaybackState state = PlaybackState::Unknown; // "playing", "paused", etc.
     std::string userId = "";
     std::string username = "";
     std::string title = "";

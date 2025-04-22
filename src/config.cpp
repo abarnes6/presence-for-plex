@@ -31,13 +31,12 @@ std::filesystem::path Config::getConfigDirectory()
     std::filesystem::path configDir;
 
 #ifdef _WIN32
-    // On Windows, use %APPDATA%\PlexRichPresence
     char *appdata = nullptr;
     size_t requiredSize;
     _dupenv_s(&appdata, &requiredSize, "APPDATA");
     if (appdata)
     {
-        configDir = std::filesystem::path(appdata) / "Plex Rich Presence";
+        configDir = std::filesystem::path(appdata) / "Plex Presence";
         free(appdata); // Free the allocated memory
     }
     else
@@ -45,22 +44,20 @@ std::filesystem::path Config::getConfigDirectory()
         configDir = std::filesystem::current_path() / "config";
     }
 #elif defined(__APPLE__)
-    // On macOS, use ~/Library/Application Support/PlexRichPresence
     const char *home = std::getenv("HOME");
     if (home)
     {
-        configDir = std::filesystem::path(home) / ".config/plex-rich-presence/";
+        configDir = std::filesystem::path(home) / ".config/plex-presence/";
     }
     else
     {
         configDir = std::filesystem::current_path() / "config";
     }
 #else
-    // On Linux, use ~/.config/plex-rich-presence
     const char *home = std::getenv("HOME");
     if (home)
     {
-        configDir = std::filesystem::path(home) / ".config/plex-rich-presence";
+        configDir = std::filesystem::path(home) / ".config/plex-presence";
     }
     else
     {

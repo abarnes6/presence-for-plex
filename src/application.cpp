@@ -7,10 +7,10 @@ Application::Application()
     Logger::getInstance().setLogLevel(static_cast<LogLevel>(Config::getInstance().getLogLevel()));
     Logger::getInstance().initFileLogging(Config::getConfigDirectory() / "log.txt", true);
 
-#ifdef DEBUG
+#ifndef NDEBUG
     Logger::getInstance().setLogLevel(LogLevel::Debug);
 #endif
-    LOG_INFO("Application", "Plex Rich Presence starting up");
+    LOG_INFO("Application", "Plex Presence starting up");
 }
 
 Application::~Application()
@@ -27,8 +27,7 @@ bool Application::initialize()
         discord = std::make_unique<Discord>();
 
 #ifdef _WIN32
-        trayIcon = std::make_unique<TrayIcon>("Plex Rich Presence");
-        trayIcon->setTooltip("Plex Rich Presence - Disconnected");
+        trayIcon = std::make_unique<TrayIcon>("Plex Presence");
         trayIcon->show();
         trayIcon->setExitCallback([this]()
                                   {
@@ -50,22 +49,18 @@ bool Application::initialize()
 
         discord->setConnectedCallback([this]()
                                       {
-#ifdef _WIN32
-            trayIcon->setTooltip("Plex Rich Presence - Connected");
-#endif
+            trayIcon->setConnectionStatus("Status: Waiting for Plex...");
             plex->startPolling();
-            // Signal the main loop that Discord has connected
             std::unique_lock<std::mutex> lock(discordConnectMutex);
             discordConnectCv.notify_all(); });
 
         discord->setDisconnectedCallback([this]()
-                                         {
-#ifdef _WIN32
-            trayIcon->setTooltip("Plex Rich Presence - Disconnected");
-#endif
-            plex->stopPolling(); });
+                                         { 
+                                            trayIcon->setConnectionStatus("Status: Waiting for Discord...");
+                                            plex->stopPolling(); });
 
         discord->start();
+        trayIcon->setConnectionStatus("Status: Waiting for Discord...");
         return true;
     }
     catch (const std::exception &e)
@@ -86,11 +81,12 @@ void Application::run()
         {
             if (!discord->isConnected())
             {
-                // Wait for Discord to connect instead of polling
+                // Wait for Discord to connect instead of polling, with timeout to check running status
                 std::unique_lock<std::mutex> lock(discordConnectMutex);
-                discordConnectCv.wait(lock,
-                                      [this]()
-                                      { return discord->isConnected() || !running; });
+                discordConnectCv.wait_for(lock,
+                                          std::chrono::seconds(1),
+                                          [this]()
+                                          { return discord->isConnected() || !running; });
 
                 if (!running || !discord->isConnected())
                 {
@@ -99,19 +95,45 @@ void Application::run()
             }
 
             PlaybackInfo info = plex->getCurrentPlayback();
-
-            if ((abs(info.startTime - lastStartTime) > 3 && info.state != PlaybackState::Paused) ||
-                info.state != lastState)
+            if (info.state == PlaybackState::Stopped)
             {
-                LOG_DEBUG_STREAM("Application", "Updating Discord presence: "
-                                                    << std::to_string(info.startTime) << " - "
-                                                    << std::to_string(lastStartTime) << " - "
-                                                    << static_cast<int>(info.state) << " - "
-                                                    << static_cast<int>(lastState));
+                trayIcon->setConnectionStatus("Status: No active sessions");
+            }
+            else if (info.state == PlaybackState::Playing)
+            {
+                trayIcon->setConnectionStatus("Status: Playing");
+            }
+            else if (info.state == PlaybackState::Paused)
+            {
+                trayIcon->setConnectionStatus("Status: Paused");
+            }
+            else if (info.state == PlaybackState::Buffering)
+            {
+                trayIcon->setConnectionStatus("Status: Buffering...");
+            }
+            else if (info.state == PlaybackState::BadUrl)
+            {
+                trayIcon->setConnectionStatus("Status: Invalid Plex URL");
+            }
+            else
+            {
+                trayIcon->setConnectionStatus("Status: Connecting to Plex...");
+            }
 
-                lastStartTime = info.startTime;
+            if (info.state != PlaybackState::BadUrl)
+            {
+                if (abs(info.startTime - lastStartTime) > Config::getInstance().getPollInterval() + 1)
+                {
+                    LOG_WARNING("Application", "Playback position changed significantly, updating Discord presence");
+                    discord->updatePresence(info);
+                }
+                else if (info.state != lastState)
+                {
+                    LOG_DEBUG("Application", "Playback state changed, updating Discord presence");
+                    discord->updatePresence(info);
+                }
                 lastState = info.state;
-                discord->updatePresence(info);
+                lastStartTime = info.startTime;
             }
         }
         catch (const std::exception &e)

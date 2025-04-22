@@ -50,9 +50,11 @@ void Discord::connectionThread()
 
 				for (int i = 0; i < delay && running; ++i)
 				{
-					if (!running)
-						break;
 					std::this_thread::sleep_for(std::chrono::seconds(1));
+				}
+				if (!running)
+				{
+					break;
 				}
 			}
 
@@ -98,8 +100,6 @@ void Discord::connectionThread()
 			// Connection is healthy, wait before next check
 			for (int i = 0; i < 30 && running; ++i)
 			{
-				if (!running)
-					break;
 				std::this_thread::sleep_for(std::chrono::seconds(1));
 			}
 		}
@@ -298,8 +298,8 @@ json Discord::createActivity(const PlaybackInfo &playbackInfo)
 	}
 	else if (playbackInfo.state == PlaybackState::Paused || playbackInfo.state == PlaybackState::Buffering)
 	{
-		start_timestamp = current_time + static_cast<int64_t>(playbackInfo.duration);
-		end_timestamp = current_time + (static_cast<int64_t>(playbackInfo.duration) * 2);
+		start_timestamp = current_time + std::chrono::duration_cast<std::chrono::seconds>(std::chrono::hours(9999)).count();
+		end_timestamp = current_time + std::chrono::duration_cast<std::chrono::seconds>(std::chrono::hours(9999)).count() + static_cast<int64_t>(playbackInfo.duration);
 	}
 
 	json timestamps = {
@@ -425,7 +425,14 @@ void Discord::stop()
 	{
 		conn_thread.join();
 	}
-	ipc.closePipe();
+	if (connected)
+	{
+		ipc.closePipe();
+	}
+	else
+	{
+		LOG_DEBUG("Discord", "Connection thread already stopped");
+	}
 }
 
 bool Discord::isConnected() const

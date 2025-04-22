@@ -8,7 +8,7 @@ if (POLICY CMP0141)
   set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<IF:$<AND:$<C_COMPILER_ID:MSVC>,$<CXX_COMPILER_ID:MSVC>>,$<$<CONFIG:Debug,RelWithDebInfo>:EditAndContinue>,$<$<CONFIG:Debug,RelWithDebInfo>:ProgramDatabase>>")
 endif()
 
-project ("PlexRichPresence" VERSION 0.1.0 LANGUAGES CXX)
+project ("PlexPresence" VERSION 0.1.1 LANGUAGES CXX)
 
 file(GLOB_RECURSE SOURCES src/*.cpp)
 file(GLOB_RECURSE HEADERS src/*.h)
@@ -38,24 +38,24 @@ target_include_directories(tomlplusplus::tomlplusplus
 if(WIN32)
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /SUBSYSTEM:WINDOWS")
     add_compile_definitions(WIN32_LEAN_AND_MEAN)
-    add_executable(PlexRichPresence WIN32 src/main.cpp ${SOURCES} ${HEADERS} ${RES_FILES})
+    add_executable(PlexPresence WIN32 src/main.cpp ${SOURCES} ${HEADERS} ${RES_FILES})
 else()
-    add_executable(PlexRichPresence src/main.cpp ${SOURCES} ${HEADERS} ${RES_FILES})
+    add_executable(PlexPresence src/main.cpp ${SOURCES} ${HEADERS} ${RES_FILES})
 endif()
 
-target_link_libraries(PlexRichPresence PRIVATE CURL::libcurl tomlplusplus::tomlplusplus)
+target_link_libraries(PlexPresence PRIVATE CURL::libcurl tomlplusplus::tomlplusplus)
 
 if (CMAKE_VERSION VERSION_GREATER 3.25)
-  set_property(TARGET PlexRichPresence PROPERTY CXX_STANDARD 17)
+  set_property(TARGET PlexPresence PROPERTY CXX_STANDARD 17)
 endif()
 
-install(TARGETS PlexRichPresence
+install(TARGETS PlexPresence
     RUNTIME DESTINATION .)         # Root of staging dir
 install(FILES LICENSE README.md
     DESTINATION .)
 if (WIN32)
   install(FILES
-    $<TARGET_RUNTIME_DLLS:PlexRichPresence>
+    $<TARGET_RUNTIME_DLLS:PlexPresence>
     $<$<CONFIG:Debug>:${VCPKG_ROOT}/${VCPKG_TARGET_TRIPLET}/debug/bin/zlibd1.dll>
     $<$<NOT:$<CONFIG:Debug>>:${VCPKG_ROOT}/${VCPKG_TARGET_TRIPLET}/bin/zlib1.dll>
     DESTINATION .
@@ -71,21 +71,21 @@ if(WIN32)
     
     # Add option for startup
     set(CPACK_NSIS_EXTRA_INSTALL_COMMANDS "
-        CreateShortCut \\\"$DESKTOP\\\\Plex Rich Presence.lnk\\\" \\\"$INSTDIR\\\\PlexRichPresence.exe\\\" 
-        CreateDirectory \\\"$SMPROGRAMS\\\\Plex Rich Presence\\\" 
-        CreateShortCut \\\"$SMPROGRAMS\\\\Plex Rich Presence\\\\Plex Rich Presence.lnk\\\" \\\"$INSTDIR\\\\PlexRichPresence.exe\\\" 
-        WriteRegStr HKCU \\\"Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Run\\\" \\\"PlexRichPresence\\\" \\\"$INSTDIR\\\\PlexRichPresence.exe\\\" 
+        CreateShortCut \\\"$DESKTOP\\\\Plex Presence.lnk\\\" \\\"$INSTDIR\\\\PlexPresence.exe\\\" 
+        CreateDirectory \\\"$SMPROGRAMS\\\\Plex Presence\\\" 
+        CreateShortCut \\\"$SMPROGRAMS\\\\Plex Presence\\\\Plex Presence.lnk\\\" \\\"$INSTDIR\\\\PlexPresence.exe\\\" 
+        WriteRegStr HKCU \\\"Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Run\\\" \\\"PlexPresence\\\" \\\"$INSTDIR\\\\PlexPresence.exe\\\" 
     ")
     set(CPACK_NSIS_EXTRA_UNINSTALL_COMMANDS "
-        Delete \\\"$DESKTOP\\\\Plex Rich Presence.lnk\\\" 
-        Delete \\\"$SMPROGRAMS\\\\Plex Rich Presence\\\\Plex Rich Presence.lnk\\\" 
-        RMDir \\\"$SMPROGRAMS\\\\Plex Rich Presence\\\" 
-        DeleteRegValue HKCU \\\"Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Run\\\" \\\"PlexRichPresence\\\" 
+        Delete \\\"$DESKTOP\\\\Plex Presence.lnk\\\" 
+        Delete \\\"$SMPROGRAMS\\\\Plex Presence\\\\Plex Presence.lnk\\\" 
+        RMDir \\\"$SMPROGRAMS\\\\Plex Presence\\\" 
+        DeleteRegValue HKCU \\\"Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Run\\\" \\\"PlexPresence\\\" 
     ")
     set(CPACK_NSIS_ENABLE_UNINSTALL_BEFORE_INSTALL ON)
 elseif(APPLE)
     set(CPACK_GENERATOR "DragNDrop")
-    set(CPACK_DMG_VOLUME_NAME "PlexRichPresence")
+    set(CPACK_DMG_VOLUME_NAME "PlexPresence")
 elseif(UNIX)
     set(CPACK_GENERATOR "DEB;RPM")
     set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Andrew Barnes")
@@ -97,12 +97,12 @@ elseif(UNIX)
     set(CPACK_INSTALL_PREFIX "/usr")
 endif()
 
-set(CPACK_PACKAGE_NAME "Plex Rich Presence")
-set(CPACK_PACKAGE_VERSION "0.1.0")
+set(CPACK_PACKAGE_NAME "Plex Presence")
+set(CPACK_PACKAGE_VERSION "0.1.1")
 set(CPACK_PACKAGE_VENDOR "Andrew Barnes")
-set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Plex Rich Presence for Discord")
-set(CPACK_PACKAGE_EXECUTABLES "PlexRichPresence" "Plex Rich Presence")
-set(CPACK_PACKAGE_INSTALL_DIRECTORY "Plex Rich Presence")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Plex Presence for Discord")
+set(CPACK_PACKAGE_EXECUTABLES "PlexPresence" "Plex Presence")
+set(CPACK_PACKAGE_INSTALL_DIRECTORY "Plex Presence")
 set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
 
 include(CPack)

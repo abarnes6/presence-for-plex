@@ -1,6 +1,4 @@
-# Plex Rich Presence
-
-![Plex Rich Presence Logo](https://github.com/user-attachments/assets/882c06f1-f1d6-4444-9249-7021eef77d78)
+# Plex Presence
 
 A lightweight application written in C++ that displays your current Plex media activity in Discord's Rich Presence.
 
@@ -15,7 +13,7 @@ A lightweight application written in C++ that displays your current Plex media a
 
 ### Download
 
-Download the latest release from the [Releases](https://github.com/abarnes6/plex-rich-presence/releases) page.
+Download the latest release from the [Releases](https://github.com/abarnes6/plex-presence/releases) page.
 
 ### Setup
 
@@ -28,8 +26,8 @@ Download the latest release from the [Releases](https://github.com/abarnes6/plex
 
 Configuration is stored in a TOML file located in:
 
--   Windows: `%APPDATA%\Plex Rich Presence\config.toml`
--   macOS/Linux: `~/.config/plex-rich-presence/config.toml`
+-   Windows: `%APPDATA%\Plex Presence\config.toml`
+-   macOS/Linux: `~/.config/plex-presence/config.toml`
 
 ### Configuration Options
 
@@ -50,8 +48,8 @@ Configuration is stored in a TOML file located in:
 ### Build Instructions
 
 ```bash
-git clone https://github.com/abarnes6/plex-rich-presence.git
-cd plex-rich-presence
+git clone https://github.com/abarnes6/plex-presence.git
+cd plex-presence
 mkdir build && cd build
 cmake --preset=release ..
 cmake --build release
@@ -61,8 +59,8 @@ cmake --build release
 
 Check the log file located at:
 
--   Windows: `%APPDATA%\Plex Rich Presence\log.txt`
--   macOS/Linux: `~/.config/plex-rich-presence/log.txt`
+-   Windows: `%APPDATA%\Plex Presence\log.txt`
+-   macOS/Linux: `~/.config/plex-presence/log.txt`
 
 ## License
 

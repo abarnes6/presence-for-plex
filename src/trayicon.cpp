@@ -6,7 +6,7 @@
 TrayIcon *TrayIcon::s_instance = nullptr;
 
 TrayIcon::TrayIcon(const std::string &appName)
-    : m_appName(appName), m_running(false), m_hWnd(NULL), m_hMenu(NULL)
+    : m_appName(appName), m_running(false), m_hWnd(NULL), m_hMenu(NULL), m_connectionStatus("Status: Initializing...")
 {
     // Set static instance for callback
     s_instance = this;
@@ -79,26 +79,6 @@ void TrayIcon::hide()
     }
 }
 
-void TrayIcon::setTooltip(const std::string &tooltip)
-{
-    if (m_nid.cbSize > 0)
-    {
-        // Convert UTF-8 string to wide string
-        int length = MultiByteToWideChar(CP_UTF8, 0, tooltip.c_str(), -1, NULL, 0);
-        if (length > 0 && length <= 128)
-        { // 128 is the max size for tooltip
-            MultiByteToWideChar(CP_UTF8, 0, tooltip.c_str(), -1, m_nid.szTip, length);
-
-            // Update the tooltip
-            if (m_hWnd)
-            {
-                LOG_DEBUG_STREAM("TrayIcon", "Updating tooltip to: " << tooltip);
-                Shell_NotifyIconW(NIM_MODIFY, &m_nid);
-            }
-        }
-    }
-}
-
 void TrayIcon::setExitCallback(std::function<void()> callback)
 {
     m_exitCallback = callback;
@@ -112,6 +92,40 @@ void TrayIcon::setReloadConfigCallback(std::function<void()> callback)
 void TrayIcon::setOpenConfigLocationCallback(std::function<void()> callback)
 {
     m_openConfigLocationCallback = callback;
+}
+
+void TrayIcon::setConnectionStatus(const std::string &status)
+{
+    if (status == m_connectionStatus)
+        return;
+    LOG_DEBUG_STREAM("TrayIcon", "Setting connection status: " << status);
+    m_connectionStatus = status;
+    updateMenu();
+}
+
+void TrayIcon::updateMenu()
+{
+    if (!m_hMenu)
+        return;
+
+    // Delete the existing status item if it exists
+    RemoveMenu(m_hMenu, ID_TRAY_STATUS, MF_BYCOMMAND);
+
+    // Convert status to wide string
+    std::wstring wStatus;
+    int length = MultiByteToWideChar(CP_UTF8, 0, m_connectionStatus.c_str(), -1, NULL, 0);
+    if (length > 0)
+    {
+        wStatus.resize(length);
+        MultiByteToWideChar(CP_UTF8, 0, m_connectionStatus.c_str(), -1, &wStatus[0], length);
+    }
+    else
+    {
+        wStatus = L"Status: Unknown";
+    }
+
+    // Insert the status at the top
+    InsertMenuW(m_hMenu, 0, MF_BYPOSITION | MF_STRING | MF_DISABLED | MF_GRAYED, ID_TRAY_STATUS, wStatus.c_str());
 }
 
 // Static window procedure
@@ -129,10 +143,19 @@ LRESULT CALLBACK TrayIcon::WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARA
     case WM_CREATE:
         // Create the icon menu
         instance->m_hMenu = CreatePopupMenu();
+        // Status will be added dynamically
+        AppendMenuW(instance->m_hMenu, MF_SEPARATOR, 0, NULL); // Add separator
         AppendMenuW(instance->m_hMenu, MF_STRING, ID_TRAY_RELOAD_CONFIG, L"Reload Config");
         AppendMenuW(instance->m_hMenu, MF_STRING, ID_TRAY_OPEN_CONFIG_LOCATION, L"Open Config Location");
         AppendMenuW(instance->m_hMenu, MF_SEPARATOR, 0, NULL); // Add separator
         AppendMenuW(instance->m_hMenu, MF_STRING, ID_TRAY_EXIT, L"Exit");
+
+        // Initialize with default status
+        if (instance->m_connectionStatus.empty())
+        {
+            instance->m_connectionStatus = "Status: Initializing...";
+        }
+        instance->updateMenu();
         break;
 
     case WM_COMMAND:
@@ -187,6 +210,10 @@ LRESULT CALLBACK TrayIcon::WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARA
         if (LOWORD(lParam) == WM_RBUTTONUP || LOWORD(lParam) == WM_LBUTTONUP)
         {
             LOG_DEBUG_STREAM("TrayIcon", "Tray icon clicked: " << LOWORD(lParam));
+
+            // Update the menu before showing it
+            instance->updateMenu();
+
             POINT pt;
             GetCursorPos(&pt);
             SetForegroundWindow(hwnd);
@@ -255,7 +282,7 @@ LRESULT CALLBACK TrayIcon::WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARA
 void TrayIcon::uiThreadFunction()
 {
     // Register window class
-    const wchar_t *className = L"PlexRichPresenceTray";
+    const wchar_t *className = L"PlexPresenceTray";
 
     WNDCLASSEXW wc = {0};
     wc.cbSize = sizeof(WNDCLASSEXW);
@@ -310,7 +337,7 @@ void TrayIcon::uiThreadFunction()
     }
     else
     {
-        wAppName = L"Plex Rich Presence";
+        wAppName = L"Plex Presence";
     }
 
     // Create the hidden window
@@ -363,7 +390,7 @@ void TrayIcon::uiThreadFunction()
     }
 
     // Set initial tooltip
-    wcscpy_s(m_nid.szTip, _countof(m_nid.szTip), L"Plex Rich Presence");
+    wcscpy_s(m_nid.szTip, _countof(m_nid.szTip), L"Plex Presence");
 
     LOG_INFO("TrayIcon", "Tray icon initialized, ready to be shown");
 
