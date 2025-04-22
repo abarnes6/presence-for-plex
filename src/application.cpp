@@ -29,6 +29,7 @@ bool Application::initialize()
 #ifdef _WIN32
         trayIcon = std::make_unique<TrayIcon>("Plex Presence");
         trayIcon->show();
+        trayIcon->setConnectionStatus("Status: Waiting for Discord...");
         trayIcon->setExitCallback([this]()
                                   {
             LOG_INFO("Application", "Exit triggered from tray icon");
@@ -44,8 +45,6 @@ bool Application::initialize()
             ShellExecuteW(NULL, L"open", wPath.c_str(), NULL, NULL, SW_SHOWNORMAL); });
 
 #endif
-
-        plex->init();
 
         discord->setConnectedCallback([this]()
                                       {
@@ -63,8 +62,8 @@ bool Application::initialize()
 #endif
                                             plex->stopPolling(); });
 
+        plex->init();
         discord->start();
-        trayIcon->setConnectionStatus("Status: Waiting for Discord...");
         return true;
     }
     catch (const std::exception &e)
