@@ -27,7 +27,7 @@ message(STATUS "CURL::libcurl deps = ${_curl_deps}")
 
 find_path(_TP_INC
   NAMES toml++/toml.hpp
-  HINTS "${VCPKG_ROOT}/installed/${VCPKG_TARGET_TRIPLET}/include"
+  HINTS "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/include"
 )
 add_library(tomlplusplus::tomlplusplus INTERFACE IMPORTED)
 target_include_directories(tomlplusplus::tomlplusplus
@@ -56,8 +56,8 @@ install(FILES LICENSE README.md
 if (WIN32)
   install(FILES
     $<TARGET_RUNTIME_DLLS:PlexPresence>
-    $<$<CONFIG:Debug>:${VCPKG_ROOT}/${VCPKG_TARGET_TRIPLET}/debug/bin/zlibd1.dll>
-    $<$<NOT:$<CONFIG:Debug>>:${VCPKG_ROOT}/${VCPKG_TARGET_TRIPLET}/bin/zlib1.dll>
+    $<$<CONFIG:Debug>:${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/debug/bin/zlibd1.dll>
+    $<$<NOT:$<CONFIG:Debug>>:${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/bin/zlib1.dll>
     DESTINATION .
   )
 endif()

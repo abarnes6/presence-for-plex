@@ -7,8 +7,7 @@
             "generator": "Ninja",
             "binaryDir": "${sourceDir}/build",
             "cacheVariables": {
-                "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
-                "VCPKG_ROOT": "${sourceDir}/vcpkg_installed"
+                "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
             }
         },
         {
@@ -72,7 +71,7 @@
             "displayName": "Debug Package",
             "description": "Create debug package with symbols",
             "configurePreset": "debug",
-            "generators": ["CPack"]
+            "generators": ["NSIS"]
         },
         {
             "name": "release",
@@ -86,7 +85,7 @@
             "displayName": "GitHub CI Package",
             "description": "Create release package for GitHub Actions CI",
             "configurePreset": "github",
-            "generators": ["CPack"]
+            "generators": ["NSIS"]
         }
     ]
 }
