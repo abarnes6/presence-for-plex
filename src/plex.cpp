@@ -82,7 +82,8 @@ void Plex::init()
                                config.getConfigDirectory().string() + "\\config.toml";
         MessageBoxA(NULL, errorMsg.c_str(), "Plex Rich Presence - Configuration Error", MB_OK | MB_ICONERROR);
 #endif
-        throw std::runtime_error("No Plex server IP configured");
+        LOG_ERROR("Plex", "No Plex server IP configured. Please configure it in the config file.");
+        throw std::runtime_error("No Plex server IP configured.");
     }
 
     // Check if we need to build the URL with https
@@ -414,7 +415,34 @@ bool Plex::parseSessionsResponse(const std::string &response, PlaybackInfo &info
                         info.duration = 0;
                     }
 
-                    info.startTime = std::time(nullptr) - info.progress;
+                    auto now = std::chrono::system_clock::now();
+                    auto nowSeconds = std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch()).count();
+
+                    // Store the last progress and timestamp
+                    if (info.progress != lastProgress || info.title != lastTitle)
+                    {
+                        // Progress has changed or different content is playing, update the timestamp
+                        lastProgressTimestamp = nowSeconds;
+                        lastProgress = info.progress;
+                        lastTitle = info.title;
+                    }
+                    else
+                    {
+                        // Progress hasn't changed, estimate actual progress
+                        // Add the time elapsed since the last update
+                        int64_t estimatedProgress = info.progress + (nowSeconds - lastProgressTimestamp);
+
+                        // Make sure we don't exceed the duration
+                        if (info.duration > 0 && estimatedProgress > info.duration)
+                        {
+                            estimatedProgress = info.duration;
+                        }
+
+                        // Use the estimated progress
+                        info.progress = estimatedProgress;
+                    }
+
+                    info.startTime = nowSeconds - info.progress;
 
                     return true;
                 }
@@ -452,7 +480,7 @@ void Plex::plexPollingThread()
             }
             else
             {
-                // No active sessions - set empty info
+                LOG_DEBUG("Plex", "No active sessions found or error parsing response.");
                 PlaybackInfo emptyInfo{};
                 sharedPlayback.update(emptyInfo);
             }

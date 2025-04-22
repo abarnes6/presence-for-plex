@@ -112,14 +112,14 @@ bool Config::generateConfig()
 
         toml::table config;
         config.insert("plex", toml::table{});
-        config["plex"].as_table()->insert("server_ip", ""); // Empty IP by default
-        config["plex"].as_table()->insert("port", 32400);
+        config["plex"].as_table()->insert("server_ip", serverIp); // Empty IP by default
+        config["plex"].as_table()->insert("port", port);
         config["plex"].as_table()->insert("force_https", true);
-        config["plex"].as_table()->insert("poll_interval", 5);
-        config["plex"].as_table()->insert("plex_token", "");
+        config["plex"].as_table()->insert("poll_interval", pollInterval);
+        config["plex"].as_table()->insert("plex_token", std::string{}); // Empty token by default
 
         config.insert("discord", toml::table{});
-        config["discord"].as_table()->insert("client_id", DEFAULT_CLIENT_ID);
+        config["discord"].as_table()->insert("client_id", clientId);
 
         config.insert("app", toml::table{});
         config["app"].as_table()->insert("log_level", static_cast<int>(LogLevel::Info));

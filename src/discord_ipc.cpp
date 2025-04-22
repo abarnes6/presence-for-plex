@@ -57,12 +57,12 @@ DiscordIPC::DiscordIPC() : connected(false)
 
 DiscordIPC::~DiscordIPC()
 {
-    disconnect();
+    closePipe();
 }
 
-bool DiscordIPC::connect()
-{
 #if defined(_WIN32)
+bool DiscordIPC::openPipe()
+{
     // Windows implementation using named pipes
     LOG_DEBUG("DiscordIPC", "Attempting to connect to Discord via Windows named pipes");
     for (int i = 0; i < 10; i++)
@@ -88,7 +88,6 @@ bool DiscordIPC::connect()
             {
                 DWORD error = GetLastError();
                 LOG_DEBUG("DiscordIPC", "Warning: Failed to set pipe mode. Using default mode. Error: " + std::to_string(error));
-                // Continue anyway - don't disconnect
             }
 
             LOG_DEBUG("DiscordIPC", "Successfully connected to Discord pipe: " + pipeName);
@@ -100,9 +99,13 @@ bool DiscordIPC::connect()
         DWORD error = GetLastError();
         LOG_DEBUG("DiscordIPC", "Failed to connect to " + pipeName + ": error code " + std::to_string(error));
     }
-    LOG_ERROR("DiscordIPC", "Could not connect to any Discord pipe. Is Discord running?");
+    LOG_WARNING("DiscordIPC", "Could not connect to any Discord pipe. Is Discord running?");
     return false;
+}
+
 #elif defined(__APPLE__)
+bool DiscordIPC::openPipe()
+{
     const char *temp = getenv("TMPDIR");
     for (int i = 0; i < 10; i++)
     {
@@ -153,7 +156,10 @@ bool DiscordIPC::connect()
         close(pipe_fd);
         pipe_fd = -1;
     }
+}
 #elif defined(__linux__) || defined(__unix__)
+bool DiscordIPC::openPipe()
+{
     // Unix implementation using sockets
     LOG_DEBUG("DiscordIPC", "Attempting to connect to Discord via Unix sockets");
 
@@ -277,10 +283,10 @@ bool DiscordIPC::connect()
 
     LOG_ERROR("DiscordIPC", "Could not connect to any Discord socket. Is Discord running?");
     return false;
-#endif
 }
+#endif
 
-void DiscordIPC::disconnect()
+void DiscordIPC::closePipe()
 {
     LOG_DEBUG("DiscordIPC", "Disconnecting from Discord...");
 #ifdef _WIN32

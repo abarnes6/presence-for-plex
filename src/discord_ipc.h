@@ -27,8 +27,8 @@ public:
     ~DiscordIPC();
 
     // Connection management
-    bool connect();
-    void disconnect();
+    bool openPipe();
+    void closePipe();
     bool isConnected() const;
 
     // IPC operations

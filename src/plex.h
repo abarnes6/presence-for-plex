@@ -55,4 +55,9 @@ private:
 
 	std::string authToken;
 	std::string url;
+
+	// Variables for progress estimation
+	int64_t lastProgress = 0;
+	int64_t lastProgressTimestamp = 0;
+	std::string lastTitle = "";
 };

@@ -29,17 +29,27 @@ public:
 	Discord();
 	~Discord();
 
-	bool init();
 	void start();
 	void stop();
 	bool isConnected() const;
 	void updatePresence(const PlaybackInfo &playbackInfo);
 	void clearPresence();
-	void keepAlive();
+
+	// Add callback typedefs and setters
+	typedef std::function<void()> ConnectionCallback;
+	void setConnectedCallback(ConnectionCallback callback);
+	void setDisconnectedCallback(ConnectionCallback callback);
 
 private:
 	void connectionThread();
-	void calculateBackoffTime();
+	bool isStillAlive();
+	void sendPresenceMessage(const std::string &message);
+	bool attemptConnection();
+
+	// Helper methods for creating presence payloads
+	nlohmann::json createActivity(const PlaybackInfo &playbackInfo);
+	std::string createPresence(const PlaybackInfo &playbackInfo, const std::string &nonce);
+	std::string createPresenceMetadata(const PlaybackInfo &playbackInfo, const std::string &nonce);
 
 	// Component responsible for Discord IPC communication
 	DiscordIPC ipc;
@@ -52,11 +62,16 @@ private:
 	std::mutex mutex;
 
 	// Connection info
-	uint64_t client_id;
 	int reconnect_attempts;
-	int64_t last_successful_update;
-	std::string last_activity_payload;
 
 	// State tracking
 	std::atomic<bool> is_playing;
+
+	std::atomic<uint64_t> nonce_counter;
+
+	std::string generateNonce();
+
+	// Connection callbacks
+	ConnectionCallback onConnected;
+	ConnectionCallback onDisconnected;
 };
