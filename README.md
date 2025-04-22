@@ -2,16 +2,14 @@
 
 ![Plex Rich Presence Logo](https://github.com/user-attachments/assets/882c06f1-f1d6-4444-9249-7021eef77d78)
 
-A lightweight application that displays your current Plex media activity in Discord's Rich Presence.
+A lightweight application written in C++ that displays your current Plex media activity in Discord's Rich Presence.
 
 ## Features
 
 -   Show what you're watching on Plex in your Discord status
--   Displays movie/show titles, episode information, and progress
--   Automatically updates activity when media playback state changes (playing/paused/stopped)
+-   Displays show titles, episode information, and progress
+-   Cross-platform (Windows, macOS, Linux)
 -   Runs in the system tray for easy access (Windows only)
--   Configurable logging levels
--   Cross-platform support (Windows, macOS, Linux)
 
 ## Installation
 
@@ -21,10 +19,10 @@ Download the latest release from the [Releases](https://github.com/abarnes6/plex
 
 ### Setup
 
-1. Extract the downloaded archive
-2. Run the executable
-3. Configure your Plex server connection settings
-4. The application will automatically connect to Discord
+1. Run the executable
+2. Configure your Plex server connection settings
+3. Connect your Plex account in a browser when prompted
+4. The application will automatically connect to Plex/Discord
 
 ## Configuration
 
@@ -47,9 +45,7 @@ Configuration is stored in a TOML file located in:
 
 -   C++17 compatible compiler
 -   CMake 3.25+
--   curl
--   nlohmann/json
--   toml++
+-   vcpkg
 
 ### Build Instructions
 
