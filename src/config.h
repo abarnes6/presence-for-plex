@@ -8,15 +8,6 @@
 #include "yaml-cpp/yaml.h" // Replace TOML++ with yaml-cpp
 #include "models.h"        // Include models.h to get PlexServer definition
 
-struct PlexServerConfig
-{
-    std::string name;
-    std::string clientIdentifier;
-    std::string localUri;
-    std::string publicUri;
-    std::string accessToken;
-};
-
 class Config
 {
 public:
@@ -41,11 +32,14 @@ public:
     std::string getTMDBAccessToken() const;
     void setTMDBAccessToken(const std::string &token);
 
+    std::string getPlexUsername() const;               // Add getter for username
+    void setPlexUsername(const std::string &username); // Add setter for username
+
     // Plex server management
-    const std::vector<PlexServerConfig> &getPlexServers() const;
+    const std::map<std::string, std::shared_ptr<PlexServer>> &getPlexServers() const;
     void addPlexServer(const std::string &name, const std::string &clientId,
                        const std::string &localUri, const std::string &publicUri,
-                       const std::string &accessToken);
+                       const std::string &accessToken, bool owned = false); // Add owned parameter
     void clearPlexServers();
 
     // Discord settings
@@ -67,7 +61,8 @@ private:
     uint64_t discordClientId;
     std::string plexAuthToken;
     std::string plexClientIdentifier;
-    std::vector<PlexServerConfig> plexServers;
+    std::string plexUsername; // Add username storage
+    std::map<std::string, std::shared_ptr<PlexServer>> plexServers;
     std::string tmdbAccessToken; // TMDB Access Token for fetching artwork
 
     // Connection settings

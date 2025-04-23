@@ -45,6 +45,8 @@ private:
 								 const std::string &grandparentKey, MediaInfo &info);
 	void fetchTMDBMovieArtwork(const std::string &tmdbId, MediaInfo &info);
 	void fetchTMDBTVShowArtwork(const std::string &tmdbId, MediaInfo &info);
+	void Plex::fetchSessionUserInfo(const std::string &serverUri, const std::string &accessToken,
+									const std::string &sessionKey, MediaInfo &info);
 
 	// Media details
 	MediaInfo fetchMediaDetails(const std::string &serverUri, const std::string &accessToken,
@@ -54,8 +56,9 @@ private:
 	std::string getClientIdentifier();
 
 	// Data members
-	std::map<std::string, std::shared_ptr<PlexServer>> m_servers;
 	std::map<std::string, MediaInfo> m_activeSessions;
 	std::mutex m_sessionMutex;
 	std::atomic<bool> m_initialized;
+
+	bool fetchAndSaveUsername(const std::string &authToken, const std::string &clientId); // Add new helper method
 };

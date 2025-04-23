@@ -17,6 +17,7 @@ struct PlexServer
     std::chrono::system_clock::time_point lastUpdated;
     std::unique_ptr<HttpClient> httpClient;
     std::atomic<bool> running;
+    bool owned = false;
 };
 
 enum class PlaybackState

@@ -8,7 +8,7 @@ if (POLICY CMP0141)
   set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<IF:$<AND:$<C_COMPILER_ID:MSVC>,$<CXX_COMPILER_ID:MSVC>>,$<$<CONFIG:Debug,RelWithDebInfo>:EditAndContinue>,$<$<CONFIG:Debug,RelWithDebInfo>:ProgramDatabase>>")
 endif()
 
-project ("PlexPresence" VERSION 0.2.0 LANGUAGES CXX)
+project ("PlexPresence" VERSION 0.2.1 LANGUAGES CXX)
 
 file(GLOB_RECURSE SOURCES src/*.cpp)
 file(GLOB_RECURSE HEADERS src/*.h)
@@ -96,7 +96,7 @@ elseif(UNIX)
 endif()
 
 set(CPACK_PACKAGE_NAME "Plex Presence")
-set(CPACK_PACKAGE_VERSION "0.2.0")
+set(CPACK_PACKAGE_VERSION "0.2.1")
 set(CPACK_PACKAGE_VENDOR "Andrew Barnes")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Plex Presence for Discord")
 set(CPACK_PACKAGE_EXECUTABLES "PlexPresence" "Plex Presence")

@@ -41,10 +41,15 @@ bool Plex::init()
     LOG_INFO("Plex", "Using Plex auth token: " + authToken.substr(0, 5) + "...");
 
     // Fetch available servers
-    if (!fetchServers())
+    auto servers = config.getPlexServers();
+    if (config.getPlexServers().size() == 0)
     {
-        LOG_ERROR("Plex", "Failed to fetch Plex servers");
-        return false;
+        LOG_INFO("Plex", "No Plex servers found, fetching from Plex.tv");
+        if (!fetchServers())
+        {
+            LOG_ERROR("Plex", "Failed to fetch Plex servers");
+            return false;
+        }
     }
 
     // Set up SSE connections to each server
@@ -67,7 +72,7 @@ bool Plex::acquireAuthToken()
     std::map<std::string, std::string> headers = {
         {"X-Plex-Client-Identifier", clientId},
         {"X-Plex-Product", "Plex Presence"},
-        {"X-Plex-Version", "0.2.0"},
+        {"X-Plex-Version", "0.2.1"},
         {"X-Plex-Device", "PC"},
 #if defined(_WIN32)
         {"X-Plex-Platform", "Windows"},
@@ -147,6 +152,10 @@ bool Plex::acquireAuthToken()
 
                     // Save the auth token
                     Config::getInstance().setPlexAuthToken(authToken);
+
+                    // Fetch and save the username
+                    fetchAndSaveUsername(authToken, clientId);
+
                     Config::getInstance().saveConfig();
 
                     return true;
@@ -167,6 +176,64 @@ bool Plex::acquireAuthToken()
     catch (const std::exception &e)
     {
         LOG_ERROR("Plex", "Error parsing PIN response: " + std::string(e.what()));
+    }
+
+    return false;
+}
+
+// Add a new helper method to fetch the username
+bool Plex::fetchAndSaveUsername(const std::string &authToken, const std::string &clientId)
+{
+    LOG_INFO("Plex", "Fetching Plex username");
+
+    // Create HTTP client
+    HttpClient client;
+
+    // Set up request headers
+    std::map<std::string, std::string> headers = {
+        {"X-Plex-Token", authToken},
+        {"X-Plex-Client-Identifier", clientId},
+        {"Accept", "application/json"}};
+
+    // Make the request to fetch account information
+    std::string response;
+    std::string url = "https://plex.tv/api/v2/user";
+
+    if (!client.get(url, headers, response))
+    {
+        LOG_ERROR("Plex", "Failed to fetch user information");
+        return false;
+    }
+
+    try
+    {
+        auto json = nlohmann::json::parse(response);
+
+        if (json.contains("username"))
+        {
+            std::string username = json["username"].get<std::string>();
+            LOG_INFO("Plex", "Username: " + username);
+
+            // Save the username
+            Config::getInstance().setPlexUsername(username);
+            return true;
+        }
+        else if (json.contains("title"))
+        {
+            // Some accounts may have title instead of username
+            std::string username = json["title"].get<std::string>();
+            LOG_INFO("Plex", "Username (from title): " + username);
+
+            // Save the username
+            Config::getInstance().setPlexUsername(username);
+            return true;
+        }
+
+        LOG_ERROR("Plex", "Username not found in response");
+    }
+    catch (const std::exception &e)
+    {
+        LOG_ERROR("Plex", "Error parsing user response: " + std::string(e.what()));
     }
 
     return false;
@@ -209,7 +276,7 @@ bool Plex::fetchServers()
         {"X-Plex-Token", authToken},
         {"X-Plex-Client-Identifier", clientId},
         {"X-Plex-Product", "Plex Presence"},
-        {"X-Plex-Version", "0.2.0"},
+        {"X-Plex-Version", "0.2.1"},
         {"X-Plex-Device", "PC"},
         {"X-Plex-Platform", "Windows"},
         {"Accept", "application/json"}};
@@ -258,8 +325,12 @@ bool Plex::parseServerJson(const std::string &jsonStr)
             server->clientIdentifier = resource.value("clientIdentifier", "");
             server->accessToken = resource.value("accessToken", "");
             server->running = false;
+            server->owned = resource.value("owned", false);
+            ;
 
-            LOG_INFO("Plex", "Found server: " + server->name + " (" + server->clientIdentifier + ")");
+            LOG_INFO("Plex", "Found server: " + server->name +
+                                 " (" + server->clientIdentifier + ")" +
+                                 (server->owned ? " [owned]" : " [shared]"));
 
             // Process connections (we want both local and remote)
             if (resource.contains("connections") && resource["connections"].is_array())
@@ -285,18 +356,17 @@ bool Plex::parseServerJson(const std::string &jsonStr)
             // Add server to our map and config
             if (!server->localUri.empty() || !server->publicUri.empty())
             {
-                m_servers[server->clientIdentifier] = server;
-
-                // Save to config
+                // Save to config with ownership status
                 config.addPlexServer(server->name, server->clientIdentifier,
-                                     server->localUri, server->publicUri, server->accessToken);
+                                     server->localUri, server->publicUri,
+                                     server->accessToken, server->owned);
             }
         }
 
         config.saveConfig();
 
-        LOG_INFO("Plex", "Found " + std::to_string(m_servers.size()) + " Plex servers");
-        return !m_servers.empty();
+        LOG_INFO("Plex", "Found " + std::to_string(config.getPlexServers().size()) + " Plex servers");
+        return !config.getPlexServers().empty();
     }
     catch (const std::exception &e)
     {
@@ -309,7 +379,7 @@ void Plex::setupServerConnections()
 {
     LOG_INFO("Plex", "Setting up server connections");
 
-    for (auto &[id, server] : m_servers)
+    for (auto &[id, server] : Config::getInstance().getPlexServers())
     {
         // Create a new HTTP client for this server
         server->httpClient = std::make_unique<HttpClient>();
@@ -331,7 +401,7 @@ void Plex::setupServerConnections()
             {"X-Plex-Token", server->accessToken},
             {"X-Plex-Client-Identifier", Config::getInstance().getPlexClientIdentifier()},
             {"X-Plex-Product", "Plex Presence"},
-            {"X-Plex-Version", "0.2.0"},
+            {"X-Plex-Version", "0.2.1"},
             {"X-Plex-Device", "PC"},
             {"X-Plex-Platform", "Windows"}};
 
@@ -376,12 +446,13 @@ void Plex::processPlaySessionStateNotification(const std::string &serverId, cons
 {
     LOG_DEBUG("Plex", "Processing PlaySessionStateNotification: " + notification.dump());
 
-    auto server = m_servers[serverId];
-    if (!server)
+    auto server_itr = Config::getInstance().getPlexServers().find(serverId);
+    if (server_itr == Config::getInstance().getPlexServers().end())
     {
         LOG_ERROR("Plex", "Unknown server ID: " + serverId);
         return;
     }
+    auto server = server_itr->second;
 
     std::string sessionKey = notification.value("sessionKey", "");
     std::string state = notification.value("state", "");
@@ -402,6 +473,16 @@ void Plex::processPlaySessionStateNotification(const std::string &serverId, cons
 
         // Fetch detailed media info
         info = fetchMediaDetails(serverUri, server->accessToken, mediaKey);
+
+        // Fetch user info from session data
+        if (server->owned)
+        {
+            fetchSessionUserInfo(serverUri, server->accessToken, sessionKey, info);
+            if (info.username != Config::getInstance().getPlexUsername())
+            {
+                return;
+            }
+        }
 
         // Update state
         if (state == "playing")
@@ -441,6 +522,61 @@ void Plex::processPlaySessionStateNotification(const std::string &serverId, cons
             LOG_INFO("Plex", "Removing stopped session: " + sessionKey);
             m_activeSessions.erase(sessionKey);
         }
+    }
+}
+
+void Plex::fetchSessionUserInfo(const std::string &serverUri, const std::string &accessToken,
+                                const std::string &sessionKey, MediaInfo &info)
+{
+    LOG_DEBUG("Plex", "Fetching user info for session: " + sessionKey);
+
+    // Create HTTP client
+    HttpClient client;
+
+    // Set up headers
+    std::map<std::string, std::string> headers = {
+        {"X-Plex-Token", accessToken},
+        {"X-Plex-Client-Identifier", Config::getInstance().getPlexClientIdentifier()},
+        {"Accept", "application/json"}};
+
+    // Make the request to get session data
+    std::string url = serverUri + "/status/sessions";
+    std::string response;
+
+    if (!client.get(url, headers, response))
+    {
+        LOG_ERROR("Plex", "Failed to fetch session information");
+        return;
+    }
+
+    try
+    {
+        auto json = nlohmann::json::parse(response);
+
+        if (!json.contains("MediaContainer") || !json["MediaContainer"].contains("Metadata"))
+        {
+            LOG_ERROR("Plex", "Invalid session response format");
+            return;
+        }
+
+        // Find the matching session by sessionKey
+        for (const auto &session : json["MediaContainer"]["Metadata"])
+        {
+            if (session.contains("sessionKey") && session["sessionKey"].get<std::string>() == sessionKey)
+            {
+                // Extract user info
+                if (session.contains("User") && session["User"].contains("title"))
+                {
+                    info.username = session["User"]["title"].get<std::string>();
+                    LOG_INFO("Plex", "Found user for session " + sessionKey + ": " + info.username);
+                }
+                break;
+            }
+        }
+    }
+    catch (const std::exception &e)
+    {
+        LOG_ERROR("Plex", "Error parsing session data: " + std::string(e.what()));
     }
 }
 
@@ -800,7 +936,7 @@ void Plex::stopConnections()
     LOG_INFO("Plex", "Stopping all Plex connections");
 
     // Stop all SSE connections with a very short timeout since we're shutting down
-    for (auto &[id, server] : m_servers)
+    for (auto &[id, server] : Config::getInstance().getPlexServers())
     {
         if (server->httpClient)
         {
@@ -811,9 +947,6 @@ void Plex::stopConnections()
             server->httpClient.reset();
         }
     }
-
-    // Clear the servers map to ensure all resources are freed
-    m_servers.clear();
 
     LOG_INFO("Plex", "All Plex connections stopped");
 }

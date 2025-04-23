@@ -122,6 +122,7 @@ void Config::loadFromYaml(const YAML::Node &config)
         const auto &plex = config["plex"];
         plexAuthToken = plex["auth_token"] ? plex["auth_token"].as<std::string>() : "";
         plexClientIdentifier = plex["client_identifier"] ? plex["client_identifier"].as<std::string>() : "";
+        plexUsername = plex["username"] ? plex["username"].as<std::string>() : ""; // Load username
     }
 
     // Plex servers
@@ -130,13 +131,21 @@ void Config::loadFromYaml(const YAML::Node &config)
     {
         for (const auto &server : config["plex_servers"])
         {
-            PlexServerConfig cfg;
-            cfg.name = server["name"] ? server["name"].as<std::string>() : "";
-            cfg.clientIdentifier = server["client_identifier"] ? server["client_identifier"].as<std::string>() : "";
-            cfg.localUri = server["local_uri"] ? server["local_uri"].as<std::string>() : "";
-            cfg.publicUri = server["public_uri"] ? server["public_uri"].as<std::string>() : "";
-            cfg.accessToken = server["access_token"] ? server["access_token"].as<std::string>() : "";
-            plexServers.push_back(cfg);
+            std::string name = server["name"] ? server["name"].as<std::string>() : "";
+            std::string clientId = server["client_identifier"] ? server["client_identifier"].as<std::string>() : "";
+            std::string localUri = server["local_uri"] ? server["local_uri"].as<std::string>() : "";
+            std::string publicUri = server["public_uri"] ? server["public_uri"].as<std::string>() : "";
+            std::string accessToken = server["access_token"] ? server["access_token"].as<std::string>() : "";
+            bool owned = server["owned"] ? server["owned"].as<bool>() : false;
+
+            // Create the server directly with make_shared
+            plexServers[clientId] = std::make_shared<PlexServer>();
+            plexServers[clientId]->name = name;
+            plexServers[clientId]->clientIdentifier = clientId;
+            plexServers[clientId]->localUri = localUri;
+            plexServers[clientId]->publicUri = publicUri;
+            plexServers[clientId]->accessToken = accessToken;
+            plexServers[clientId]->owned = owned;
         }
     }
 
@@ -165,18 +174,20 @@ YAML::Node Config::saveToYaml() const
     YAML::Node plex;
     plex["auth_token"] = plexAuthToken;
     plex["client_identifier"] = plexClientIdentifier;
+    plex["username"] = plexUsername; // Save username
     config["plex"] = plex;
 
     // Plex servers
     YAML::Node servers;
-    for (const auto &server : plexServers)
+    for (const auto &[id, server] : plexServers)
     {
         YAML::Node serverNode;
-        serverNode["name"] = server.name;
-        serverNode["client_identifier"] = server.clientIdentifier;
-        serverNode["local_uri"] = server.localUri;
-        serverNode["public_uri"] = server.publicUri;
-        serverNode["access_token"] = server.accessToken;
+        serverNode["name"] = server->name;
+        serverNode["client_identifier"] = server->clientIdentifier;
+        serverNode["local_uri"] = server->localUri;
+        serverNode["public_uri"] = server->publicUri;
+        serverNode["access_token"] = server->accessToken;
+        serverNode["owned"] = server->owned; // Save owned status
         servers.push_back(serverNode);
     }
     config["plex_servers"] = servers;
@@ -222,37 +233,47 @@ void Config::setPlexClientIdentifier(const std::string &id)
     plexClientIdentifier = id;
 }
 
-const std::vector<PlexServerConfig> &Config::getPlexServers() const
+std::string Config::getPlexUsername() const
+{
+    return plexUsername;
+}
+
+void Config::setPlexUsername(const std::string &username)
+{
+    plexUsername = username;
+}
+
+const std::map<std::string, std::shared_ptr<PlexServer>> &Config::getPlexServers() const
 {
     return plexServers;
 }
 
 void Config::addPlexServer(const std::string &name, const std::string &clientId,
                            const std::string &localUri, const std::string &publicUri,
-                           const std::string &accessToken)
+                           const std::string &accessToken, bool owned)
 {
     // Check if this server already exists
-    for (auto &server : plexServers)
+    auto it = plexServers.find(clientId);
+    if (it != plexServers.end())
     {
-        if (server.clientIdentifier == clientId)
-        {
-            // Update existing server
-            server.name = name;
-            server.localUri = localUri;
-            server.publicUri = publicUri;
-            server.accessToken = accessToken;
-            return;
-        }
+        // Update existing server
+        it->second->name = name;
+        it->second->localUri = localUri;
+        it->second->publicUri = publicUri;
+        it->second->accessToken = accessToken;
+        it->second->owned = owned;
+        return;
     }
 
-    // Add new server
-    PlexServerConfig cfg;
-    cfg.name = name;
-    cfg.clientIdentifier = clientId;
-    cfg.localUri = localUri;
-    cfg.publicUri = publicUri;
-    cfg.accessToken = accessToken;
-    plexServers.push_back(cfg);
+    // Add new server by creating it directly
+    auto server = std::make_shared<PlexServer>();
+    server->name = name;
+    server->clientIdentifier = clientId;
+    server->localUri = localUri;
+    server->publicUri = publicUri;
+    server->accessToken = accessToken;
+    server->owned = owned;
+    plexServers[clientId] = server;
 }
 
 void Config::clearPlexServers()
