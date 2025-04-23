@@ -487,12 +487,11 @@ MediaInfo Plex::fetchMediaDetails(const std::string &serverUri, const std::strin
         // Set basic info
         info.title = metadata.value("title", "Unknown");
         info.originalTitle = metadata.value("originalTitle", info.title);
-        info.grandparentTitle = metadata.value("grandparentTitle", "Unknown");
         info.duration = metadata.value("duration", 0) / 1000.0; // Convert from milliseconds to seconds
-
-        // Get media type
+        info.summary = metadata.value("summary", "No summary available");
         std::string type = metadata.value("type", "unknown");
 
+        // Movie/TV specifics
         if (type == "movie")
         {
             info.type = MediaType::Movie;
@@ -500,24 +499,56 @@ MediaInfo Plex::fetchMediaDetails(const std::string &serverUri, const std::strin
         else if (type == "episode")
         {
             info.type = MediaType::TVShow;
-
+            info.grandparentTitle = metadata.value("grandparentTitle", "Unknown");
             info.season = metadata.value("parentIndex", 0);
             info.episode = metadata.value("index", 0);
+
+            // Get the grandparent key (TV show) to fetch its metadata
+            if (metadata.contains("grandparentKey"))
+            {
+                std::string grandparentKey = metadata.value("grandparentKey", "");
+                fetchGrandparentArtwork(serverUri, accessToken, grandparentKey, info);
+            }
         }
         else
         {
             info.type = MediaType::Unknown;
         }
 
-        // Get username if available
-        if (metadata.contains("User"))
+        // Get external IDs that can be used to fetch public artwork
+        if (metadata.contains("Guid") && metadata["Guid"].is_array())
         {
-            info.username = metadata["User"].value("title", "Unknown User");
+            for (const auto &guid : metadata["Guid"])
+            {
+                std::string id = guid.value("id", "");
+                if (id.find("tmdb://") == 0)
+                {
+                    // Extract TMDB ID
+                    std::string tmdbId = id.substr(7);
+
+                    // For movies, use TMDB movie endpoint
+                    if (info.type == MediaType::Movie)
+                    {
+                        fetchTMDBMovieArtwork(tmdbId, info);
+                    }
+                    // For TV shows, only use if we didn't get artwork from grandparent
+                    else if (info.type == MediaType::TVShow && info.artPath.empty())
+                    {
+                        fetchTMDBTVShowArtwork(tmdbId, info);
+                    }
+                    break;
+                }
+                else if (id.find("tvdb://") == 0 && info.artPath.empty())
+                {
+                    // Use TVDB as fallback only if needed
+                    std::string tvdbId = id.substr(7);
+                    info.artPath = "https://thetvdb.com/banners/" + tvdbId;
+                    break;
+                }
+            }
         }
-        else
-        {
-            info.username = "Unknown User";
-        }
+
+        info.year = metadata.value("year", 0);
 
         LOG_INFO("Plex", "Media details: " + info.title + " (" + type + ")");
     }
@@ -527,6 +558,188 @@ MediaInfo Plex::fetchMediaDetails(const std::string &serverUri, const std::strin
     }
 
     return info;
+}
+
+void Plex::fetchGrandparentArtwork(const std::string &serverUri, const std::string &accessToken,
+                                   const std::string &grandparentKey, MediaInfo &info)
+{
+    LOG_DEBUG("Plex", "Fetching TV show metadata for key: " + grandparentKey);
+
+    // Create HTTP client
+    HttpClient client;
+
+    // Set up headers
+    std::map<std::string, std::string> headers = {
+        {"X-Plex-Token", accessToken},
+        {"X-Plex-Client-Identifier", Config::getInstance().getPlexClientIdentifier()},
+        {"Accept", "application/json"}};
+
+    // Make the request
+    std::string url = serverUri + grandparentKey;
+    std::string response;
+
+    if (!client.get(url, headers, response))
+    {
+        LOG_ERROR("Plex", "Failed to fetch TV show metadata");
+        return;
+    }
+
+    try
+    {
+        auto json = nlohmann::json::parse(response);
+
+        if (!json.contains("MediaContainer") || !json["MediaContainer"].contains("Metadata") ||
+            json["MediaContainer"]["Metadata"].empty())
+        {
+            LOG_ERROR("Plex", "Invalid TV show metadata response");
+            return;
+        }
+
+        auto metadata = json["MediaContainer"]["Metadata"][0];
+
+        // Process TMDB IDs from the show level
+        if (metadata.contains("Guid") && metadata["Guid"].is_array())
+        {
+            for (const auto &guid : metadata["Guid"])
+            {
+                std::string id = guid.value("id", "");
+                if (id.find("tmdb://") == 0)
+                {
+                    // Extract TMDB ID
+                    std::string tmdbId = id.substr(7);
+                    fetchTMDBTVShowArtwork(tmdbId, info);
+                    LOG_INFO("Plex", "Found TV show TMDB ID: " + tmdbId);
+                    return;
+                }
+                else if (id.find("tvdb://") == 0 && info.artPath.empty())
+                {
+                    // Extract TVDB ID as fallback
+                    std::string tvdbId = id.substr(7);
+                    info.artPath = "https://thetvdb.com/banners/" + tvdbId;
+                    LOG_INFO("Plex", "Found TV show TVDB ID: " + tvdbId);
+                    return;
+                }
+            }
+        }
+    }
+    catch (const std::exception &e)
+    {
+        LOG_ERROR("Plex", "Error parsing TV show metadata: " + std::string(e.what()));
+    }
+}
+
+void Plex::fetchTMDBMovieArtwork(const std::string &tmdbId, MediaInfo &info)
+{
+    LOG_DEBUG("Plex", "Fetching TMDB movie artwork for ID: " + tmdbId);
+
+    // TMDB API requires an access token - get it from config
+    std::string accessToken = Config::getInstance().getTMDBAccessToken();
+
+    if (accessToken.empty())
+    {
+        LOG_INFO("Plex", "No TMDB access token available");
+        return;
+    }
+
+    // Create HTTP client
+    HttpClient client;
+
+    // Set up API URL for v4 method (using read access token)
+    std::string url = "https://api.themoviedb.org/3/movie/" + tmdbId + "/images";
+
+    // Set up headers with Bearer token for v4 authentication
+    std::map<std::string, std::string> headers = {
+        {"Authorization", "Bearer " + accessToken},
+        {"Content-Type", "application/json;charset=utf-8"}};
+
+    // Make the request
+    std::string response;
+    if (!client.get(url, headers, response))
+    {
+        LOG_ERROR("Plex", "Failed to fetch TMDB movie images");
+        return;
+    }
+
+    try
+    {
+        auto json = nlohmann::json::parse(response);
+
+        // First try to get a poster
+        if (json.contains("posters") && !json["posters"].empty())
+        {
+            std::string posterPath = json["posters"][0]["file_path"];
+            info.artPath = "https://image.tmdb.org/t/p/w500" + posterPath;
+            LOG_INFO("Plex", "Found TMDB movie poster: " + info.artPath);
+        }
+        // Fallback to backdrops
+        else if (json.contains("backdrops") && !json["backdrops"].empty())
+        {
+            std::string backdropPath = json["backdrops"][0]["file_path"];
+            info.artPath = "https://image.tmdb.org/t/p/w500" + backdropPath;
+            LOG_INFO("Plex", "Found TMDB movie backdrop: " + info.artPath);
+        }
+    }
+    catch (const std::exception &e)
+    {
+        LOG_ERROR("Plex", "Error parsing TMDB movie response: " + std::string(e.what()));
+    }
+}
+
+void Plex::fetchTMDBTVShowArtwork(const std::string &tmdbId, MediaInfo &info)
+{
+    LOG_DEBUG("Plex", "Fetching TMDB TV show artwork for ID: " + tmdbId);
+
+    // Get access token from config
+    std::string accessToken = Config::getInstance().getTMDBAccessToken();
+
+    if (accessToken.empty())
+    {
+        LOG_INFO("Plex", "No TMDB access token available");
+        return;
+    }
+
+    // Create HTTP client
+    HttpClient client;
+
+    // Set up API URL
+    std::string url = "https://api.themoviedb.org/3/tv/" + tmdbId + "/images";
+
+    // Set up headers with Bearer token for v4 authentication
+    std::map<std::string, std::string> headers = {
+        {"Authorization", "Bearer " + accessToken},
+        {"Content-Type", "application/json;charset=utf-8"}};
+
+    // Make the request
+    std::string response;
+    if (!client.get(url, headers, response))
+    {
+        LOG_ERROR("Plex", "Failed to fetch TMDB TV show images");
+        return;
+    }
+
+    try
+    {
+        auto json = nlohmann::json::parse(response);
+
+        // First try to get a poster
+        if (json.contains("posters") && !json["posters"].empty())
+        {
+            std::string posterPath = json["posters"][0]["file_path"];
+            info.artPath = "https://image.tmdb.org/t/p/w500" + posterPath;
+            LOG_INFO("Plex", "Found TMDB TV show poster: " + info.artPath);
+        }
+        // Fallback to backdrops
+        else if (json.contains("backdrops") && !json["backdrops"].empty())
+        {
+            std::string backdropPath = json["backdrops"][0]["file_path"];
+            info.artPath = "https://image.tmdb.org/t/p/w500" + backdropPath;
+            LOG_INFO("Plex", "Found TMDB TV show backdrop: " + info.artPath);
+        }
+    }
+    catch (const std::exception &e)
+    {
+        LOG_ERROR("Plex", "Error parsing TMDB TV show response: " + std::string(e.what()));
+    }
 }
 
 MediaInfo Plex::getCurrentPlayback()

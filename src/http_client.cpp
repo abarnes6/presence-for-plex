@@ -11,10 +11,8 @@ HttpClient::HttpClient()
 
 HttpClient::~HttpClient()
 {
-    // Signal the SSE thread to stop
     stopSSE();
 
-    // Wait for the thread to finish
     if (m_sseThread.joinable())
     {
         m_sseThread.join();
@@ -131,18 +129,16 @@ size_t HttpClient::sseCallback(char *ptr, size_t size, size_t nmemb, void *userd
 
     client->m_sseBuffer.append(ptr, total_size);
 
-    // Process any complete events in the buffer
     size_t pos;
     while ((pos = client->m_sseBuffer.find("\n\n")) != std::string::npos)
     {
         std::string event = client->m_sseBuffer.substr(0, pos);
         client->m_sseBuffer.erase(0, pos + 2); // +2 for \n\n
 
-        // Extract data field if present
         size_t data_pos = event.find("data: ");
         if (data_pos != std::string::npos)
         {
-            std::string data = event.substr(data_pos + 6); // +6 for "data: "
+            std::string data = event.substr(data_pos + 6);
             if (client->m_eventCallback)
             {
                 client->m_eventCallback(data);
@@ -160,9 +156,9 @@ int HttpClient::sseCallbackProgress(void *clientp, curl_off_t dltotal, curl_off_
     LOG_DEBUG_STREAM("HttpClient", "SSE progress called, stop flag: " << httpClient->m_stopFlag.load());
     if (httpClient->m_stopFlag)
     {
-        return 1; // Return non-zero to abort the transfer
+        return 1;
     }
-    return 0; // Return zero to continue
+    return 0;
 }
 
 bool HttpClient::stopSSE()
@@ -186,7 +182,6 @@ bool HttpClient::stopSSE()
 bool HttpClient::startSSE(const std::string &url, const std::map<std::string, std::string> &headers,
                           EventCallback callback)
 {
-    // Reset state
     {
         std::lock_guard<std::mutex> lock(m_sseMutex);
         m_stopFlag = false;
@@ -210,7 +205,6 @@ bool HttpClient::startSSE(const std::string &url, const std::map<std::string, st
                 return;
             }
 
-            // Keep trying to connect until cancelled
             while (!m_stopFlag) {
                 
                 curl_easy_reset(sse_curl);
@@ -219,50 +213,36 @@ bool HttpClient::startSSE(const std::string &url, const std::map<std::string, st
                 curl_easy_setopt(sse_curl, CURLOPT_WRITEDATA, this);
                 curl_easy_setopt(sse_curl, CURLOPT_TCP_NODELAY, 1L);
                 
-                // Set the progress callback - make sure this is correct
                 curl_easy_setopt(sse_curl, CURLOPT_XFERINFOFUNCTION, sseCallbackProgress);
                 curl_easy_setopt(sse_curl, CURLOPT_XFERINFODATA, this);
                 curl_easy_setopt(sse_curl, CURLOPT_NOPROGRESS, 0L);
-                
-                // Additional options to make the connection more robust
-                curl_easy_setopt(sse_curl, CURLOPT_FOLLOWLOCATION, 1L);
-                curl_easy_setopt(sse_curl, CURLOPT_CONNECTTIMEOUT, 30L);
-                curl_easy_setopt(sse_curl, CURLOPT_LOW_SPEED_TIME, 30L);
-                curl_easy_setopt(sse_curl, CURLOPT_LOW_SPEED_LIMIT, 10L); 
 
-                // Set up headers
                 struct curl_slist *curl_headers = NULL;
                 for (const auto& [key, value] : headers) {
                     std::string header = key + ": " + value;
                     curl_headers = curl_slist_append(curl_headers, header.c_str());
                 }
-                // Add Accept header for SSE
                 curl_headers = curl_slist_append(curl_headers, "Accept: text/event-stream");
                 curl_easy_setopt(sse_curl, CURLOPT_HTTPHEADER, curl_headers);
 
-                // Check again before performing the request
                 if (m_stopFlag) {
                     curl_slist_free_all(curl_headers);
                     break;
                 }
 
-                // Perform the request
                 CURLcode res = curl_easy_perform(sse_curl);
                         
                 if (res == CURLE_ABORTED_BY_CALLBACK) {
                     LOG_INFO("HttpClient", "SSE connection aborted");
                 } else if (res != CURLE_OK) {
                     LOG_ERROR_STREAM("HttpClient", "SSE connection error: " << curl_easy_strerror(res));
-                    // Add a delay before reconnecting to avoid hammering the server
                     if (!m_stopFlag) {
                         std::this_thread::sleep_for(std::chrono::seconds(5));
                     }
                 }
 
-                // Clean up headers
                 curl_slist_free_all(curl_headers);
 
-                // Check if we should stop
                 if (m_stopFlag) {
                     break;
                 }

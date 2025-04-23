@@ -41,7 +41,7 @@ std::filesystem::path Config::getConfigDirectory()
     return configDir;
 }
 
-Config::Config() : logLevel(1), discordClientId(1359742002618564618)
+Config::Config() : logLevel(1), discordClientId(1359742002618564618), tmdbAccessToken("eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiIzNmMxOTI3ZjllMTlkMzUxZWFmMjAxNGViN2JmYjNkZiIsIm5iZiI6MTc0NTQzMTA3NC4yMjcsInN1YiI6IjY4MDkyYTIyNmUxYTc2OWU4MWVmMGJhOSIsInNjb3BlcyI6WyJhcGlfcmVhZCJdLCJ2ZXJzaW9uIjoxfQ.Td6eAbW7SgQOMmQpRDwVM-_3KIMybGRqWNK8Yqw1Zzs")
 {
     configPath = getConfigDirectory() / "config.yaml";
     loadConfig();
@@ -146,6 +146,12 @@ void Config::loadFromYaml(const YAML::Node &config)
         const auto &discord = config["discord"];
         discordClientId = discord["client_id"] ? discord["client_id"].as<uint64_t>() : discordClientId;
     }
+
+    // TMDB API key
+    if (config["tmdb_access_token"])
+    {
+        tmdbAccessToken = config["tmdb_access_token"].as<std::string>();
+    }
 }
 
 YAML::Node Config::saveToYaml() const
@@ -179,6 +185,9 @@ YAML::Node Config::saveToYaml() const
     YAML::Node discord;
     discord["client_id"] = discordClientId;
     config["discord"] = discord;
+
+    // TMDB API key
+    config["tmdb_access_token"] = tmdbAccessToken;
 
     return config;
 }
@@ -259,4 +268,14 @@ uint64_t Config::getDiscordClientId() const
 void Config::setDiscordClientId(const uint64_t &id)
 {
     discordClientId = id;
+}
+
+std::string Config::getTMDBAccessToken() const
+{
+    return tmdbAccessToken;
+}
+
+void Config::setTMDBAccessToken(const std::string &token)
+{
+    tmdbAccessToken = token;
 }

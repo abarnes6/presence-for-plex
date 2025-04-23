@@ -38,19 +38,30 @@ enum class MediaType
 // Playback information
 struct MediaInfo
 {
-    std::string title;            // Title of the media (episode name)
-    std::string originalTitle;    // Original title (original language)
+    // General
+    std::string title;         // Title of the media
+    std::string originalTitle; // Original title (original language)
+    MediaType type;            // Type of media (movie, TV show)
+    std::string artPath;       // Path to art on the server (cover image)
+    int year;                  // Year of release
+    std::string summary;       // Summary of the media
+
+    // TV Show specific
     std::string grandparentTitle; // Parent title (tv show name)
-    int season;
-    int episode;
-    std::string username;   // Username of the person watching
-    PlaybackState state;    // Current playback state
-    double progress;        // Current progress in seconds
-    double duration;        // Total duration in seconds
-    time_t startTime;       // When the playback started
+    std::string grandparentArt;   // Parent art URL (tv show cover image)
+    int season;                   // Season number
+    int episode;                  // Episode number
+
+    // Playback info
+    std::string username; // Username of the person watching
+    PlaybackState state;  // Current playback state
+    double progress;      // Current progress in seconds
+    double duration;      // Total duration in seconds
+    time_t startTime;     // When the playback started
+
+    // Misc
     std::string sessionKey; // Plex session key
     std::string serverId;   // ID of the server hosting this content
-    MediaType type;         // Type of media (movie, TV show)
 
     MediaInfo() : state(PlaybackState::Stopped),
                   progress(0),

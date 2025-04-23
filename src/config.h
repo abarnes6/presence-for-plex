@@ -38,6 +38,9 @@ public:
     std::string getPlexClientIdentifier() const;
     void setPlexClientIdentifier(const std::string &id);
 
+    std::string getTMDBAccessToken() const;
+    void setTMDBAccessToken(const std::string &token);
+
     // Plex server management
     const std::vector<PlexServerConfig> &getPlexServers() const;
     void addPlexServer(const std::string &name, const std::string &clientId,
@@ -65,6 +68,7 @@ private:
     std::string plexAuthToken;
     std::string plexClientIdentifier;
     std::vector<PlexServerConfig> plexServers;
+    std::string tmdbAccessToken; // TMDB Access Token for fetching artwork
 
     // Connection settings
     std::string serverIp;

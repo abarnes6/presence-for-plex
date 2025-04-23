@@ -41,6 +41,10 @@ private:
 	void setupServerConnections();
 	void handleSSEEvent(const std::string &serverId, const std::string &event);
 	void processPlaySessionStateNotification(const std::string &serverId, const nlohmann::json &notification);
+	void fetchGrandparentArtwork(const std::string &serverUri, const std::string &accessToken,
+								 const std::string &grandparentKey, MediaInfo &info);
+	void fetchTMDBMovieArtwork(const std::string &tmdbId, MediaInfo &info);
+	void fetchTMDBTVShowArtwork(const std::string &tmdbId, MediaInfo &info);
 
 	// Media details
 	MediaInfo fetchMediaDetails(const std::string &serverUri, const std::string &accessToken,

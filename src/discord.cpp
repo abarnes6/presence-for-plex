@@ -277,16 +277,31 @@ std::string Discord::createPresenceMetadata(const MediaInfo &info, const std::st
 json Discord::createActivity(const MediaInfo &info)
 {
 	std::string state;
+	std::string details;
+	json assets = {{"large_text", info.title}};
+
+	if (info.artPath != "")
+	{
+		assets["large_image"] = info.artPath;
+	}
+	else
+	{
+		assets["large_image"] = "plex_logo";
+	}
+
 	if (info.type == MediaType::TVShow)
 	{
 
 		std::stringstream ss;
 		ss << "S" << info.season;
 		ss << "E" << std::setw(2) << std::setfill('0') << info.episode;
+
+		details = info.grandparentTitle;
 		state = ss.str() + " - " + info.title;
 	}
 	else
 	{
+		details = info.title + " (" + std::to_string(info.year) + ")";
 		state = info.title;
 	}
 
@@ -296,15 +311,13 @@ json Discord::createActivity(const MediaInfo &info)
 	}
 	else if (info.state == PlaybackState::Paused)
 	{
-		state = "⏸️ " + state;
+		assets["small_image"] = "paused";
+		assets["small_text"] = "Paused";
 	}
-
-	auto details = info.grandparentTitle;
-
-	json assets = {{"large_image", "plex_logo"},
-				   {"large_text", info.title},
-				   {"small_image", "plex_logo"},
-				   {"small_text", info.username}};
+	else if (info.state == PlaybackState::Stopped)
+	{
+		state = "Stopped";
+	}
 
 	auto now = std::chrono::system_clock::now();
 	int64_t current_time = std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch()).count();
