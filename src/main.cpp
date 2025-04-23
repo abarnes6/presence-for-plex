@@ -32,8 +32,6 @@ int main()
     }
 
     app.run();
-
-    g_app = nullptr;
     return 0;
 }
 

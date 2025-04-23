@@ -1,726 +1,606 @@
 #include "plex.h"
+#include "config.h"
+#include "logger.h"
+#include <random>
+#include <iomanip>
+#include <sstream>
+#include <curl/curl.h>
+#include "uuid.h"
+#ifdef _WIN32
+#include <shellapi.h>
+#endif
 
-using json = nlohmann::json;
+Plex::Plex() : m_initialized(false)
+{
+}
 
 Plex::~Plex()
 {
-    stopPolling();
-    curl_global_cleanup();
+    LOG_INFO("Plex", "Plex object destroyed");
 }
 
-// Platform-specific browser opener
-void openBrowser(const std::string &url)
+bool Plex::init()
 {
-#ifdef _WIN32
-    ShellExecuteA(NULL, "open", url.c_str(), NULL, NULL, SW_SHOWNORMAL);
-#elif defined(__APPLE__)
-    std::string command = "open \"" + url + "\"";
-    system(command.c_str());
-#elif defined(__linux__)
-    // Try different methods on Linux (xdg-open, gio, firefox, etc.)
-    std::string escaped_url = url;
-    // Basic escaping for command line
-    for (size_t i = 0; i < escaped_url.length(); i++)
-    {
-        if (escaped_url[i] == '\"' || escaped_url[i] == '\\' || escaped_url[i] == '`' ||
-            escaped_url[i] == '$' || escaped_url[i] == '!')
-        {
-            escaped_url.insert(i, "\\");
-            i++;
-        }
-    }
+    LOG_INFO("Plex", "Initializing Plex connection");
 
-    // Try xdg-open first (most common)
-    std::string command = "xdg-open \"" + escaped_url + "\" > /dev/null 2>&1";
-    if (system(command.c_str()) != 0)
-    {
-        // Try gio
-        command = "gio open \"" + escaped_url + "\" > /dev/null 2>&1";
-        if (system(command.c_str()) != 0)
-        {
-            // Try common browsers
-            const char *browsers[] = {"firefox", "google-chrome", "chromium", "brave", "opera"};
-            bool success = false;
+    // Check if we have a Plex auth token
+    auto &config = Config::getInstance();
+    std::string authToken = config.getPlexAuthToken();
 
-            for (const auto &browser : browsers)
-            {
-                command = std::string(browser) + " \"" + escaped_url + "\" > /dev/null 2>&1";
-                if (system(command.c_str()) == 0)
-                {
-                    success = true;
-                    break;
-                }
-            }
-
-            if (!success)
-            {
-                LOG_ERROR("Plex", "Failed to open browser. Please open this URL manually: " + url);
-            }
-        }
-    }
-#endif
-}
-
-// Modify Plex constructor to use the new function
-Plex::Plex()
-{
-}
-
-void Plex::init()
-{
-
-    // Get configuration
-    Config &config = Config::getInstance();
-
-    // Check if server IP is configured
-    if (!config.isServerIpConfigured())
-    {
-#ifdef _WIN32
-        // Display error message to the user on Windows
-        std::string errorMsg = "No Plex server IP configured.\n\n"
-                               "Open the configuration file folder using the tray icon.\n";
-        MessageBoxA(NULL, errorMsg.c_str(), "Plex Presence - Configuration Error", MB_OK | MB_ICONERROR);
-#endif
-        LOG_ERROR("Plex", "No Plex server IP configured. Please configure it in the config file.");
-        return;
-    }
-
-    // Check if we already have a Plex token
-    authToken = config.getPlexToken();
-
-    // If no token, we need to authenticate with Plex
     if (authToken.empty())
     {
-        LOG_INFO("Plex", "No Plex token found. Requesting authorization...");
-        authenticateWithPlex();
-    }
-
-    // Initialize CURL
-    curl_global_init(CURL_GLOBAL_DEFAULT);
-}
-
-// Helper method to get the current server URL from config
-std::string Plex::getServerUrl() const
-{
-    Config &config = Config::getInstance();
-    if (config.getServerIp().empty())
-    {
-        LOG_DEBUG("Plex", "Server IP is empty. Cannot construct server URL.");
-        return "";
-    }
-    std::string protocol = config.isForceHttps() ? "https://" : "http://";
-    return protocol + config.getServerIp() + ":" + std::to_string(config.getPort());
-}
-
-// Start the polling thread
-void Plex::startPolling()
-{
-    running = true;
-    pollingThread = std::thread(&Plex::plexPollingThread, this);
-}
-
-void Plex::stopPolling()
-{
-    running = false;
-    if (pollingThread.joinable())
-        pollingThread.join();
-}
-
-// Utility function for HTTP requests
-size_t Plex::WriteCallback(void *contents, size_t size, size_t nmemb, std::string *s)
-{
-    size_t newLength = size * nmemb;
-    try
-    {
-        s->append((char *)contents, newLength);
-        return newLength;
-    }
-    catch (std::bad_alloc &)
-    {
-        return 0;
-    }
-}
-
-// Function to perform HTTP request to Plex API
-std::string Plex::makeRequest(const std::string &requestUrl) const
-{
-    CURL *curl;
-    CURLcode res;
-    std::string readBuffer;
-
-    curl = curl_easy_init();
-    if (curl)
-    {
-        struct curl_slist *headers = NULL;
-        headers = curl_slist_append(headers, "Accept: application/json");
-        headers = curl_slist_append(headers, ("X-Plex-Token: " + this->authToken).c_str());
-
-        curl_easy_setopt(curl, CURLOPT_URL, requestUrl.c_str());
-        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
-        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &readBuffer);
-        curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10);
-        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
-        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
-
-        res = curl_easy_perform(curl);
-
-        curl_slist_free_all(headers);
-        curl_easy_cleanup(curl);
-
-        if (res != CURLE_OK)
+        // No auth token, need to acquire one
+        if (!acquireAuthToken())
         {
-            LOG_ERROR("Plex", "curl_easy_perform() failed: " + std::string(curl_easy_strerror(res)));
-            return "";
-        }
-
-        // Check if the response indicates an unauthorized token
-        if (!checkToken(readBuffer))
-        {
-            // Token is unauthorized, request a new one
-            Plex *nonConstThis = const_cast<Plex *>(this);
-            if (nonConstThis->authenticateWithPlex())
-            {
-                // Try the request again with the new token
-                return nonConstThis->makeRequest(requestUrl);
-            }
-        }
-    }
-
-    return readBuffer;
-}
-
-// Parse Plex API response
-bool Plex::parseSessionsResponse(const std::string &response, PlaybackInfo &info)
-{
-    try
-    {
-        // Check if response is empty or doesn't look like JSON
-        if (response.empty() || (response[0] != '{' && response[0] != '['))
-        {
-            LOG_ERROR("Plex", "Invalid Plex response format: Response doesn't appear to be JSON");
-            if (!response.empty())
-            {
-                LOG_ERROR_STREAM("Plex", "Response begins with: " << response.substr(0, std::min(50, (int)response.size())) << "...");
-            }
-            info.state = PlaybackState::Stopped;
+            LOG_ERROR("Plex", "Failed to acquire Plex auth token");
             return false;
         }
+        authToken = config.getPlexAuthToken();
+    }
 
-        json j = json::parse(response);
+    LOG_INFO("Plex", "Using Plex auth token: " + authToken.substr(0, 5) + "...");
 
-        // Check if there are any active sessions
-        if (j["MediaContainer"].contains("size") && j["MediaContainer"]["size"].get<int>() > 0)
-        {
-            auto sessions = j["MediaContainer"]["Metadata"];
-
-            // First, get the user ID of the authenticated user
-            std::string authenticatedUserId = "";
-            std::string authenticatedUsername = "";
-
-            // Get authenticated user info from Plex
-            std::string accountInfoResponse = makeRequest("https://plex.tv/api/v2/user");
-            if (!accountInfoResponse.empty() && accountInfoResponse[0] == '{')
-            {
-                try
-                {
-                    json accountInfo = json::parse(accountInfoResponse);
-                    if (accountInfo.contains("id"))
-                    {
-                        // Handle user ID - could be number or string
-                        if (accountInfo["id"].is_string())
-                            authenticatedUserId = accountInfo["id"].get<std::string>();
-                        else if (accountInfo["id"].is_number())
-                            authenticatedUserId = std::to_string(accountInfo["id"].get<int>());
-
-                        if (accountInfo.contains("username"))
-                            authenticatedUsername = accountInfo["username"].get<std::string>();
-                        else if (accountInfo.contains("title"))
-                            authenticatedUsername = accountInfo["title"].get<std::string>();
-                    }
-                }
-                catch (const std::exception &e)
-                {
-                    LOG_ERROR("Plex", "Error parsing user account info: " + std::string(e.what()));
-                }
-            }
-
-            // Try to find the session by matching various attributes
-            for (const auto &session : sessions)
-            {
-                bool isAuthenticatedUser = false;
-                std::string sessionUserId = "";
-
-                // Check if this session belongs to a user
-                if (session.contains("User"))
-                {
-                    auto user = session["User"];
-                    // Handle user ID - could be number or string
-                    if (user["id"].is_string())
-                        sessionUserId = user["id"].get<std::string>();
-                    else if (user["id"].is_number())
-                        sessionUserId = std::to_string(user["id"].get<int>());
-
-                    // Check if this is the authenticated user's session
-                    if (!authenticatedUserId.empty() && sessionUserId == authenticatedUserId)
-                    {
-                        isAuthenticatedUser = true;
-                    }
-                }
-
-                // If we haven't confirmed this is the user's session, check for local playback
-                if (!isAuthenticatedUser && session.contains("Player"))
-                {
-                    // First check if Player.userId matches the authenticated user ID
-                    if (session["Player"].contains("userID") && !authenticatedUserId.empty())
-                    {
-                        std::string playerUserId;
-                        if (session["Player"]["userID"].is_string())
-                            playerUserId = session["Player"]["userID"].get<std::string>();
-                        else if (session["Player"]["userID"].is_number())
-                            playerUserId = std::to_string(session["Player"]["userID"].get<int>());
-
-                        if (playerUserId == authenticatedUserId)
-                        {
-                            isAuthenticatedUser = true;
-                        }
-                    }
-
-                    // If still not matching, check for local playback as fallback
-                    if (!isAuthenticatedUser &&
-                        session["Player"].contains("local") &&
-                        session["Player"]["local"].get<bool>() == true)
-                    {
-                        isAuthenticatedUser = true;
-                    }
-                }
-
-                // If we still haven't found the user but have a userId of 1,
-                // this might be an admin account that owns the Plex server
-                if (!isAuthenticatedUser && sessionUserId == "1")
-                {
-                    isAuthenticatedUser = true;
-                }
-
-                if (isAuthenticatedUser)
-                {
-                    // Reset all fields before populating
-                    info = PlaybackInfo{};
-
-                    info.title = session["title"].get<std::string>();
-                    info.mediaType = session["type"].get<std::string>();
-
-                    // Check for playback state if Player information is available
-                    if (session.contains("Player"))
-                    {
-                        // Get the playback state
-                        if (session["Player"].contains("state"))
-                        {
-                            std::string state = session["Player"]["state"].get<std::string>();
-                            // Map the state to PlaybackState enum
-
-                            if (state == "playing")
-                            {
-                                info.state = PlaybackState::Playing;
-                            }
-                            else if (state == "paused")
-                            {
-                                info.state = PlaybackState::Paused;
-                            }
-                            else if (state == "buffering")
-                            {
-                                info.state = PlaybackState::Buffering;
-                            }
-                            else
-                            {
-                                info.state = PlaybackState::Stopped;
-                            }
-                        }
-                        else
-                        {
-                            info.state = PlaybackState::Playing; // Default to playing if state is not specified
-                        }
-                    }
-                    else
-                    {
-                        info.state = PlaybackState::Playing; // Default to playing if Player is not available
-                    }
-
-                    if (session.contains("User"))
-                    {
-                        auto user = session["User"];
-                        // Handle user ID - could be number or string
-                        if (user["id"].is_string())
-                            info.userId = user["id"].get<std::string>();
-                        else if (user["id"].is_number())
-                            info.userId = std::to_string(user["id"].get<int>());
-
-                        info.username = user["title"].get<std::string>();
-                    }
-                    else if (!authenticatedUsername.empty())
-                    {
-                        // Use the authenticated username if available
-                        info.userId = authenticatedUserId;
-                        info.username = authenticatedUsername;
-                    }
-                    else
-                    {
-                        // Fallback
-                        info.userId = "authenticated_user";
-                        info.username = "Authenticated User";
-                    }
-
-                    // Handle episode-specific information
-                    if (info.mediaType == "episode")
-                    {
-                        // Extract season and episode number
-                        std::string seasonNum = session["parentIndex"].is_string() ? session["parentIndex"].get<std::string>() : std::to_string(session["parentIndex"].get<int>());
-
-                        std::string episodeNum = session["index"].is_string() ? session["index"].get<std::string>() : std::to_string(session["index"].get<int>());
-
-                        // Format as S01E01
-                        info.seasonEpisode = "S" + (seasonNum.size() == 1 ? "0" + seasonNum : seasonNum) +
-                                             "E" + (episodeNum.size() == 1 ? "0" + episodeNum : episodeNum);
-
-                        // Get episode title
-                        info.episodeName = info.title;
-
-                        // Get show title and set as main title
-                        if (session.contains("grandparentTitle"))
-                        {
-                            info.title = session["grandparentTitle"].get<std::string>();
-                        }
-
-                        // Set subtitle with season/episode info and episode name
-                        info.subtitle = info.seasonEpisode + " - " + info.episodeName;
-                    }
-
-                    if (session.contains("thumb"))
-                    {
-                        info.thumbnailUrl = getServerUrl() + session["thumb"].get<std::string>() +
-                                            "?X-Plex-Token=" + authToken;
-                    }
-
-                    // Convert viewOffset and duration from milliseconds to seconds
-                    // Handle different possible numeric types
-                    if (session.contains("viewOffset"))
-                    {
-                        int64_t offset = session["viewOffset"].is_number_integer() ? session["viewOffset"].get<int64_t>() : static_cast<int64_t>(session["viewOffset"].get<double>());
-                        info.progress = offset / 1000;
-                    }
-                    else
-                    {
-                        info.progress = 0;
-                    }
-
-                    if (session.contains("duration"))
-                    {
-                        int64_t duration = session["duration"].is_number_integer() ? session["duration"].get<int64_t>() : static_cast<int64_t>(session["duration"].get<double>());
-                        info.duration = duration / 1000;
-                    }
-                    else
-                    {
-                        info.duration = 0;
-                    }
-
-                    auto now = std::chrono::system_clock::now();
-                    auto nowSeconds = std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch()).count();
-                    int64_t estimatedProgress = info.progress;
-
-                    if (info.progress != lastProgress)
-                    {
-                        lastProgressTimestamp = nowSeconds;
-                        lastProgress = info.progress;
-                    }
-                    else if (info.state == PlaybackState::Playing)
-                    {
-                        // If the playback state is playing and the progress hasn't changed,
-                        // estimate the progress based on the elapsed time since the last update
-                        estimatedProgress = info.progress + (nowSeconds - lastProgressTimestamp);
-                    }
-                    else if (info.state == PlaybackState::Paused)
-                    {
-                        lastProgressTimestamp = nowSeconds;
-                        estimatedProgress = info.progress;
-                    }
-
-                    LOG_DEBUG("Plex", "Actual progress: " + std::to_string(info.progress) + " seconds");
-                    LOG_DEBUG("Plex", "Estimated progress: " + std::to_string(estimatedProgress) + " seconds");
-                    info.startTime = estimatedProgress;
-
-                    return true;
-                }
-            }
-        }
-
-        // No matching session found
-        info.state = PlaybackState::Stopped;
+    // Fetch available servers
+    if (!fetchServers())
+    {
+        LOG_ERROR("Plex", "Failed to fetch Plex servers");
         return false;
     }
-    catch (const std::exception &e)
+
+    // Set up SSE connections to each server
+    setupServerConnections();
+
+    m_initialized = true;
+    return true;
+}
+
+bool Plex::acquireAuthToken()
+{
+    LOG_INFO("Plex", "Acquiring Plex auth token");
+
+    std::string clientId = getClientIdentifier();
+
+    // Create HTTP client
+    HttpClient client;
+
+    // Set up request headers
+    std::map<std::string, std::string> headers = {
+        {"X-Plex-Client-Identifier", clientId},
+        {"X-Plex-Product", "Plex Presence"},
+        {"X-Plex-Version", "0.2.0"},
+        {"X-Plex-Device", "PC"},
+#if defined(_WIN32)
+        {"X-Plex-Platform", "Windows"},
+#elif defined(__APPLE__)
+        {"X-Plex-Platform", "macOS"},
+#else
+        {"X-Plex-Platform", "Linux"},
+#endif
+        {"Accept", "application/json"}};
+
+    // Request a PIN from Plex
+    std::string response;
+    std::string pinUrl = "https://plex.tv/api/v2/pins";
+    std::string data = "strong=true";
+
+    if (!client.post(pinUrl, headers, data, response))
     {
-        LOG_ERROR("Plex", "Error parsing Plex response: " + std::string(e.what()));
-        info.state = PlaybackState::Stopped;
+        LOG_ERROR("Plex", "Failed to request PIN from Plex");
         return false;
     }
-}
 
-// Polling thread function
-void Plex::plexPollingThread()
-{
-    while (running)
+    LOG_DEBUG("Plex", "PIN response: " + response);
+
+    // Parse the PIN response
+    try
     {
-        std::string serverUrl = getServerUrl();
-        if (serverUrl.empty())
+        auto json = nlohmann::json::parse(response);
+        std::string pin = json["code"].get<std::string>();
+        std::string pinId = std::to_string(json["id"].get<int>());
+
+        LOG_INFO("Plex", "Got PIN: " + pin + " (ID: " + pinId + ")");
+
+        // Construct the authorization URL
+        std::string authUrl = "https://app.plex.tv/auth#?clientID=" + clientId + "&code=" + pin + "&context%5Bdevice%5D%5Bproduct%5D=Plex%20Presence";
+
+        // Open the authorization URL in the default browser
+        LOG_INFO("Plex", "Opening browser for authentication: " + authUrl);
+
+#ifdef _WIN32
+        ShellExecuteA(NULL, "open", authUrl.c_str(), NULL, NULL, SW_SHOWNORMAL);
+#else
+        // For non-Windows platforms
+        std::string cmd = "xdg-open \"" + authUrl + "\"";
+        system(cmd.c_str());
+#endif
+
+        // Poll for PIN authorization
+        const int maxAttempts = 30;  // Try for about 5 minutes
+        const int pollInterval = 10; // seconds
+
+        LOG_INFO("Plex", "Waiting for user to authorize PIN...");
+
+        for (int attempt = 0; attempt < maxAttempts; ++attempt)
         {
-            sharedPlayback.update(PlaybackInfo{PlaybackState::BadUrl});
-            for (int i = 0; i < 15 && running; i++)
+            // Wait before polling
+            std::this_thread::sleep_for(std::chrono::seconds(pollInterval));
+
+            // Check PIN status
+            std::string statusUrl = "https://plex.tv/api/v2/pins/" + pinId;
+            std::string statusResponse;
+
+            if (!client.get(statusUrl, headers, statusResponse))
             {
-                std::this_thread::sleep_for(std::chrono::seconds(1));
+                LOG_ERROR("Plex", "Failed to check PIN status");
+                continue;
             }
-            continue;
-        }
-        std::string reqUrl = serverUrl + "/status/sessions";
 
-        std::string response = makeRequest(reqUrl);
-
-        if (!response.empty())
-        {
-            PlaybackInfo info;
-            if (parseSessionsResponse(response, info))
-            {
-                // Update global playback info using the SharedPlaybackInfo wrapper
-                sharedPlayback.update(info);
-                LOG_DEBUG_STREAM("Plex", "Updated playback info: " << info.title << " - " << info.username);
-            }
-            else
-            {
-                LOG_DEBUG("Plex", "No active sessions found or error parsing response.");
-                PlaybackInfo emptyInfo{PlaybackState::Stopped};
-                sharedPlayback.update(emptyInfo);
-            }
-        }
-
-        // Wait for next poll interval
-        std::this_thread::sleep_for(std::chrono::seconds(Config::getInstance().getPollInterval()));
-    }
-}
-
-void Plex::setPlaybackInfo(const PlaybackInfo &info)
-{
-    // Use the new thread-safe wrapper for compatibility
-    sharedPlayback.update(info);
-}
-
-void Plex::getPlaybackInfo(PlaybackInfo &info) const
-{
-    // Use the new thread-safe wrapper for compatibility
-    info = sharedPlayback.get();
-}
-
-PlaybackInfo Plex::getCurrentPlayback() const
-{
-    // Use the new thread-safe wrapper to get the current playback information
-    return sharedPlayback.get();
-}
-
-// Request a PIN from the Plex API
-bool Plex::requestPlexPin(const std::string &clientId, std::string &pinCode, std::string &pinId)
-{
-    CURL *curl;
-    CURLcode res;
-    std::string readBuffer;
-
-    curl = curl_easy_init();
-    if (curl)
-    {
-        struct curl_slist *headers = NULL;
-        headers = curl_slist_append(headers, "Accept: application/json");
-        headers = curl_slist_append(headers, "Content-Type: application/x-www-form-urlencoded");
-        headers = curl_slist_append(headers, "X-Plex-Product: Plex Presence");
-        headers = curl_slist_append(headers, ("X-Plex-Client-Identifier: " + clientId).c_str());
-
-        std::string postData = "strong=true";
-
-        curl_easy_setopt(curl, CURLOPT_URL, "https://plex.tv/api/v2/pins");
-        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-        curl_easy_setopt(curl, CURLOPT_POSTFIELDS, postData.c_str());
-        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
-        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &readBuffer);
-        curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10);
-
-        res = curl_easy_perform(curl);
-
-        curl_slist_free_all(headers);
-        curl_easy_cleanup(curl);
-
-        if (res == CURLE_OK)
-        {
             try
             {
-                json response = json::parse(readBuffer);
-                if (response.contains("id") && response.contains("code"))
+                auto statusJson = nlohmann::json::parse(statusResponse);
+                bool authDone = statusJson["authToken"].is_string() && !statusJson["authToken"].get<std::string>().empty();
+
+                if (authDone)
                 {
-                    LOG_DEBUG_STREAM("Plex", "PIN response: " << response);
-                    pinId = std::to_string(response["id"].get<int>());
-                    pinCode = response["code"].get<std::string>();
+                    std::string authToken = statusJson["authToken"].get<std::string>();
+                    LOG_INFO("Plex", "Successfully authenticated with Plex!");
+
+                    // Save the auth token
+                    Config::getInstance().setPlexAuthToken(authToken);
+                    Config::getInstance().saveConfig();
+
                     return true;
+                }
+                else
+                {
+                    LOG_DEBUG("Plex", "PIN not yet authorized, waiting... (" + std::to_string(attempt + 1) + "/" + std::to_string(maxAttempts) + ")");
                 }
             }
             catch (const std::exception &e)
             {
-                LOG_ERROR("Plex", "Error parsing PIN response: " + std::string(e.what()));
-            }
-        }
-        else
-        {
-            LOG_ERROR("Plex", "PIN request failed: " + std::string(curl_easy_strerror(res)));
-        }
-    }
-
-    return false;
-}
-
-// Poll for auth token using the PIN
-bool Plex::pollForAuthToken(const std::string &pinId, std::string &clientId)
-{
-    CURL *curl;
-    CURLcode res;
-
-    // Poll for token with a timeout
-    const int MAX_ATTEMPTS = 30; // 30 attempts with 2-second delay = 60 seconds total
-    const int POLL_DELAY = 2;    // 2 seconds between poll attempts
-
-    for (int attempt = 0; attempt < MAX_ATTEMPTS; attempt++)
-    {
-        std::string readBuffer;
-        curl = curl_easy_init();
-
-        if (curl)
-        {
-            struct curl_slist *headers = NULL;
-            headers = curl_slist_append(headers, "Accept: application/json");
-
-            std::string url = "https://plex.tv/api/v2/pins/" + pinId + "/?X-Plex-Client-Identifier=" + clientId;
-
-            curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-            curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-            curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
-            curl_easy_setopt(curl, CURLOPT_WRITEDATA, &readBuffer);
-            curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10);
-
-            res = curl_easy_perform(curl);
-
-            curl_slist_free_all(headers);
-            curl_easy_cleanup(curl);
-
-            if (res == CURLE_OK)
-            {
-                try
-                {
-                    json response = json::parse(readBuffer);
-
-                    // Check if the PIN has been authorized
-                    if (response.contains("authToken") && !response["authToken"].is_null())
-                    {
-                        // Save the auth token
-                        std::string token = response["authToken"].get<std::string>();
-                        authToken = token;
-
-                        Config::getInstance().setPlexToken(token);
-
-                        LOG_DEBUG("Plex", "Auth token received and saved");
-                        return true;
-                    }
-                }
-                catch (const std::exception &e)
-                {
-                    LOG_ERROR("Plex", "Error parsing poll response: " + std::string(e.what()));
-                }
+                LOG_ERROR("Plex", "Error parsing PIN status: " + std::string(e.what()));
             }
         }
 
-        // Wait before trying again
-        std::this_thread::sleep_for(std::chrono::seconds(POLL_DELAY));
-    }
-
-    LOG_ERROR("Plex", "Timed out waiting for Plex authorization");
-    return false;
-}
-
-// Add a method to authenticate with Plex when the token is unauthorized
-bool Plex::authenticateWithPlex()
-{
-    LOG_INFO("Plex", "Authenticating with Plex...");
-    std::string pinCode, pinId;
-
-    // Generate a UUID for client identification
-    std::string uuid = uuid::generate_uuid_v4();
-    LOG_DEBUG("Plex", "Generated UUID: " + uuid);
-
-    // Request a PIN from Plex
-    // Request a PIN from Plex
-    if (requestPlexPin(uuid, pinCode, pinId))
-    {
-        LOG_INFO("Plex", "Generated PIN code: " + pinCode);
-
-        // Generate auth URL with the same headers used in requestPlexPin
-        std::string authUrl = "https://app.plex.tv/auth#?clientID=" + uuid +
-                              "&code=" + pinCode;
-
-#if defined(_WIN32)
-        authUrl += "&X-Plex-Device=Windows";
-#elif defined(__APPLE__)
-        authUrl += "&X-Plex-Device=macOS";
-#elif defined(__linux__)
-        authUrl += "&X-Plex-Device=Linux";
-#endif
-
-        LOG_INFO("Plex", "Please open the following URL in your browser to authorize this application:");
-        LOG_INFO("Plex", authUrl);
-        LOG_INFO("Plex", "Opening browser automatically...");
-
-        // Open the URL in the default browser using our platform-specific function
-        openBrowser(authUrl);
-
-        LOG_INFO("Plex", "Waiting for authorization...");
-
-        // Poll for the auth token
-        if (pollForAuthToken(pinId, uuid))
-        {
-            LOG_INFO("Plex", "Successfully authorized with Plex!");
-            return true;
-        }
-        else
-        {
-            LOG_ERROR("Plex", "Failed to get authorization from Plex.");
-        }
-    }
-    else
-    {
-        LOG_ERROR("Plex", "Failed to request PIN from Plex.");
-    }
-    return false;
-}
-
-// Check if the response indicates an unauthorized token
-bool Plex::checkToken(std::string &response) const
-{
-    try
-    {
-        // Check if response contains unauthorized error
-        if (response.find("\"status\":\"401\"") != std::string::npos ||
-            response.find("\"code\":401") != std::string::npos ||
-            response.find("Unauthorized") != std::string::npos)
-        {
-            LOG_ERROR("Plex", "Plex token is unauthorized. Requesting a new token...");
-            return false;
-        }
-        return true;
+        LOG_ERROR("Plex", "Timed out waiting for PIN authorization");
     }
     catch (const std::exception &e)
     {
-        LOG_ERROR("Plex", "Error checking token: " + std::string(e.what()));
-        return true; // Default to not handling as unauthorized to avoid endless loop
+        LOG_ERROR("Plex", "Error parsing PIN response: " + std::string(e.what()));
     }
+
+    return false;
+}
+
+std::string Plex::getClientIdentifier()
+{
+    auto &config = Config::getInstance();
+    std::string clientId = config.getPlexClientIdentifier();
+
+    if (clientId.empty())
+    {
+        clientId = uuid::generate_uuid_v4();
+        config.setPlexClientIdentifier(clientId);
+        config.saveConfig();
+    }
+
+    return clientId;
+}
+
+bool Plex::fetchServers()
+{
+    LOG_INFO("Plex", "Fetching Plex servers");
+
+    auto &config = Config::getInstance();
+    std::string authToken = config.getPlexAuthToken();
+    std::string clientId = config.getPlexClientIdentifier();
+
+    if (authToken.empty() || clientId.empty())
+    {
+        LOG_ERROR("Plex", "Missing auth token or client identifier");
+        return false;
+    }
+
+    // Create HTTP client
+    HttpClient client;
+
+    // Set up request headers
+    std::map<std::string, std::string> headers = {
+        {"X-Plex-Token", authToken},
+        {"X-Plex-Client-Identifier", clientId},
+        {"X-Plex-Product", "Plex Presence"},
+        {"X-Plex-Version", "0.2.0"},
+        {"X-Plex-Device", "PC"},
+        {"X-Plex-Platform", "Windows"},
+        {"Accept", "application/json"}};
+
+    // Make the request to Plex.tv
+    std::string response;
+    std::string url = "https://plex.tv/api/v2/resources?includeHttps=1";
+
+    if (!client.get(url, headers, response))
+    {
+        LOG_ERROR("Plex", "Failed to fetch servers from Plex.tv");
+        return false;
+    }
+
+    LOG_DEBUG("Plex", "Received server response: " + response);
+
+    // Parse the JSON response
+    return parseServerJson(response);
+}
+
+bool Plex::parseServerJson(const std::string &jsonStr)
+{
+    LOG_INFO("Plex", "Parsing server JSON");
+
+    try
+    {
+        auto json = nlohmann::json::parse(jsonStr);
+
+        auto &config = Config::getInstance();
+
+        // Clear existing servers in config
+        config.clearPlexServers();
+
+        // Process each resource (server)
+        for (const auto &resource : json)
+        {
+            // Check if this is a Plex Media Server
+            std::string provides = resource.value("provides", "");
+            if (provides != "server")
+            {
+                continue;
+            }
+
+            std::shared_ptr<PlexServer> server = std::make_shared<PlexServer>();
+            server->name = resource.value("name", "Unknown");
+            server->clientIdentifier = resource.value("clientIdentifier", "");
+            server->accessToken = resource.value("accessToken", "");
+            server->running = false;
+
+            LOG_INFO("Plex", "Found server: " + server->name + " (" + server->clientIdentifier + ")");
+
+            // Process connections (we want both local and remote)
+            if (resource.contains("connections") && resource["connections"].is_array())
+            {
+                for (const auto &connection : resource["connections"])
+                {
+                    std::string uri = connection.value("uri", "");
+                    bool isLocal = connection.value("local", false);
+
+                    if (isLocal)
+                    {
+                        server->localUri = uri;
+                        LOG_INFO("Plex", "  Local URI: " + uri);
+                    }
+                    else
+                    {
+                        server->publicUri = uri;
+                        LOG_INFO("Plex", "  Public URI: " + uri);
+                    }
+                }
+            }
+
+            // Add server to our map and config
+            if (!server->localUri.empty() || !server->publicUri.empty())
+            {
+                m_servers[server->clientIdentifier] = server;
+
+                // Save to config
+                config.addPlexServer(server->name, server->clientIdentifier,
+                                     server->localUri, server->publicUri, server->accessToken);
+            }
+        }
+
+        config.saveConfig();
+
+        LOG_INFO("Plex", "Found " + std::to_string(m_servers.size()) + " Plex servers");
+        return !m_servers.empty();
+    }
+    catch (const std::exception &e)
+    {
+        LOG_ERROR("Plex", "Failed to parse server JSON: " + std::string(e.what()));
+        return false;
+    }
+}
+
+void Plex::setupServerConnections()
+{
+    LOG_INFO("Plex", "Setting up server connections");
+
+    for (auto &[id, server] : m_servers)
+    {
+        // Create a new HTTP client for this server
+        server->httpClient = std::make_unique<HttpClient>();
+        server->running = true;
+
+        // Determine the URI to use (prefer local)
+        std::string serverUri = !server->localUri.empty() ? server->localUri : server->publicUri;
+
+        if (serverUri.empty())
+        {
+            LOG_WARNING("Plex", "No URI available for server: " + server->name);
+            continue;
+        }
+
+        LOG_INFO("Plex", "Setting up SSE connection to server: " + server->name);
+
+        // Set up headers
+        std::map<std::string, std::string> headers = {
+            {"X-Plex-Token", server->accessToken},
+            {"X-Plex-Client-Identifier", Config::getInstance().getPlexClientIdentifier()},
+            {"X-Plex-Product", "Plex Presence"},
+            {"X-Plex-Version", "0.2.0"},
+            {"X-Plex-Device", "PC"},
+            {"X-Plex-Platform", "Windows"}};
+
+        // Set up SSE endpoint URL
+        std::string sseUrl = serverUri + "/:/eventsource/notifications?filters=playing";
+
+        // Set up callback for SSE events
+        auto callback = [this, id](const std::string &event)
+        {
+            this->handleSSEEvent(id, event);
+        };
+
+        // Start SSE connection
+        if (!server->httpClient->startSSE(sseUrl, headers, callback))
+        {
+            LOG_ERROR("Plex", "Failed to set up SSE connection for server: " + server->name);
+        }
+    }
+}
+
+void Plex::handleSSEEvent(const std::string &serverId, const std::string &event)
+{
+    try
+    {
+        auto json = nlohmann::json::parse(event);
+
+        LOG_DEBUG("Plex", "Received event from server " + serverId + ": " + event);
+
+        // Check for PlaySessionStateNotification
+        if (json.contains("PlaySessionStateNotification"))
+        {
+            processPlaySessionStateNotification(serverId, json["PlaySessionStateNotification"]);
+        }
+    }
+    catch (const std::exception &e)
+    {
+        LOG_ERROR("Plex", "Error parsing SSE event: " + std::string(e.what()));
+    }
+}
+
+void Plex::processPlaySessionStateNotification(const std::string &serverId, const nlohmann::json &notification)
+{
+    LOG_DEBUG("Plex", "Processing PlaySessionStateNotification: " + notification.dump());
+
+    auto server = m_servers[serverId];
+    if (!server)
+    {
+        LOG_ERROR("Plex", "Unknown server ID: " + serverId);
+        return;
+    }
+
+    std::string sessionKey = notification.value("sessionKey", "");
+    std::string state = notification.value("state", "");
+    std::string mediaKey = notification.value("key", "");
+    int64_t viewOffset = notification.value("viewOffset", 0);
+
+    LOG_INFO("Plex", "Playback state update: " + state + " at " + std::to_string(viewOffset) + "ms");
+
+    std::lock_guard<std::mutex> lock(m_sessionMutex);
+
+    // Determine the URI to use (prefer local)
+    std::string serverUri = !server->localUri.empty() ? server->localUri : server->publicUri;
+
+    if (state == "playing" || state == "paused" || state == "buffering")
+    {
+        // Update or create playback info
+        MediaInfo info;
+
+        // Fetch detailed media info
+        info = fetchMediaDetails(serverUri, server->accessToken, mediaKey);
+
+        // Update state
+        if (state == "playing")
+        {
+            info.state = PlaybackState::Playing;
+        }
+        else if (state == "paused")
+        {
+            info.state = PlaybackState::Paused;
+        }
+        else if (state == "buffering")
+        {
+            info.state = PlaybackState::Buffering;
+        }
+
+        // Update progress in seconds
+        info.progress = viewOffset / 1000.0;
+
+        // Update session key and server ID
+        info.sessionKey = sessionKey;
+        info.serverId = serverId;
+
+        // Update timestamp
+        info.startTime = std::time(nullptr) - static_cast<time_t>(info.progress);
+
+        // Store the updated info
+        m_activeSessions[sessionKey] = info;
+
+        LOG_INFO("Plex", "Updated session " + sessionKey + ": " + info.title +
+                             " (" + std::to_string(info.progress) + "/" + std::to_string(info.duration) + "s)");
+    }
+    else if (state == "stopped")
+    {
+        // Remove the session if it exists
+        if (m_activeSessions.find(sessionKey) != m_activeSessions.end())
+        {
+            LOG_INFO("Plex", "Removing stopped session: " + sessionKey);
+            m_activeSessions.erase(sessionKey);
+        }
+    }
+}
+
+MediaInfo Plex::fetchMediaDetails(const std::string &serverUri, const std::string &accessToken,
+                                  const std::string &mediaKey)
+{
+    LOG_DEBUG("Plex", "Fetching media details for key: " + mediaKey);
+
+    MediaInfo info;
+    info.state = PlaybackState::Stopped;
+
+    // Create HTTP client
+    HttpClient client;
+
+    // Set up headers
+    std::map<std::string, std::string> headers = {
+        {"X-Plex-Token", accessToken},
+        {"X-Plex-Client-Identifier", Config::getInstance().getPlexClientIdentifier()},
+        {"Accept", "application/json"}};
+
+    // Make the request
+    std::string url = serverUri + mediaKey;
+    std::string response;
+
+    if (!client.get(url, headers, response))
+    {
+        LOG_ERROR("Plex", "Failed to fetch media details");
+        return info;
+    }
+
+    try
+    {
+        auto json = nlohmann::json::parse(response);
+
+        if (!json.contains("MediaContainer") || !json["MediaContainer"].contains("Metadata") ||
+            json["MediaContainer"]["Metadata"].empty())
+        {
+            LOG_ERROR("Plex", "Invalid media details response");
+            return info;
+        }
+
+        auto metadata = json["MediaContainer"]["Metadata"][0];
+
+        // Set basic info
+        info.title = metadata.value("title", "Unknown");
+        info.originalTitle = metadata.value("originalTitle", info.title);
+        info.grandparentTitle = metadata.value("grandparentTitle", "Unknown");
+        info.duration = metadata.value("duration", 0) / 1000.0; // Convert from milliseconds to seconds
+
+        // Get media type
+        std::string type = metadata.value("type", "unknown");
+
+        if (type == "movie")
+        {
+            info.type = MediaType::Movie;
+        }
+        else if (type == "episode")
+        {
+            info.type = MediaType::TVShow;
+
+            info.season = metadata.value("parentIndex", 0);
+            info.episode = metadata.value("index", 0);
+        }
+        else
+        {
+            info.type = MediaType::Unknown;
+        }
+
+        // Get username if available
+        if (metadata.contains("User"))
+        {
+            info.username = metadata["User"].value("title", "Unknown User");
+        }
+        else
+        {
+            info.username = "Unknown User";
+        }
+
+        LOG_INFO("Plex", "Media details: " + info.title + " (" + type + ")");
+    }
+    catch (const std::exception &e)
+    {
+        LOG_ERROR("Plex", "Error parsing media details: " + std::string(e.what()));
+    }
+
+    return info;
+}
+
+MediaInfo Plex::getCurrentPlayback()
+{
+    if (!m_initialized)
+    {
+        LOG_WARNING("Plex", "Plex not initialized");
+        MediaInfo info;
+        info.state = PlaybackState::BadToken;
+        return info;
+    }
+
+    std::lock_guard<std::mutex> lock(m_sessionMutex);
+
+    // If no active sessions, return stopped state
+    if (m_activeSessions.empty())
+    {
+        LOG_DEBUG("Plex", "No active sessions");
+        MediaInfo info;
+        info.state = PlaybackState::Stopped;
+        return info;
+    }
+
+    // Find the oldest playing/paused/buffering session
+    MediaInfo oldest;
+    time_t oldestTime = (std::numeric_limits<time_t>::max)();
+
+    for (const auto &[key, info] : m_activeSessions)
+    {
+        if (info.state == PlaybackState::Playing ||
+            info.state == PlaybackState::Paused ||
+            info.state == PlaybackState::Buffering)
+        {
+
+            if (info.startTime < oldestTime)
+            {
+                oldest = info;
+                oldestTime = info.startTime;
+            }
+        }
+    }
+
+    if (oldestTime == (std::numeric_limits<time_t>::max)())
+    {
+        // No playing/paused/buffering sessions
+        LOG_DEBUG("Plex", "No active playing sessions");
+        MediaInfo info;
+        info.state = PlaybackState::Stopped;
+        return info;
+    }
+
+    LOG_DEBUG("Plex", "Returning playback info for: " + oldest.title);
+    return oldest;
+}
+
+void Plex::stopConnections()
+{
+    LOG_INFO("Plex", "Stopping all Plex connections");
+
+    // Stop all SSE connections with a very short timeout since we're shutting down
+    for (auto &[id, server] : m_servers)
+    {
+        if (server->httpClient)
+        {
+            LOG_INFO("Plex", "Stopping SSE connection for server: " + server->name);
+            server->running = false;
+
+            // Explicitly reset the client to ensure destruction
+            server->httpClient.reset();
+        }
+    }
+
+    // Clear the servers map to ensure all resources are freed
+    m_servers.clear();
+
+    LOG_INFO("Plex", "All Plex connections stopped");
 }

@@ -6,7 +6,8 @@
 TrayIcon *TrayIcon::s_instance = nullptr;
 
 TrayIcon::TrayIcon(const std::string &appName)
-    : m_appName(appName), m_running(false), m_hWnd(NULL), m_hMenu(NULL), m_connectionStatus("Status: Initializing...")
+    : m_appName(appName), m_running(false), m_hWnd(NULL), m_hMenu(NULL),
+      m_connectionStatus("Status: Initializing..."), m_iconShown(false)
 {
     // Set static instance for callback
     s_instance = this;
@@ -29,8 +30,15 @@ TrayIcon::TrayIcon(const std::string &appName)
 
 TrayIcon::~TrayIcon()
 {
+    LOG_INFO("TrayIcon", "Destroying tray icon");
+
+    // Make sure we hide the icon first
+    if (m_iconShown)
+    {
+        hide();
+    }
+
     // Clean up resources
-    hide();
     m_running = false;
 
     // If there's a window, send a message to destroy it
@@ -50,48 +58,78 @@ TrayIcon::~TrayIcon()
 
 void TrayIcon::show()
 {
-    if (m_hWnd && m_nid.cbSize > 0)
+    if (!m_hWnd)
     {
-        LOG_INFO("TrayIcon", "Adding tray icon");
-        if (!Shell_NotifyIconW(NIM_ADD, &m_nid))
-        {
-            DWORD error = GetLastError();
-            LOG_ERROR_STREAM("TrayIcon", "Failed to show tray icon, error code: " << error);
-        }
-        else
-        {
-            LOG_INFO("TrayIcon", "Tray icon shown successfully");
-        }
+        LOG_ERROR("TrayIcon", "Cannot show tray icon: window handle is NULL");
+        return;
+    }
+
+    if (m_nid.cbSize == 0)
+    {
+        LOG_ERROR("TrayIcon", "Cannot show tray icon: notification data not initialized");
+        return;
+    }
+
+    if (m_iconShown)
+    {
+        LOG_DEBUG("TrayIcon", "Tray icon already shown, skipping");
+        return;
+    }
+
+    LOG_INFO("TrayIcon", "Adding tray icon");
+
+    if (!Shell_NotifyIconW(NIM_ADD, &m_nid))
+    {
+        DWORD error = GetLastError();
+        LOG_ERROR_STREAM("TrayIcon", "Failed to show tray icon, error code: " << error);
     }
     else
     {
-        LOG_ERROR_STREAM("TrayIcon", "Cannot show tray icon, window handle: "
-                                         << (m_hWnd ? "valid" : "NULL") << ", nid size: " << m_nid.cbSize);
+        LOG_INFO("TrayIcon", "Tray icon shown successfully");
+        m_iconShown = true;
     }
 }
 
 void TrayIcon::hide()
 {
-    if (m_hWnd && m_nid.cbSize > 0)
+    if (!m_iconShown)
     {
-        LOG_INFO("TrayIcon", "Removing tray icon");
-        Shell_NotifyIconW(NIM_DELETE, &m_nid);
+        LOG_DEBUG("TrayIcon", "Tray icon not showing, nothing to hide");
+        return;
     }
+
+    if (!m_hWnd)
+    {
+        LOG_ERROR("TrayIcon", "Cannot hide tray icon: window handle is NULL");
+        m_iconShown = false;
+        return;
+    }
+
+    if (m_nid.cbSize == 0)
+    {
+        LOG_ERROR("TrayIcon", "Cannot hide tray icon: notification data not initialized");
+        m_iconShown = false;
+        return;
+    }
+
+    LOG_INFO("TrayIcon", "Removing tray icon");
+
+    if (!Shell_NotifyIconW(NIM_DELETE, &m_nid))
+    {
+        DWORD error = GetLastError();
+        LOG_ERROR_STREAM("TrayIcon", "Failed to hide tray icon, error code: " << error);
+    }
+    else
+    {
+        LOG_INFO("TrayIcon", "Tray icon hidden successfully");
+    }
+
+    m_iconShown = false;
 }
 
 void TrayIcon::setExitCallback(std::function<void()> callback)
 {
     m_exitCallback = callback;
-}
-
-void TrayIcon::setReloadConfigCallback(std::function<void()> callback)
-{
-    m_reloadConfigCallback = callback;
-}
-
-void TrayIcon::setOpenConfigLocationCallback(std::function<void()> callback)
-{
-    m_openConfigLocationCallback = callback;
 }
 
 void TrayIcon::setConnectionStatus(const std::string &status)
@@ -145,9 +183,6 @@ LRESULT CALLBACK TrayIcon::WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARA
         instance->m_hMenu = CreatePopupMenu();
         // Status will be added dynamically
         AppendMenuW(instance->m_hMenu, MF_SEPARATOR, 0, NULL); // Add separator
-        AppendMenuW(instance->m_hMenu, MF_STRING, ID_TRAY_RELOAD_CONFIG, L"Reload Config");
-        AppendMenuW(instance->m_hMenu, MF_STRING, ID_TRAY_OPEN_CONFIG_LOCATION, L"Open Config Location");
-        AppendMenuW(instance->m_hMenu, MF_SEPARATOR, 0, NULL); // Add separator
         AppendMenuW(instance->m_hMenu, MF_STRING, ID_TRAY_EXIT, L"Exit");
 
         // Initialize with default status
@@ -161,44 +196,17 @@ LRESULT CALLBACK TrayIcon::WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARA
     case WM_COMMAND:
         switch (LOWORD(wParam))
         {
-        case ID_TRAY_RELOAD_CONFIG:
-            LOG_INFO("TrayIcon", "Reload configuration selected from menu");
-            if (instance->m_reloadConfigCallback)
-            {
-                // Execute the callback on a separate thread to avoid blocking WndProc
-                std::thread([callback = instance->m_reloadConfigCallback]()
-                            {
-                    if (callback)
-                    {
-                        callback();
-                    } })
-                    .detach();
-            }
-            break;
-        case ID_TRAY_OPEN_CONFIG_LOCATION:
-            LOG_INFO("TrayIcon", "Open config location selected from menu");
-            if (instance->m_openConfigLocationCallback)
-            {
-                // Execute the callback on a separate thread to avoid blocking WndProc
-                std::thread([callback = instance->m_openConfigLocationCallback]()
-                            {
-                    if (callback)
-                    {
-                        callback();
-                    } })
-                    .detach();
-            }
-            break;
         case ID_TRAY_EXIT:
             LOG_INFO("TrayIcon", "Exit selected from menu via WM_COMMAND");
             if (instance->m_exitCallback)
             {
+                // Create a local copy of the callback to avoid potential use-after-free
+                auto exitCallback = instance->m_exitCallback;
                 // Execute the callback on a separate thread to avoid blocking WndProc
-                std::thread([callback = instance->m_exitCallback]()
+                std::thread([exitCallback]()
                             {
-                    if (callback)
-                    {
-                        callback();
+                    if (exitCallback) {
+                        exitCallback();
                     } })
                     .detach();
             }
@@ -223,41 +231,17 @@ LRESULT CALLBACK TrayIcon::WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARA
 
             switch (clicked)
             {
-            case ID_TRAY_RELOAD_CONFIG:
-                LOG_INFO("TrayIcon", "Reload configuration selected from tray menu");
-                if (instance->m_reloadConfigCallback)
-                {
-                    std::thread([callback = instance->m_reloadConfigCallback]()
-                                {
-                        if (callback)
-                        {
-                            callback();
-                        } })
-                        .detach();
-                }
-                break;
-            case ID_TRAY_OPEN_CONFIG_LOCATION:
-                LOG_INFO("TrayIcon", "Open config location selected from tray menu");
-                if (instance->m_openConfigLocationCallback)
-                {
-                    std::thread([callback = instance->m_openConfigLocationCallback]()
-                                {
-                        if (callback)
-                        {
-                            callback();
-                        } })
-                        .detach();
-                }
-                break;
             case ID_TRAY_EXIT:
                 LOG_INFO("TrayIcon", "Exit selected from tray menu");
                 if (instance->m_exitCallback)
                 {
-                    std::thread([callback = instance->m_exitCallback]()
+                    // Create a local copy of the callback to avoid potential use-after-free
+                    auto exitCallback = instance->m_exitCallback;
+                    // Execute the callback on a separate thread to avoid blocking WndProc
+                    std::thread([exitCallback]()
                                 {
-                        if (callback)
-                        {
-                            callback();
+                        if (exitCallback) {
+                            exitCallback();
                         } })
                         .detach();
                 }

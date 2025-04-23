@@ -13,12 +13,6 @@ Application::Application()
     LOG_INFO("Application", "Plex Presence starting up");
 }
 
-Application::~Application()
-{
-    shutdown();
-    LOG_INFO("Application", "Application shutdown complete");
-}
-
 bool Application::initialize()
 {
     try
@@ -34,33 +28,24 @@ bool Application::initialize()
                                   {
             LOG_INFO("Application", "Exit triggered from tray icon");
             stop(); });
-        trayIcon->setReloadConfigCallback([this]()
-                                          {
-            LOG_INFO("Application", "Reload configuration triggered from tray icon");
-            Config::getInstance().loadConfig(); });
-        trayIcon->setOpenConfigLocationCallback([]()
-                                                {
-            LOG_INFO("Application", "Open config location triggered from tray icon");
-            std::wstring wPath = std::filesystem::path(Config::getInstance().getConfigDirectory()).wstring();
-            ShellExecuteW(NULL, L"open", wPath.c_str(), NULL, NULL, SW_SHOWNORMAL); });
 
 #endif
 
         discord->setConnectedCallback([this]()
                                       {
 #ifdef _WIN32
-            trayIcon->setConnectionStatus("Status: Connecting to Plex...");
+                trayIcon->setConnectionStatus("Status: Connecting to Plex...");
+
 #endif
-            plex->startPolling();
             std::unique_lock<std::mutex> lock(discordConnectMutex);
             discordConnectCv.notify_all(); });
 
         discord->setDisconnectedCallback([this]()
                                          {
 #ifdef _WIN32
-                                            trayIcon->setConnectionStatus("Status: Waiting for Discord...");
+                                             trayIcon->setConnectionStatus("Status: Waiting for Discord...");
 #endif
-                                            plex->stopPolling(); });
+                                         });
 
         plex->init();
         discord->start();
@@ -84,7 +69,6 @@ void Application::run()
         {
             if (!discord->isConnected())
             {
-                // Wait for Discord to connect instead of polling, with timeout to check running status
                 std::unique_lock<std::mutex> lock(discordConnectMutex);
                 discordConnectCv.wait_for(lock,
                                           std::chrono::seconds(1),
@@ -97,7 +81,7 @@ void Application::run()
                 }
             }
 
-            PlaybackInfo info = plex->getCurrentPlayback();
+            MediaInfo info = plex->getCurrentPlayback();
 
 #ifdef _WIN32
             if (info.state == PlaybackState::Stopped)
@@ -116,9 +100,9 @@ void Application::run()
             {
                 trayIcon->setConnectionStatus("Status: Buffering...");
             }
-            else if (info.state == PlaybackState::BadUrl)
+            else if (info.state == PlaybackState::BadToken)
             {
-                trayIcon->setConnectionStatus("Status: Invalid Plex URL");
+                trayIcon->setConnectionStatus("Status: Invalid Plex token");
             }
             else
             {
@@ -126,20 +110,14 @@ void Application::run()
             }
 #endif
 
-            if (info.state != PlaybackState::BadUrl)
+            if (info.state != PlaybackState::BadToken)
             {
-                if (abs(info.startTime - lastStartTime) > Config::getInstance().getPollInterval() + 1)
-                {
-                    LOG_WARNING("Application", "Playback position changed significantly, updating Discord presence");
-                    discord->updatePresence(info);
-                }
-                else if (info.state != lastState)
+                if (info.state != lastState)
                 {
                     LOG_DEBUG("Application", "Playback state changed, updating Discord presence");
                     discord->updatePresence(info);
                 }
                 lastState = info.state;
-                lastStartTime = info.startTime;
             }
         }
         catch (const std::exception &e)
@@ -147,31 +125,40 @@ void Application::run()
             LOG_ERROR("Application", "Error in main loop: " + std::string(e.what()));
         }
 
-        std::this_thread::sleep_for(std::chrono::seconds(Config::getInstance().getPollInterval()));
+        std::this_thread::sleep_for(std::chrono::seconds(1));
     }
-}
 
-void Application::stop()
-{
+    LOG_INFO("Application", "Stopping application");
     running = false;
-}
 
-void Application::shutdown()
-{
-    if (discord)
-    {
-        discord->stop();
-    }
-
+    // Clean up Plex (this will stop all SSE connections)
     if (plex)
     {
-        plex->stopPolling();
+        LOG_INFO("Application", "Cleaning up Plex connections");
+        // Don't immediately reset - call cleanup method first
+        plex->stopConnections();
+    }
+
+    // Stop Discord first
+    if (discord)
+    {
+        LOG_INFO("Application", "Stopping Discord connection");
+        discord->stop();
     }
 
 #ifdef _WIN32
     if (trayIcon)
     {
+        LOG_INFO("Application", "Destroying tray icon");
         trayIcon->hide();
     }
 #endif
+
+    LOG_INFO("Application", "Application stopped");
+}
+
+void Application::stop()
+{
+    LOG_INFO("Application", "Stop requested");
+    running = false;
 }

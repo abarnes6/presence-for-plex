@@ -27,8 +27,6 @@ public:
     void show();
     void hide();
     void setExitCallback(std::function<void()> callback);
-    void setReloadConfigCallback(std::function<void()> callback);
-    void setOpenConfigLocationCallback(std::function<void()> callback);
     void setConnectionStatus(const std::string &status);
 
 private:
@@ -43,10 +41,9 @@ private:
     std::string m_appName;
     std::string m_connectionStatus;
     std::function<void()> m_exitCallback;
-    std::function<void()> m_reloadConfigCallback;
-    std::function<void()> m_openConfigLocationCallback;
     std::atomic<bool> m_running;
     std::thread m_uiThread;
+    std::atomic<bool> m_iconShown; // Track if the icon is currently shown
 
     static TrayIcon *s_instance; // To access instance from static WndProc
 };

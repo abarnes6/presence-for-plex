@@ -1,23 +1,7 @@
 #include "config.h"
 #include "logger.h"
 #include <fstream>
-#include <iostream>
-#include <shared_mutex>
-
-// Define a default client ID constant
-constexpr long long DEFAULT_CLIENT_ID = 1359742002618564618;
-
-Config::Config()
-{
-    serverIp = "";
-    port = 32400;
-    forceHttps = true;
-    serverIpConfigured = false;
-    pollInterval = 5;
-    logLevel = 1;
-    clientId = DEFAULT_CLIENT_ID;
-    loadConfig();
-}
+#include <yaml-cpp/yaml.h>
 
 Config &Config::getInstance()
 {
@@ -25,292 +9,254 @@ Config &Config::getInstance()
     return instance;
 }
 
-// Get platform-appropriate config directory
 std::filesystem::path Config::getConfigDirectory()
 {
     std::filesystem::path configDir;
 
 #ifdef _WIN32
-    char *appdata = nullptr;
-    size_t requiredSize;
-    _dupenv_s(&appdata, &requiredSize, "APPDATA");
-    if (appdata)
+    // Windows: %APPDATA%\Plex Presence
+    char *appData = nullptr;
+    size_t appDataSize = 0;
+    _dupenv_s(&appData, &appDataSize, "APPDATA");
+    if (appData)
     {
-        configDir = std::filesystem::path(appdata) / "Plex Presence";
-        free(appdata); // Free the allocated memory
-    }
-    else
-    {
-        configDir = std::filesystem::current_path() / "config";
-    }
-#elif defined(__APPLE__)
-    const char *home = std::getenv("HOME");
-    if (home)
-    {
-        configDir = std::filesystem::path(home) / ".config/plex-presence/";
-    }
-    else
-    {
-        configDir = std::filesystem::current_path() / "config";
+        configDir = std::filesystem::path(appData) / "Plex Presence";
+        free(appData);
     }
 #else
-    const char *home = std::getenv("HOME");
+    // Linux/macOS: ~/.config/plex-presence
+    char *home = getenv("HOME");
     if (home)
     {
-        configDir = std::filesystem::path(home) / ".config/plex-presence";
-    }
-    else
-    {
-        configDir = std::filesystem::current_path() / "config";
+        configDir = std::filesystem::path(home) / ".config" / "plex-presence";
     }
 #endif
 
-    // Ensure the directory exists
+    // Create directory if it doesn't exist
     if (!std::filesystem::exists(configDir))
     {
-        try
-        {
-            std::filesystem::create_directories(configDir);
-        }
-        catch (const std::exception &e)
-        {
-            LOG_ERROR_STREAM("Config", "Failed to create config directory: " << e.what());
-        }
+        std::filesystem::create_directories(configDir);
     }
 
     return configDir;
 }
 
-// Get the full path to the config file
-std::filesystem::path Config::getConfigFilePath() const
+Config::Config() : logLevel(1), discordClientId(1359742002618564618)
 {
-    return getConfigDirectory() / "config.toml";
+    configPath = getConfigDirectory() / "config.yaml";
+    loadConfig();
 }
 
-bool Config::configExists()
+Config::~Config()
 {
-    return std::filesystem::exists(getConfigFilePath());
+    // Ensure config is saved
+    saveConfig();
 }
 
-bool Config::generateConfig()
+bool Config::loadConfig()
+{
+    if (!std::filesystem::exists(configPath))
+    {
+        LOG_INFO("Config", "Config file does not exist, creating default");
+        return saveConfig();
+    }
+
+    try
+    {
+        YAML::Node config = YAML::LoadFile(configPath.string());
+        loadFromYaml(config);
+        LOG_INFO("Config", "Config loaded successfully");
+        LOG_DEBUG("Config", "Found " + std::to_string(plexServers.size()) + " Plex servers in config");
+        return true;
+    }
+    catch (const std::exception &e)
+    {
+        LOG_ERROR("Config", "Error loading config: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool Config::saveConfig()
 {
     try
     {
-        std::filesystem::path configPath = getConfigFilePath();
-        std::filesystem::path configDir = getConfigDirectory();
-
-        // Ensure directory exists
+        // Create the config directory if it doesn't exist
+        std::filesystem::path configDir = configPath.parent_path();
         if (!std::filesystem::exists(configDir))
         {
             std::filesystem::create_directories(configDir);
         }
 
-        LOG_INFO_STREAM("Config", "Generating default configuration at " << configPath.string());
+        // Build YAML data
+        YAML::Node config = saveToYaml();
 
-        toml::table config;
-        config.insert("plex", toml::table{});
-        config["plex"].as_table()->insert("server_ip", serverIp); // Empty IP by default
-        config["plex"].as_table()->insert("port", port);
-        config["plex"].as_table()->insert("force_https", true);
-        config["plex"].as_table()->insert("poll_interval", pollInterval);
-        config["plex"].as_table()->insert("plex_token", std::string{}); // Empty token by default
-
-        config.insert("discord", toml::table{});
-        config["discord"].as_table()->insert("client_id", clientId);
-
-        config.insert("app", toml::table{});
-        config["app"].as_table()->insert("log_level", static_cast<int>(LogLevel::Info));
-
-        std::ofstream configFile(configPath);
-        configFile << config;
-        configFile.close();
-
-        return true;
-    }
-    catch (const std::exception &e)
-    {
-        LOG_ERROR_STREAM("Config", "Error generating configuration file: " << e.what());
-        return false;
-    }
-}
-
-bool Config::loadConfig()
-{
-    try
-    {
-        // Check if the configuration file exists
-        if (!configExists())
+        // Write to file
+        std::ofstream ofs(configPath);
+        if (!ofs)
         {
-            LOG_INFO("Config", "Configuration file not found. Generating default configuration...");
-            if (!generateConfig())
-            {
-                LOG_ERROR("Config", "Failed to generate configuration file.");
-                return false;
-            }
+            LOG_ERROR("Config", "Failed to open config file for writing");
+            return false;
         }
 
-        std::filesystem::path configPath = getConfigFilePath();
-        LOG_INFO_STREAM("Config", "Loading configuration from " << configPath.string());
+        ofs << config;
+        ofs.close();
 
-        config = toml::parse_file(configPath.string());
-
-        // Load all configuration values with defaults if missing
-        serverIp = config["plex"]["server_ip"].value_or("");
-        serverIpConfigured = !serverIp.empty(); // Check if IP is actually configured
-
-        port = config["plex"]["port"].value_or(32400);
-        forceHttps = config["plex"]["force_https"].value_or(false);
-        pollInterval = config["plex"]["poll_interval"].value_or(5);
-        plexToken = config["plex"]["plex_token"].value_or(std::string{});
-
-        clientId = config["discord"]["client_id"].value_or(DEFAULT_CLIENT_ID);
-
-        logLevel = config["app"]["log_level"].value_or(static_cast<int>(LogLevel::Info));
-
+        LOG_INFO("Config", "Config saved successfully");
         return true;
-    }
-    catch (const toml::parse_error &err)
-    {
-        LOG_ERROR_STREAM("Config", "Error parsing configuration file: " << err.what());
-        return false;
     }
     catch (const std::exception &e)
     {
-        LOG_ERROR_STREAM("Config", "Error loading configuration: " << e.what());
+        LOG_ERROR("Config", "Error saving config: " + std::string(e.what()));
         return false;
     }
 }
 
-bool Config::setConfigValue(const std::string &key, const std::string &value)
+void Config::loadFromYaml(const YAML::Node &config)
 {
-    try
+    // General settings
+    logLevel = config["log_level"] ? config["log_level"].as<int>() : 1;
+
+    // Plex auth
+    if (config["plex"])
     {
-        std::filesystem::path configPath = getConfigFilePath();
+        const auto &plex = config["plex"];
+        plexAuthToken = plex["auth_token"] ? plex["auth_token"].as<std::string>() : "";
+        plexClientIdentifier = plex["client_identifier"] ? plex["client_identifier"].as<std::string>() : "";
+    }
 
-        // Parse existing config
-        auto parsed_config = toml::parse_file(configPath.string());
-
-        // Update values with a simple key format like "plex.auth_token"
-        size_t pos = key.find('.');
-        if (pos != std::string::npos)
+    // Plex servers
+    plexServers.clear();
+    if (config["plex_servers"] && config["plex_servers"].IsSequence())
+    {
+        for (const auto &server : config["plex_servers"])
         {
-            std::string section = key.substr(0, pos);
-            std::string option = key.substr(pos + 1);
-            if (parsed_config[section].is_table())
-            {
-                parsed_config[section].as_table()->insert_or_assign(option, value);
-            }
-            else
-            {
-                LOG_ERROR_STREAM("Config", "Section " << section << " is not a table.");
-                return false;
-            }
+            PlexServerConfig cfg;
+            cfg.name = server["name"] ? server["name"].as<std::string>() : "";
+            cfg.clientIdentifier = server["client_identifier"] ? server["client_identifier"].as<std::string>() : "";
+            cfg.localUri = server["local_uri"] ? server["local_uri"].as<std::string>() : "";
+            cfg.publicUri = server["public_uri"] ? server["public_uri"].as<std::string>() : "";
+            cfg.accessToken = server["access_token"] ? server["access_token"].as<std::string>() : "";
+            plexServers.push_back(cfg);
         }
-
-        // Write back to file
-        std::ofstream configFile(configPath);
-        configFile << parsed_config;
-        configFile.close();
-        loadConfig(); // Reload config to update in-memory values
-
-        return true;
     }
-    catch (const std::exception &e)
+
+    // Discord settings
+    if (config["discord"])
     {
-        LOG_ERROR_STREAM("Config", "Error updating configuration: " << e.what());
-        return false;
+        const auto &discord = config["discord"];
+        discordClientId = discord["client_id"] ? discord["client_id"].as<uint64_t>() : discordClientId;
     }
 }
 
-std::string Config::getServerIp() const
+YAML::Node Config::saveToYaml() const
 {
-    std::shared_lock<std::shared_mutex> lock(mutex);
-    return serverIp;
-}
+    YAML::Node config;
 
-bool Config::isServerIpConfigured() const
-{
-    std::shared_lock<std::shared_mutex> lock(mutex);
-    return serverIpConfigured;
-}
+    // General settings
+    config["log_level"] = logLevel;
 
-void Config::setServerIp(const std::string &url)
-{
-    std::unique_lock<std::shared_mutex> lock(mutex);
-    serverIp = url;
-    serverIpConfigured = !url.empty();
-    setConfigValue("plex.server_ip", url);
-}
+    // Plex auth
+    YAML::Node plex;
+    plex["auth_token"] = plexAuthToken;
+    plex["client_identifier"] = plexClientIdentifier;
+    config["plex"] = plex;
 
-int Config::getPort() const
-{
-    std::shared_lock<std::shared_mutex> lock(mutex);
-    return port;
-}
+    // Plex servers
+    YAML::Node servers;
+    for (const auto &server : plexServers)
+    {
+        YAML::Node serverNode;
+        serverNode["name"] = server.name;
+        serverNode["client_identifier"] = server.clientIdentifier;
+        serverNode["local_uri"] = server.localUri;
+        serverNode["public_uri"] = server.publicUri;
+        serverNode["access_token"] = server.accessToken;
+        servers.push_back(serverNode);
+    }
+    config["plex_servers"] = servers;
 
-void Config::setPort(int p)
-{
-    std::unique_lock<std::shared_mutex> lock(mutex);
-    port = p;
-}
+    // Discord settings
+    YAML::Node discord;
+    discord["client_id"] = discordClientId;
+    config["discord"] = discord;
 
-bool Config::isForceHttps() const
-{
-    std::shared_lock<std::shared_mutex> lock(mutex);
-    return forceHttps;
-}
-
-void Config::setForceHttps(bool https)
-{
-    std::unique_lock<std::shared_mutex> lock(mutex);
-    forceHttps = https;
-}
-
-std::string Config::getPlexToken() const
-{
-    std::shared_lock<std::shared_mutex> lock(mutex);
-    return plexToken;
-}
-
-void Config::setPlexToken(const std::string &token)
-{
-    std::unique_lock<std::shared_mutex> lock(mutex);
-    plexToken = token;
-    setConfigValue("plex.plex_token", token);
-}
-
-uint32_t Config::getPollInterval() const
-{
-    std::shared_lock<std::shared_mutex> lock(mutex);
-    return pollInterval;
-}
-
-void Config::setPollInterval(const uint32_t &interval)
-{
-    std::unique_lock<std::shared_mutex> lock(mutex);
-    pollInterval = interval;
-}
-
-long long Config::getClientId() const
-{
-    std::shared_lock<std::shared_mutex> lock(mutex);
-    return clientId;
-}
-
-void Config::setClientId(long long id)
-{
-    std::unique_lock<std::shared_mutex> lock(mutex);
-    clientId = id;
+    return config;
 }
 
 int Config::getLogLevel() const
 {
-    std::shared_lock<std::shared_mutex> lock(mutex);
     return logLevel;
 }
 
 void Config::setLogLevel(int level)
 {
-    std::unique_lock<std::shared_mutex> lock(mutex);
     logLevel = level;
+}
+
+std::string Config::getPlexAuthToken() const
+{
+    return plexAuthToken;
+}
+
+void Config::setPlexAuthToken(const std::string &token)
+{
+    plexAuthToken = token;
+}
+
+std::string Config::getPlexClientIdentifier() const
+{
+    return plexClientIdentifier;
+}
+
+void Config::setPlexClientIdentifier(const std::string &id)
+{
+    plexClientIdentifier = id;
+}
+
+const std::vector<PlexServerConfig> &Config::getPlexServers() const
+{
+    return plexServers;
+}
+
+void Config::addPlexServer(const std::string &name, const std::string &clientId,
+                           const std::string &localUri, const std::string &publicUri,
+                           const std::string &accessToken)
+{
+    // Check if this server already exists
+    for (auto &server : plexServers)
+    {
+        if (server.clientIdentifier == clientId)
+        {
+            // Update existing server
+            server.name = name;
+            server.localUri = localUri;
+            server.publicUri = publicUri;
+            server.accessToken = accessToken;
+            return;
+        }
+    }
+
+    // Add new server
+    PlexServerConfig cfg;
+    cfg.name = name;
+    cfg.clientIdentifier = clientId;
+    cfg.localUri = localUri;
+    cfg.publicUri = publicUri;
+    cfg.accessToken = accessToken;
+    plexServers.push_back(cfg);
+}
+
+void Config::clearPlexServers()
+{
+    plexServers.clear();
+}
+
+uint64_t Config::getDiscordClientId() const
+{
+    return discordClientId;
+}
+
+void Config::setDiscordClientId(const uint64_t &id)
+{
+    discordClientId = id;
 }

@@ -8,7 +8,7 @@ if (POLICY CMP0141)
   set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<IF:$<AND:$<C_COMPILER_ID:MSVC>,$<CXX_COMPILER_ID:MSVC>>,$<$<CONFIG:Debug,RelWithDebInfo>:EditAndContinue>,$<$<CONFIG:Debug,RelWithDebInfo>:ProgramDatabase>>")
 endif()
 
-project ("PlexPresence" VERSION 0.1.1 LANGUAGES CXX)
+project ("PlexPresence" VERSION 0.2.0 LANGUAGES CXX)
 
 file(GLOB_RECURSE SOURCES src/*.cpp)
 file(GLOB_RECURSE HEADERS src/*.h)
@@ -20,6 +20,8 @@ endif()
 
 find_package(CURL CONFIG REQUIRED) 
 find_package(nlohmann_json REQUIRED)
+find_package(yaml-cpp CONFIG REQUIRED)
+
 # print the link‑dependent libraries of CURL::libcurl
 get_target_property(_curl_deps CURL::libcurl
     INTERFACE_LINK_LIBRARIES)
@@ -28,10 +30,6 @@ message(STATUS "CURL::libcurl deps = ${_curl_deps}")
 find_path(_TP_INC
   NAMES toml++/toml.hpp
   HINTS "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/include"
-)
-add_library(tomlplusplus::tomlplusplus INTERFACE IMPORTED)
-target_include_directories(tomlplusplus::tomlplusplus
-  INTERFACE "${_TP_INC}"
 )
 
 # Add source to this project's executable.
@@ -43,7 +41,7 @@ else()
     add_executable(PlexPresence src/main.cpp ${SOURCES} ${HEADERS} ${RES_FILES})
 endif()
 
-target_link_libraries(PlexPresence PRIVATE CURL::libcurl tomlplusplus::tomlplusplus)
+target_link_libraries(PlexPresence PRIVATE CURL::libcurl yaml-cpp::yaml-cpp)
 
 if (CMAKE_VERSION VERSION_GREATER 3.25)
   set_property(TARGET PlexPresence PROPERTY CXX_STANDARD 17)
@@ -98,7 +96,7 @@ elseif(UNIX)
 endif()
 
 set(CPACK_PACKAGE_NAME "Plex Presence")
-set(CPACK_PACKAGE_VERSION "0.1.1")
+set(CPACK_PACKAGE_VERSION "0.2.0")
 set(CPACK_PACKAGE_VENDOR "Andrew Barnes")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Plex Presence for Discord")
 set(CPACK_PACKAGE_EXECUTABLES "PlexPresence" "Plex Presence")

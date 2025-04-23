@@ -32,7 +32,7 @@ public:
 	void start();
 	void stop();
 	bool isConnected() const;
-	void updatePresence(const PlaybackInfo &playbackInfo);
+	void updatePresence(const MediaInfo &info);
 	void clearPresence();
 
 	// Add callback typedefs and setters
@@ -47,16 +47,15 @@ private:
 	bool attemptConnection();
 
 	// Helper methods for creating presence payloads
-	nlohmann::json createActivity(const PlaybackInfo &playbackInfo);
-	std::string createPresence(const PlaybackInfo &playbackInfo, const std::string &nonce);
-	std::string createPresenceMetadata(const PlaybackInfo &playbackInfo, const std::string &nonce);
+	nlohmann::json createActivity(const MediaInfo &info);
+	std::string createPresence(const MediaInfo &info, const std::string &nonce);
+	std::string createPresenceMetadata(const MediaInfo &info, const std::string &nonce);
 
 	// Component responsible for Discord IPC communication
 	DiscordIPC ipc;
 
 	std::thread conn_thread;
 	std::atomic<bool> running;
-	std::atomic<bool> connected;
 	std::atomic<bool> needs_reconnect;
 	std::atomic<bool> waiting_for_discord; // New state variable
 	std::mutex mutex;

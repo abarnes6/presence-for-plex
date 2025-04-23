@@ -1,9 +1,10 @@
 #include "discord.h"
 
+constexpr int MAX_PAUSED_DURATION = 9999;
+
 using json = nlohmann::json;
 
 Discord::Discord() : running(false),
-					 connected(false),
 					 needs_reconnect(false),
 					 reconnect_attempts(0),
 					 is_playing(false),
@@ -15,7 +16,9 @@ Discord::Discord() : running(false),
 
 Discord::~Discord()
 {
-	stop();
+	if (running)
+		stop();
+	LOG_INFO("Discord", "Discord object destroyed");
 }
 
 /* Persistent connection to Discord IPC
@@ -37,7 +40,7 @@ void Discord::connectionThread()
 	while (running)
 	{
 		// Handle connection logic
-		if (!connected)
+		if (!ipc.isConnected())
 		{
 			LOG_DEBUG("Discord", "Not connected, attempting connection");
 
@@ -67,8 +70,6 @@ void Discord::connectionThread()
 				continue;
 			}
 
-			// If we got here, connection was successful
-			connected = true;
 			reconnect_attempts = 0;
 			LOG_INFO("Discord", "Successfully connected to Discord");
 
@@ -85,8 +86,10 @@ void Discord::connectionThread()
 			if (!isStillAlive())
 			{
 				LOG_INFO("Discord", "Connection to Discord lost, will reconnect");
-				ipc.closePipe();
-				connected = false;
+				if (ipc.isConnected())
+				{
+					ipc.closePipe();
+				}
 				needs_reconnect = false;
 
 				// Call disconnected callback if set
@@ -115,9 +118,9 @@ bool Discord::attemptConnection()
 	}
 
 	LOG_DEBUG("Discord", "Connection established, sending handshake");
-	LOG_DEBUG("Discord", "Using client ID: " + std::to_string(Config::getInstance().getClientId()));
+	LOG_DEBUG("Discord", "Using client ID: " + std::to_string(Config::getInstance().getDiscordClientId()));
 
-	if (!ipc.sendHandshake(Config::getInstance().getClientId()))
+	if (!ipc.sendHandshake(Config::getInstance().getDiscordClientId()))
 	{
 		LOG_ERROR("Discord", "Handshake write failed");
 		ipc.closePipe();
@@ -182,11 +185,11 @@ bool Discord::attemptConnection()
 	return false;
 }
 
-void Discord::updatePresence(const PlaybackInfo &playbackInfo)
+void Discord::updatePresence(const MediaInfo &info)
 {
-	LOG_DEBUG_STREAM("Discord", "updatePresence called for title: " << playbackInfo.title);
+	LOG_DEBUG_STREAM("Discord", "updatePresence called for title: " << info.title);
 
-	if (!connected || !ipc.isConnected())
+	if (!ipc.isConnected())
 	{
 		LOG_ERROR("Discord", "Can't update presence: not connected to Discord");
 		return;
@@ -194,26 +197,26 @@ void Discord::updatePresence(const PlaybackInfo &playbackInfo)
 
 	std::lock_guard<std::mutex> lock(mutex);
 
-	if (playbackInfo.state == PlaybackState::Playing ||
-		playbackInfo.state == PlaybackState::Paused ||
-		playbackInfo.state == PlaybackState::Buffering)
+	if (info.state == PlaybackState::Playing ||
+		info.state == PlaybackState::Paused ||
+		info.state == PlaybackState::Buffering)
 	{
-		LOG_DEBUG_STREAM("Discord", "Media is " << (playbackInfo.state == PlaybackState::Playing ? "playing" : (playbackInfo.state == PlaybackState::Paused ? "paused" : "buffering"))
+		LOG_DEBUG_STREAM("Discord", "Media is " << (info.state == PlaybackState::Playing ? "playing" : (info.state == PlaybackState::Paused ? "paused" : "buffering"))
 												<< ", updating presence");
 		is_playing = true;
 
 		std::string nonce = generateNonce();
 
-		std::string presence = createPresence(playbackInfo, nonce);
-		// std::string presenceMetadata = createPresenceMetadata(playbackInfo, nonce);
+		std::string presence = createPresence(info, nonce);
+		// std::string presenceMetadata = createPresenceMetadata(info, nonce);
 
 		sendPresenceMessage(presence);
 		// sendActivityMessage(presenceMetadata);
 
-		LOG_DEBUG_STREAM("Discord", "Updated presence: " << playbackInfo.title
-														 << " - " << playbackInfo.username
-														 << (playbackInfo.state == PlaybackState::Paused ? " (Paused)" : "")
-														 << (playbackInfo.state == PlaybackState::Buffering ? " (Buffering)" : ""));
+		LOG_DEBUG_STREAM("Discord", "Updated presence: " << info.title
+														 << " - " << info.username
+														 << (info.state == PlaybackState::Paused ? " (Paused)" : "")
+														 << (info.state == PlaybackState::Buffering ? " (Buffering)" : ""));
 	}
 	else
 	{
@@ -226,15 +229,20 @@ void Discord::updatePresence(const PlaybackInfo &playbackInfo)
 	}
 }
 
+bool Discord::isConnected() const
+{
+	return ipc.isConnected();
+}
+
 std::string Discord::generateNonce()
 {
 	return std::to_string(++nonce_counter);
 }
 
 // Create the primary Discord presence payload
-std::string Discord::createPresence(const PlaybackInfo &playbackInfo, const std::string &nonce)
+std::string Discord::createPresence(const MediaInfo &info, const std::string &nonce)
 {
-	json activity = createActivity(playbackInfo);
+	json activity = createActivity(info);
 
 #ifdef _WIN32
 	auto process_id = static_cast<int>(GetCurrentProcessId());
@@ -252,9 +260,9 @@ std::string Discord::createPresence(const PlaybackInfo &playbackInfo, const std:
 }
 
 // Create the secondary Discord presence payload
-std::string Discord::createPresenceMetadata(const PlaybackInfo &playbackInfo, const std::string &nonce)
+std::string Discord::createPresenceMetadata(const MediaInfo &info, const std::string &nonce)
 {
-	json activity = createActivity(playbackInfo);
+	json activity = createActivity(info);
 
 	json presence = {
 		{"cmd", "SET_ACTIVITY"},
@@ -266,40 +274,52 @@ std::string Discord::createPresenceMetadata(const PlaybackInfo &playbackInfo, co
 }
 
 // Helper function to create the activity JSON structure
-json Discord::createActivity(const PlaybackInfo &playbackInfo)
+json Discord::createActivity(const MediaInfo &info)
 {
-	std::string state = playbackInfo.seasonEpisode + " · " + playbackInfo.episodeName;
+	std::string state;
+	if (info.type == MediaType::TVShow)
+	{
 
-	if (playbackInfo.state == PlaybackState::Buffering)
+		std::stringstream ss;
+		ss << "S" << info.season;
+		ss << "E" << std::setw(2) << std::setfill('0') << info.episode;
+		state = ss.str() + " - " + info.title;
+	}
+	else
+	{
+		state = info.title;
+	}
+
+	if (info.state == PlaybackState::Buffering)
 	{
 		state = "🔄 Buffering...";
 	}
-	else if (playbackInfo.state == PlaybackState::Paused)
+	else if (info.state == PlaybackState::Paused)
 	{
 		state = "⏸️ " + state;
 	}
 
-	auto details = playbackInfo.title;
+	auto details = info.grandparentTitle;
 
 	json assets = {{"large_image", "plex_logo"},
-				   {"large_text", playbackInfo.title},
+				   {"large_text", info.title},
 				   {"small_image", "plex_logo"},
-				   {"small_text", playbackInfo.username}};
+				   {"small_text", info.username}};
 
 	auto now = std::chrono::system_clock::now();
 	int64_t current_time = std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch()).count();
 	int64_t start_timestamp = 0;
 	int64_t end_timestamp = 0;
 
-	if (playbackInfo.state == PlaybackState::Playing)
+	if (info.state == PlaybackState::Playing)
 	{
-		start_timestamp = current_time - static_cast<int64_t>(playbackInfo.progress);
-		end_timestamp = current_time + static_cast<int64_t>(playbackInfo.duration - playbackInfo.progress);
+		start_timestamp = current_time - static_cast<int64_t>(info.progress);
+		end_timestamp = current_time + static_cast<int64_t>(info.duration - info.progress);
 	}
-	else if (playbackInfo.state == PlaybackState::Paused || playbackInfo.state == PlaybackState::Buffering)
+	else if (info.state == PlaybackState::Paused || info.state == PlaybackState::Buffering)
 	{
-		start_timestamp = current_time + std::chrono::duration_cast<std::chrono::seconds>(std::chrono::hours(9999)).count();
-		end_timestamp = current_time + std::chrono::duration_cast<std::chrono::seconds>(std::chrono::hours(9999)).count() + static_cast<int64_t>(playbackInfo.duration);
+		start_timestamp = current_time + std::chrono::duration_cast<std::chrono::seconds>(std::chrono::hours(MAX_PAUSED_DURATION)).count();
+		end_timestamp = current_time + std::chrono::duration_cast<std::chrono::seconds>(std::chrono::hours(MAX_PAUSED_DURATION)).count() + static_cast<int64_t>(info.duration);
 	}
 
 	json timestamps = {
@@ -350,7 +370,7 @@ void Discord::sendPresenceMessage(const std::string &message)
 void Discord::clearPresence()
 {
 	LOG_DEBUG("Discord", "clearPresence called");
-	if (!connected || !ipc.isConnected())
+	if (!ipc.isConnected())
 	{
 		LOG_ERROR("Discord", "Can't clear presence: not connected to Discord");
 		return;
@@ -415,29 +435,14 @@ void Discord::stop()
 	LOG_INFO("Discord", "Stopping Discord Rich Presence");
 	running = false;
 
-	// Call disconnected callback if currently connected
-	if (connected && onDisconnected)
-	{
-		onDisconnected();
-	}
-
 	if (conn_thread.joinable())
 	{
 		conn_thread.join();
 	}
-	if (connected)
+	if (ipc.isConnected())
 	{
 		ipc.closePipe();
 	}
-	else
-	{
-		LOG_DEBUG("Discord", "Connection thread already stopped");
-	}
-}
-
-bool Discord::isConnected() const
-{
-	return connected && ipc.isConnected();
 }
 
 void Discord::setConnectedCallback(ConnectionCallback callback)

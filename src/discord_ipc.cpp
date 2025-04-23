@@ -57,7 +57,10 @@ DiscordIPC::DiscordIPC() : connected(false)
 
 DiscordIPC::~DiscordIPC()
 {
-    closePipe();
+    if (connected)
+    {
+        closePipe();
+    }
 }
 
 #if defined(_WIN32)
@@ -288,6 +291,7 @@ bool DiscordIPC::openPipe()
 
 void DiscordIPC::closePipe()
 {
+    connected = false;
     LOG_DEBUG("DiscordIPC", "Disconnecting from Discord...");
 #ifdef _WIN32
     if (pipe_handle != INVALID_HANDLE_VALUE)
@@ -304,7 +308,6 @@ void DiscordIPC::closePipe()
         pipe_fd = -1;
     }
 #endif
-    connected = false;
     LOG_DEBUG("DiscordIPC", "Disconnected from Discord");
 }
 

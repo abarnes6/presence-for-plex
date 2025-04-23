@@ -18,24 +18,8 @@ Download the latest release from the [Releases](https://github.com/abarnes6/plex
 ### Setup
 
 1. Run the executable
-2. Configure your Plex server connection settings
-3. Connect your Plex account in a browser when prompted
-4. The application will automatically connect to Plex/Discord
-
-## Configuration
-
-Configuration is stored in a TOML file located in:
-
--   Windows: `%APPDATA%\Plex Presence\config.toml`
--   macOS/Linux: `~/.config/plex-presence/config.toml`
-
-### Configuration Options
-
-| Option            | Description                                             | Default  |
-| ----------------- | ------------------------------------------------------- | -------- |
-| `log_level`       | Logging verbosity (0=Debug, 1=Info, 2=Warning, 3=Error) | 1 (Info) |
-| `plex_server_url` | URL of your Plex Media Server                           |          |
-| `poll_interval`   | How often to check for playback changes (seconds)       | 5        |
+2. Connect your Plex account in a browser when prompted
+3. The application will automatically connect to Plex/Discord
 
 ## Building from Source
 
