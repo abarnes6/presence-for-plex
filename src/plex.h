@@ -45,8 +45,8 @@ private:
 								 const std::string &grandparentKey, MediaInfo &info);
 	void fetchTMDBMovieArtwork(const std::string &tmdbId, MediaInfo &info);
 	void fetchTMDBTVShowArtwork(const std::string &tmdbId, MediaInfo &info);
-	void Plex::fetchSessionUserInfo(const std::string &serverUri, const std::string &accessToken,
-									const std::string &sessionKey, MediaInfo &info);
+	void fetchSessionUserInfo(const std::string &serverUri, const std::string &accessToken,
+							  const std::string &sessionKey, MediaInfo &info);
 
 	// Media details
 	MediaInfo fetchMediaDetails(const std::string &serverUri, const std::string &accessToken,
