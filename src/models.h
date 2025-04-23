@@ -36,20 +36,35 @@ enum class MediaType
     Unknown
 };
 
+enum class LinkType
+{
+    IMDB,
+    MAL,
+    TMDB,
+    TVDB,
+    Unknown
+};
+
 // Playback information
 struct MediaInfo
 {
     // General
-    std::string title;         // Title of the media
-    std::string originalTitle; // Original title (original language)
-    MediaType type;            // Type of media (movie, TV show)
-    std::string artPath;       // Path to art on the server (cover image)
-    int year;                  // Year of release
-    std::string summary;       // Summary of the media
+    std::string title;               // Title of the media
+    std::string originalTitle;       // Original title (original language)
+    MediaType type;                  // Type of media (movie, TV show)
+    std::string artPath;             // Path to art on the server (cover image)
+    int year;                        // Year of release
+    std::string summary;             // Summary of the media
+    std::vector<std::string> genres; // List of genres
+    std::string imdbId;              // IMDB ID (if applicable)
+    std::string tmdbId;              // TMDB ID (if applicable)
+    std::string tvdbId;              // TVDB ID (if applicable)
+    std::string malId;               // MyAnimeList ID (if applicable)
 
     // TV Show specific
     std::string grandparentTitle; // Parent title (tv show name)
     std::string grandparentArt;   // Parent art URL (tv show cover image)
+    std::string grandparentKey;   // Parent ID (tv show ID)
     int season;                   // Season number
     int episode;                  // Episode number
 

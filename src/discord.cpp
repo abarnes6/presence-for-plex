@@ -302,7 +302,19 @@ json Discord::createActivity(const MediaInfo &info)
 	else
 	{
 		details = info.title + " (" + std::to_string(info.year) + ")";
-		state = info.title;
+		if (!info.genres.empty())
+		{
+			state = std::accumulate(std::next(info.genres.begin()), info.genres.end(),
+									info.genres[0],
+									[](std::string a, const std::string &b)
+									{
+										return a + ", " + b;
+									});
+		}
+		else
+		{
+			state = info.grandparentTitle;
+		}
 	}
 
 	if (info.state == PlaybackState::Buffering)
@@ -339,13 +351,31 @@ json Discord::createActivity(const MediaInfo &info)
 		{"start", start_timestamp},
 		{"end", end_timestamp}};
 
-	return {
+	json buttons = {};
+
+	if (!info.malId.empty())
+	{
+		buttons.push_back({{"label", "View on MyAnimeList"}, {"url", "https://myanimelist.net/anime/" + info.malId}});
+	}
+	else if (!info.imdbId.empty())
+	{
+		buttons.push_back({{"label", "View on IMDb"}, {"url", "https://www.imdb.com/title/" + info.imdbId}});
+	}
+
+	json ret = {
 		{"type", 3}, // 3 = "Watching"
 		{"state", state},
 		{"details", details},
 		{"timestamps", timestamps},
 		{"assets", assets},
 		{"instance", false}};
+
+	if (!buttons.empty())
+	{
+		ret["buttons"] = buttons;
+	}
+
+	return ret;
 }
 
 void Discord::sendPresenceMessage(const std::string &message)
