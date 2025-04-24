@@ -30,13 +30,13 @@
 #include "models.h"
 #include "uuid.h"
 
-// Forward declarations for cache entries
+// Forward declarations for cache structures
 struct TMDBCacheEntry;
 struct MALCacheEntry;
 struct MediaCacheEntry;
 struct SessionUserCacheEntry;
+struct ServerUriCacheEntry;
 
-// Plex class for managing connections and state
 class Plex
 {
 public:
@@ -100,14 +100,17 @@ private:
 	// State variables
 	std::atomic<bool> m_initialized;
 
-	// Session management
+	// Cache mutexes and maps
+	std::mutex m_cacheMutex;
+	std::map<std::string, TMDBCacheEntry> m_tmdbArtworkCache;
+	std::map<std::string, MALCacheEntry> m_malIdCache;
+	std::map<std::string, MediaCacheEntry> m_mediaInfoCache;
+	std::map<std::string, SessionUserCacheEntry> m_sessionUserCache;
+	std::map<std::string, ServerUriCacheEntry> m_serverUriCache;
+	
+	// Active sessions
 	std::mutex m_sessionMutex;
 	std::map<std::string, MediaInfo> m_activeSessions;
-
-	// Cache management
-	std::mutex m_cacheMutex;
-	std::map<std::string, TMDBCacheEntry> m_tmdbArtworkCache;		 // Key: TMDB ID
-	std::map<std::string, MALCacheEntry> m_malIdCache;				 // Key: Title
-	std::map<std::string, MediaCacheEntry> m_mediaInfoCache;		 // Key: ServerURI + MediaKey
-	std::map<std::string, SessionUserCacheEntry> m_sessionUserCache; // Key: ServerURI + SessionKey
+	
+	std::string getPreferredServerUri(const std::shared_ptr<PlexServer> &server);
 };

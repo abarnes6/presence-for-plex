@@ -310,6 +310,10 @@ json Discord::createActivity(const MediaInfo &info)
 		state = "Stopped";
 	}
 
+	if (state.empty()) {
+		state = "Watching";
+	}
+
 	// Calculate timestamps for progress bar
 	auto now = std::chrono::system_clock::now();
 	int64_t current_time = std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch()).count();

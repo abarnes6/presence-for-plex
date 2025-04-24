@@ -417,3 +417,5 @@ FodyWeavers.xsd
 vcpkg_installed/
 build/
 out/
+
+src/version.h

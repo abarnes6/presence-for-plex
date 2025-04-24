@@ -50,6 +50,12 @@ struct SessionUserCacheEntry : TimedCacheEntry
     bool valid() const { return (std::time(nullptr) - timestamp) < SESSION_CACHE_TIMEOUT; }
 };
 
+struct ServerUriCacheEntry : TimedCacheEntry
+{
+    std::string uri;
+    bool valid() const { return (std::time(nullptr) - timestamp) < SESSION_CACHE_TIMEOUT; } // Reuse session timeout
+};
+
 Plex::Plex() : m_initialized(false)
 {
 }
@@ -445,14 +451,62 @@ void Plex::setupServerConnections()
     }
 }
 
+std::string Plex::getPreferredServerUri(const std::shared_ptr<PlexServer> &server)
+{
+    // Check if we have a cached URI that's still valid
+    std::string serverId = server->clientIdentifier;
+    {
+        std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
+        auto cacheIt = m_serverUriCache.find(serverId);
+        if (cacheIt != m_serverUriCache.end() && cacheIt->second.valid())
+        {
+            LOG_DEBUG("Plex", "Using cached URI for server " + server->name + ": " + cacheIt->second.uri);
+            return cacheIt->second.uri;
+        }
+    }
+    
+    // No valid cache entry, determine the best URI to use
+    std::string serverUri;
+    
+    // Only test local URI if it exists
+    if (!server->localUri.empty()) {
+        LOG_DEBUG("Plex", "Testing local URI accessibility: " + server->localUri);
+        HttpClient testClient;
+        std::map<std::string, std::string> headers = getStandardHeaders(server->accessToken);
+        std::string response;
+        
+        // Try a basic request to check connectivity
+        if (testClient.get(server->localUri, headers, response)) {
+            LOG_INFO("Plex", "Local URI is accessible, using it: " + server->localUri);
+            serverUri = server->localUri;
+        } else {
+            LOG_INFO("Plex", "Local URI not accessible, falling back to public URI");
+            serverUri = server->publicUri;
+        }
+    } else {
+        serverUri = server->publicUri;
+    }
+
+    // Cache the result
+    {
+        std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
+        ServerUriCacheEntry entry;
+        entry.timestamp = std::time(nullptr);
+        entry.uri = serverUri;
+        m_serverUriCache[serverId] = entry;
+    }
+
+    return serverUri;
+}
+
 void Plex::setupServerSSEConnection(const std::shared_ptr<PlexServer> &server)
 {
     // Create a new HTTP client for this server
     server->httpClient = std::make_unique<HttpClient>();
     server->running = true;
 
-    // Determine the URI to use (prefer local)
-    std::string serverUri = !server->localUri.empty() ? server->localUri : server->publicUri;
+    // Get the preferred URI
+    std::string serverUri = getPreferredServerUri(server);
 
     if (serverUri.empty())
     {
@@ -460,7 +514,8 @@ void Plex::setupServerSSEConnection(const std::shared_ptr<PlexServer> &server)
         return;
     }
 
-    LOG_INFO("Plex", "Setting up SSE connection to server: " + server->name);
+    LOG_INFO("Plex", "Setting up SSE connection to server: " + server->name + " using " + 
+             (serverUri == server->localUri ? "local" : "public") + " URI");
 
     // Set up headers
     std::map<std::string, std::string> headers = getStandardHeaders(server->accessToken);
@@ -544,8 +599,8 @@ void Plex::updateSessionInfo(const std::string &serverId, const std::string &ses
                              const std::string &state, const std::string &mediaKey,
                              int64_t viewOffset, const std::shared_ptr<PlexServer> &server)
 {
-    // Determine the URI to use (prefer local)
-    std::string serverUri = !server->localUri.empty() ? server->localUri : server->publicUri;
+    // Get the preferred URI
+    std::string serverUri = getPreferredServerUri(server);
 
     // Create a cache key for media info
     std::string mediaInfoCacheKey = serverUri + mediaKey;
@@ -1143,6 +1198,7 @@ void Plex::stopConnections()
     m_malIdCache.clear();
     m_mediaInfoCache.clear();
     m_sessionUserCache.clear();
+    m_serverUriCache.clear();
 
     LOG_INFO("Plex", "All Plex connections stopped");
 }
