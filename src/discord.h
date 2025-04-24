@@ -14,6 +14,7 @@
 #include <sstream>
 #include <string>
 #include <thread>
+#include <deque>
 
 // Platform-specific headers
 #ifdef _WIN32
@@ -116,6 +117,10 @@ private:
 
 	ConnectionCallback onConnected;
 	ConnectionCallback onDisconnected;
+
+	// For rate limiting
+	std::deque<int64_t> frame_write_times;
+	bool canSendFrame(int64_t current_time);
 
 	/**
 	 * Persistent connection thread to Discord IPC

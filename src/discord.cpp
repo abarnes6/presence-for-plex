@@ -2,6 +2,14 @@
 
 constexpr int MAX_PAUSED_DURATION = 9999;
 
+// Rate limit constants chosen based on how Music Presence does it - kind of...
+// I can't find anything online about Discord's rate limits, but there is definitely something
+constexpr int MAX_FRAMES_PER_WINDOW = 5;      
+constexpr int RATE_LIMIT_WINDOW_SECONDS = 15; 
+constexpr int MIN_FRAME_INTERVAL_SECONDS = 1; 
+constexpr int MAX_FRAMES_SHORT_WINDOW = 3;    
+constexpr int RATE_LIMIT_SHORT_WINDOW = 5;
+
 using json = nlohmann::json;
 
 Discord::Discord() : running(false),
@@ -284,7 +292,8 @@ json Discord::createActivity(const MediaInfo &info)
 	{
 		std::stringstream ss;
 		ss << "S" << info.season;
-		ss << "E" << std::setw(2) << std::setfill('0') << info.episode;
+		ss << " • ";
+		ss << "E" << info.episode;
 
 		details = info.grandparentTitle;
 		state = ss.str() + " - " + info.title;
@@ -431,19 +440,55 @@ void Discord::processQueuedFrame()
 		auto now = std::chrono::steady_clock::now();
 		auto now_seconds = std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch()).count();
 		
-		// Only send a frame if at least 12 seconds has passed since the last send
-		// I don't know if this is true, but I believe rate limit is 5 per 60 seconds?
-		if (now_seconds - last_frame_write_time < 12) {
+		// Check rate limits
+		if (!canSendFrame(now_seconds)) {
 			return;
 		}
 		
 		frame_to_send = queued_frame;
 		has_queued_frame = false;
+		
+		// Record this frame write time
+		frame_write_times.push_back(now_seconds);
 		last_frame_write_time = now_seconds;
 	}
 	
 	LOG_DEBUG("Discord", "Processing queued frame");
 	sendPresenceMessage(frame_to_send);
+}
+
+bool Discord::canSendFrame(int64_t current_time)
+{
+	// Enforce minimum interval between frames
+	if (current_time - last_frame_write_time < MIN_FRAME_INTERVAL_SECONDS) {
+		LOG_DEBUG("Discord", "Rate limit: Too soon since last frame");
+		return false;
+	}
+	
+	while (!frame_write_times.empty() && 
+		   frame_write_times.front() < current_time - RATE_LIMIT_WINDOW_SECONDS) {
+		frame_write_times.pop_front();
+	}
+	
+	// Check if we've reached the maximum frames per long window (15 seconds)
+	if (frame_write_times.size() >= MAX_FRAMES_PER_WINDOW - 1) {
+		LOG_DEBUG("Discord", "Rate limit: Maximum frames per 15-second window reached");
+		return false;
+	}
+	
+	int frames_in_short_window = 0;
+	for (const auto& timestamp : frame_write_times) {
+		if (timestamp >= current_time - RATE_LIMIT_SHORT_WINDOW) {
+			frames_in_short_window++;
+		}
+	}
+	
+	if (frames_in_short_window >= MAX_FRAMES_SHORT_WINDOW - 1) {
+		LOG_DEBUG("Discord", "Rate limit: Maximum frames per 5-second window reached");
+		return false;
+	}
+	
+	return true;
 }
 
 void Discord::clearPresence()
