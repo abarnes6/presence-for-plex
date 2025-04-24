@@ -1,4 +1,5 @@
 ﻿#include "main.h"
+#include "config.h"
 
 /**
  * Global application instance used by signal handlers
@@ -44,6 +45,9 @@ int main()
     // Initialize application
     Application app;
     g_app = &app;
+
+    auto &config = Config::getInstance();
+    LOG_INFO("Application", "Starting Plex Presence v" + config.getVersionString());
 
     if (!app.initialize())
     {

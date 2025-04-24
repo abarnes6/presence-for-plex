@@ -170,6 +170,27 @@ void Config::loadFromYaml(const YAML::Node &config)
     }
 }
 
+// Version information
+std::string Config::getVersionString() const
+{
+    return VERSION_STRING;
+}
+
+int Config::getVersionMajor() const
+{
+    return VERSION_MAJOR;
+}
+
+int Config::getVersionMinor() const
+{
+    return VERSION_MINOR;
+}
+
+int Config::getVersionPatch() const
+{
+    return VERSION_PATCH;
+}
+
 YAML::Node Config::saveToYaml() const
 {
     YAML::Node config;
@@ -203,6 +224,14 @@ YAML::Node Config::saveToYaml() const
     YAML::Node discord;
     discord["client_id"] = discordClientId.load();
     config["discord"] = discord;
+
+    // Version information
+    YAML::Node version;
+    version["major"] = VERSION_MAJOR;
+    version["minor"] = VERSION_MINOR;
+    version["patch"] = VERSION_PATCH;
+    version["string"] = VERSION_STRING;
+    config["version"] = version;
 
     // TMDB API key
     config["tmdb_access_token"] = tmdbAccessToken;

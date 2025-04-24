@@ -105,7 +105,7 @@ std::map<std::string, std::string> Plex::getStandardHeaders(const std::string &t
     std::map<std::string, std::string> headers = {
         {"X-Plex-Client-Identifier", getClientIdentifier()},
         {"X-Plex-Product", "Plex Presence"},
-        {"X-Plex-Version", "0.2.1"},
+        {"X-Plex-Version", Config::getInstance().getVersionString()},
         {"X-Plex-Device", "PC"},
 #if defined(_WIN32)
         {"X-Plex-Platform", "Windows"},

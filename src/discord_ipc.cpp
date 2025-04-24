@@ -147,16 +147,6 @@ bool DiscordIPC::openPipe()
         const char *temp = getenv("XDG_RUNTIME_DIR");
         const char *home = getenv("HOME");
 
-        // If HOME is not available (unlikely), try to get it from passwd
-        if (!home)
-        {
-            struct passwd *pw = getpwuid(getuid());
-            if (pw)
-            {
-                home = pw->pw_dir;
-            }
-        }
-
         if (temp)
         {
             socket_path = std::string(temp) + "/discord-ipc-" + std::to_string(i);

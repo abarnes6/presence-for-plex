@@ -15,6 +15,7 @@
 // Project headers
 #include "logger.h"
 #include "models.h"
+#include "version.h"
 
 /**
  * @class Config
@@ -162,6 +163,34 @@ public:
      * @param id New Discord client ID
      */
     void setDiscordClientId(uint64_t id);
+
+    //
+    // Version information
+    //
+
+    /**
+     * @brief Get application version as string
+     * @return Version string in format "MAJOR.MINOR.PATCH"
+     */
+    std::string getVersionString() const;
+
+    /**
+     * @brief Get major version number
+     * @return Major version component
+     */
+    int getVersionMajor() const;
+
+    /**
+     * @brief Get minor version number
+     * @return Minor version component
+     */
+    int getVersionMinor() const;
+
+    /**
+     * @brief Get patch version number
+     * @return Patch version component
+     */
+    int getVersionPatch() const;
 
 private:
     // Singleton pattern implementation
