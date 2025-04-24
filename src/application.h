@@ -24,6 +24,7 @@ private:
     PlaybackState lastState = PlaybackState::Stopped;
     std::condition_variable discordConnectCv;
     std::mutex discordConnectMutex;
+    time_t lastStartTime = 0;
 
     // Helper methods for improved readability
     void setupLogging();

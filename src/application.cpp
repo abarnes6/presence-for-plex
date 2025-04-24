@@ -97,11 +97,12 @@ void Application::processPlaybackInfo(const MediaInfo &info)
 {
     if (info.state != PlaybackState::BadToken)
     {
-        if (info.state != lastState)
+        if (info.state != lastState || (info.state == PlaybackState::Playing && abs(info.startTime - lastStartTime) > 5))
         {
             LOG_DEBUG("Application", "Playback state changed, updating Discord presence to " + std::to_string(static_cast<int>(info.state)));
             discord->updatePresence(info);
         }
+        lastStartTime = info.startTime;
         lastState = info.state;
     }
     else
