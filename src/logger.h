@@ -1,48 +1,75 @@
 #pragma once
-#include <iostream>
-#include <string>
+
+// Standard library headers
 #include <chrono>
+#include <filesystem>
+#include <fstream>
 #include <iomanip>
+#include <iostream>
 #include <mutex>
 #include <sstream>
-#include <fstream>
-#include <filesystem>
+#include <string>
 
+// Platform-specific headers
+#ifdef _WIN32
+#include <WinSock2.h>
+#endif
+
+// ANSI color codes
+#define ANSI_RESET "\033[0m"
+#define ANSI_RED "\033[31m"
+#define ANSI_YELLOW "\033[33m"
+#define ANSI_GREEN "\033[32m"
+#define ANSI_BLUE "\033[36m"
+
+/**
+ * Log severity levels in ascending order of importance
+ */
 enum class LogLevel
 {
-    Debug,
-    Info,
-    Warning,
-    Error,
-    None
+    Debug,   // Detailed information for debugging
+    Info,    // General information about program execution
+    Warning, // Potential issues that don't prevent execution
+    Error,   // Critical issues that may prevent proper execution
+    None     // Disable logging completely
 };
 
+/**
+ * Singleton logger class supporting console output with colors and file output
+ */
 class Logger
 {
 public:
     static Logger &getInstance();
+
+    // Configuration methods
     void setLogLevel(LogLevel level);
     LogLevel getLogLevel() const;
+    void initFileLogging(const std::filesystem::path &logFilePath, bool clearExisting = true);
+
+    // Logging methods
     void debug(const std::string &component, const std::string &message);
     void info(const std::string &component, const std::string &message);
     void warning(const std::string &component, const std::string &message);
     void error(const std::string &component, const std::string &message);
-    
-    // Initialize logging to file
-    void initFileLogging(const std::filesystem::path& logFilePath, bool clearExisting = true);
 
 private:
-    Logger() : logLevel(LogLevel::Info), logToFile(false) {}
+    Logger();
     Logger(const Logger &) = delete;
     Logger &operator=(const Logger &) = delete;
 
-    void log(const std::string &component, const std::string &level, const std::string &message);
+    void log(LogLevel level, const std::string &component, const std::string &message);
+    std::string getTimestamp() const;
+    std::string getLevelString(LogLevel level) const;
+    std::string colorize(const std::string &text, LogLevel level) const;
+
     LogLevel logLevel;
     std::mutex logMutex;
-    
+
     // File logging
     bool logToFile;
     std::ofstream logFile;
+    bool useColorOutput;
 };
 
 // Convenience macros for logging

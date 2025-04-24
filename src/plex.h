@@ -1,19 +1,42 @@
 #pragma once
 
-#include <string>
-#include <map>
-#include <mutex>
+// Standard library headers
 #include <atomic>
+#include <chrono>
+#include <iomanip>
+#include <map>
+#include <memory>
+#include <mutex>
+#include <random>
+#include <sstream>
+#include <string>
 #include <thread>
 #include <vector>
-#include <memory>
-#include <chrono>
+
+// Platform-specific headers
+#ifdef _WIN32
+#include <WinSock2.h>
+#include <shellapi.h>
+#endif
+
+// Third-party headers
+#include <curl/curl.h>
 #include <nlohmann/json.hpp>
-#include "models.h"
+
+// Project headers
+#include "config.h"
 #include "http_client.h"
+#include "logger.h"
+#include "models.h"
+#include "uuid.h"
 
-// Server information class
+// Forward declarations for cache entries
+struct TMDBCacheEntry;
+struct MALCacheEntry;
+struct MediaCacheEntry;
+struct SessionUserCacheEntry;
 
+// Plex class for managing connections and state
 class Plex
 {
 public:
@@ -23,30 +46,31 @@ public:
 	// Initialize connection to Plex
 	bool init();
 
-	// Get the current playback information (across all servers)
+	// Get current playback status
 	MediaInfo getCurrentPlayback();
 
-	// Explicitly stop all server connections
+	// Stop all connections
 	void stopConnections();
 
 private:
-	// Authentication
+	// Authentication methods
 	bool acquireAuthToken();
-	bool fetchAndSaveUsername(const std::string &authToken, const std::string &clientId);
-	bool pollForPinAuthorization(const std::string &pinId, const std::string &pin,
-								 const std::string &clientId, HttpClient &client,
-								 const std::map<std::string, std::string> &headers);
 	bool requestPlexPin(std::string &pinId, std::string &pin, HttpClient &client,
 						const std::map<std::string, std::string> &headers);
 	void openAuthorizationUrl(const std::string &pin, const std::string &clientId);
+	bool pollForPinAuthorization(const std::string &pinId, const std::string &pin,
+								 const std::string &clientId, HttpClient &client,
+								 const std::map<std::string, std::string> &headers);
+	bool fetchAndSaveUsername(const std::string &authToken, const std::string &clientId);
+	std::string getClientIdentifier();
 
-	// Server discovery
+	// Server methods
 	bool fetchServers();
 	bool parseServerJson(const std::string &jsonStr);
 	void setupServerConnections();
 	void setupServerSSEConnection(const std::shared_ptr<PlexServer> &server);
 
-	// Event handling
+	// Event handling methods
 	void handleSSEEvent(const std::string &serverId, const std::string &event);
 	void processPlaySessionStateNotification(const std::string &serverId, const nlohmann::json &notification);
 	void updateSessionInfo(const std::string &serverId, const std::string &sessionKey,
@@ -54,29 +78,36 @@ private:
 						   int64_t viewOffset, const std::shared_ptr<PlexServer> &server);
 	void updatePlaybackState(MediaInfo &info, const std::string &state, int64_t viewOffset);
 
-	// Media metadata helpers
-	void fetchGrandparentMetadata(const std::string &serverUri, const std::string &accessToken, MediaInfo &info);
-	void fetchTMDBArtwork(const std::string &tmdbId, MediaInfo &info);
-	void fetchSessionUserInfo(const std::string &serverUri, const std::string &accessToken,
-							  const std::string &sessionKey, MediaInfo &info);
-	void parseGenres(const nlohmann::json &metadata, MediaInfo &info);
-	void parseGuid(const nlohmann::json &metadata, MediaInfo &info);
-	bool isAnimeContent(const nlohmann::json &metadata);
-	void fetchAnimeMetadata(MediaInfo &info);
+	// Media info methods
+	MediaInfo fetchMediaDetails(const std::string &serverUri, const std::string &accessToken,
+								const std::string &mediaKey);
 	void extractBasicMediaInfo(const nlohmann::json &metadata, MediaInfo &info);
 	void extractMovieSpecificInfo(const nlohmann::json &metadata, MediaInfo &info);
 	void extractTVShowSpecificInfo(const nlohmann::json &metadata, MediaInfo &info);
+	void fetchGrandparentMetadata(const std::string &serverUrl, const std::string &accessToken,
+								  MediaInfo &info);
+	void fetchSessionUserInfo(const std::string &serverUri, const std::string &accessToken,
+							  const std::string &sessionKey, MediaInfo &info);
+	void parseGuid(const nlohmann::json &metadata, MediaInfo &info);
+	void parseGenres(const nlohmann::json &metadata, MediaInfo &info);
+	bool isAnimeContent(const nlohmann::json &metadata);
+	void fetchAnimeMetadata(MediaInfo &info);
+	void fetchTMDBArtwork(const std::string &tmdbId, MediaInfo &info);
 
-	// Media details
-	MediaInfo fetchMediaDetails(const std::string &serverUri, const std::string &accessToken,
-								const std::string &mediaKey);
-
-	// Generate X-Plex-Client-Identifier if needed
-	std::string getClientIdentifier();
+	// Helper methods
 	std::map<std::string, std::string> getStandardHeaders(const std::string &token = "");
 
-	// Data members
-	std::map<std::string, MediaInfo> m_activeSessions;
-	std::mutex m_sessionMutex;
+	// State variables
 	std::atomic<bool> m_initialized;
+
+	// Session management
+	std::mutex m_sessionMutex;
+	std::map<std::string, MediaInfo> m_activeSessions;
+
+	// Cache management
+	std::mutex m_cacheMutex;
+	std::map<std::string, TMDBCacheEntry> m_tmdbArtworkCache;		 // Key: TMDB ID
+	std::map<std::string, MALCacheEntry> m_malIdCache;				 // Key: Title
+	std::map<std::string, MediaCacheEntry> m_mediaInfoCache;		 // Key: ServerURI + MediaKey
+	std::map<std::string, SessionUserCacheEntry> m_sessionUserCache; // Key: ServerURI + SessionKey
 };

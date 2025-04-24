@@ -21,22 +21,9 @@ Discord::~Discord()
 	LOG_INFO("Discord", "Discord object destroyed");
 }
 
-/* Persistent connection to Discord IPC
-   This thread handles the connection to Discord and keeps it alive.
-   It also handles reconnections in case of disconnection.
-   The thread will run until the `running` flag is set to false.
-   The thread will attempt to reconnect with exponential backoff if the connection fails.
-
-   How it works:
-   1. The thread will attempt to connect to Discord IPC using the `ipc.openPipe()` method.
-   2. If the connection is successful, it will send a handshake message to the Discord client.
-   3. It will then attempt to read the handshake response.
-   4. If the handshake is successful, it will set the `connected` flag to true.
-
-*/
 void Discord::connectionThread()
 {
-	LOG_DEBUG("Discord", "Connection thread started");
+	LOG_INFO("Discord", "Connection thread started");
 	while (running)
 	{
 		// Handle connection logic
@@ -66,7 +53,7 @@ void Discord::connectionThread()
 			// Attempt to connect
 			if (!attemptConnection())
 			{
-				LOG_WARNING("Discord", "Failed to connect to Discord IPC, will retry later");
+				LOG_INFO("Discord", "Failed to connect to Discord IPC, will retry later");
 				continue;
 			}
 
@@ -81,7 +68,7 @@ void Discord::connectionThread()
 		}
 		else
 		{
-			LOG_DEBUG("Discord", "Checking Discord alive status");
+			LOG_DEBUG("Discord", "Checking Discord connection health");
 
 			if (!isStillAlive())
 			{
@@ -109,7 +96,6 @@ void Discord::connectionThread()
 	}
 }
 
-// Helper method to encapsulate connection logic
 bool Discord::attemptConnection()
 {
 	if (!ipc.openPipe())
@@ -168,17 +154,17 @@ bool Discord::attemptConnection()
 	catch (const json::parse_error &e)
 	{
 		LOG_ERROR_STREAM("Discord", "JSON parse error in READY response: " << e.what() << " at position " << e.byte);
-		LOG_ERROR_STREAM("Discord", "Response that caused the error: " << response);
+		LOG_DEBUG_STREAM("Discord", "Response that caused the error: " << response);
 	}
 	catch (const json::type_error &e)
 	{
 		LOG_ERROR_STREAM("Discord", "JSON type error in READY response: " << e.what());
-		LOG_ERROR_STREAM("Discord", "Response that caused the error: " << response);
+		LOG_DEBUG_STREAM("Discord", "Response that caused the error: " << response);
 	}
 	catch (const std::exception &e)
 	{
 		LOG_ERROR("Discord", "Failed to parse READY response: " + std::string(e.what()));
-		LOG_ERROR("Discord", "Response that caused the error: " + response);
+		LOG_DEBUG("Discord", "Response that caused the error: " + response);
 	}
 
 	ipc.closePipe();
@@ -191,7 +177,7 @@ void Discord::updatePresence(const MediaInfo &info)
 
 	if (!ipc.isConnected())
 	{
-		LOG_ERROR("Discord", "Can't update presence: not connected to Discord");
+		LOG_WARNING("Discord", "Can't update presence: not connected to Discord");
 		return;
 	}
 
@@ -201,22 +187,19 @@ void Discord::updatePresence(const MediaInfo &info)
 		info.state == PlaybackState::Paused ||
 		info.state == PlaybackState::Buffering)
 	{
-		LOG_DEBUG_STREAM("Discord", "Media is " << (info.state == PlaybackState::Playing ? "playing" : (info.state == PlaybackState::Paused ? "paused" : "buffering"))
-												<< ", updating presence");
+		std::string stateStr = (info.state == PlaybackState::Playing) ? "playing" : (info.state == PlaybackState::Paused) ? "paused"
+																														  : "buffering";
+		LOG_DEBUG_STREAM("Discord", "Media is " << stateStr << ", updating presence");
+
 		is_playing = true;
 
 		std::string nonce = generateNonce();
-
 		std::string presence = createPresence(info, nonce);
-		// std::string presenceMetadata = createPresenceMetadata(info, nonce);
-
 		sendPresenceMessage(presence);
-		// sendActivityMessage(presenceMetadata);
 
-		LOG_DEBUG_STREAM("Discord", "Updated presence: " << info.title
-														 << " - " << info.username
-														 << (info.state == PlaybackState::Paused ? " (Paused)" : "")
-														 << (info.state == PlaybackState::Buffering ? " (Buffering)" : ""));
+		LOG_INFO_STREAM("Discord", "Updated presence: " << info.title << " - " << info.username
+														<< (info.state == PlaybackState::Paused ? " (Paused)" : "")
+														<< (info.state == PlaybackState::Buffering ? " (Buffering)" : ""));
 	}
 	else
 	{
@@ -239,7 +222,6 @@ std::string Discord::generateNonce()
 	return std::to_string(++nonce_counter);
 }
 
-// Create the primary Discord presence payload
 std::string Discord::createPresence(const MediaInfo &info, const std::string &nonce)
 {
 	json activity = createActivity(info);
@@ -259,7 +241,6 @@ std::string Discord::createPresence(const MediaInfo &info, const std::string &no
 	return presence.dump();
 }
 
-// Create the secondary Discord presence payload
 std::string Discord::createPresenceMetadata(const MediaInfo &info, const std::string &nonce)
 {
 	json activity = createActivity(info);
@@ -273,7 +254,6 @@ std::string Discord::createPresenceMetadata(const MediaInfo &info, const std::st
 	return presence.dump();
 }
 
-// Helper function to create the activity JSON structure
 json Discord::createActivity(const MediaInfo &info)
 {
 	std::string state;
@@ -291,7 +271,6 @@ json Discord::createActivity(const MediaInfo &info)
 
 	if (info.type == MediaType::TVShow)
 	{
-
 		std::stringstream ss;
 		ss << "S" << info.season;
 		ss << "E" << std::setw(2) << std::setfill('0') << info.episode;
@@ -331,6 +310,7 @@ json Discord::createActivity(const MediaInfo &info)
 		state = "Stopped";
 	}
 
+	// Calculate timestamps for progress bar
 	auto now = std::chrono::system_clock::now();
 	int64_t current_time = std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch()).count();
 	int64_t start_timestamp = 0;
@@ -343,8 +323,11 @@ json Discord::createActivity(const MediaInfo &info)
 	}
 	else if (info.state == PlaybackState::Paused || info.state == PlaybackState::Buffering)
 	{
-		start_timestamp = current_time + std::chrono::duration_cast<std::chrono::seconds>(std::chrono::hours(MAX_PAUSED_DURATION)).count();
-		end_timestamp = current_time + std::chrono::duration_cast<std::chrono::seconds>(std::chrono::hours(MAX_PAUSED_DURATION)).count() + static_cast<int64_t>(info.duration);
+		auto max_duration = std::chrono::duration_cast<std::chrono::seconds>(
+								std::chrono::hours(MAX_PAUSED_DURATION))
+								.count();
+		start_timestamp = current_time + max_duration;
+		end_timestamp = start_timestamp + static_cast<int64_t>(info.duration);
 	}
 
 	json timestamps = {
@@ -353,13 +336,16 @@ json Discord::createActivity(const MediaInfo &info)
 
 	json buttons = {};
 
+	// Add relevant buttons based on available IDs
 	if (!info.malId.empty())
 	{
-		buttons.push_back({{"label", "View on MyAnimeList"}, {"url", "https://myanimelist.net/anime/" + info.malId}});
+		buttons.push_back({{"label", "View on MyAnimeList"},
+						   {"url", "https://myanimelist.net/anime/" + info.malId}});
 	}
 	else if (!info.imdbId.empty())
 	{
-		buttons.push_back({{"label", "View on IMDb"}, {"url", "https://www.imdb.com/title/" + info.imdbId}});
+		buttons.push_back({{"label", "View on IMDb"},
+						   {"url", "https://www.imdb.com/title/" + info.imdbId}});
 	}
 
 	json ret = {
@@ -382,7 +368,7 @@ void Discord::sendPresenceMessage(const std::string &message)
 {
 	if (!ipc.writeFrame(OP_FRAME, message))
 	{
-		LOG_ERROR("Discord", "Failed to send presence update");
+		LOG_WARNING("Discord", "Failed to send presence update");
 		needs_reconnect = true;
 		return;
 	}
@@ -396,17 +382,17 @@ void Discord::sendPresenceMessage(const std::string &message)
 			json response_json = json::parse(response);
 			if (response_json.contains("evt") && response_json["evt"] == "ERROR")
 			{
-				LOG_ERROR_STREAM("Discord", "Discord rejected presence update: " << response);
+				LOG_WARNING_STREAM("Discord", "Discord rejected presence update: " << response);
 			}
 		}
 		catch (const std::exception &e)
 		{
-			LOG_ERROR_STREAM("Discord", "Failed to parse response: " << e.what());
+			LOG_WARNING_STREAM("Discord", "Failed to parse response: " << e.what());
 		}
 	}
 	else
 	{
-		LOG_ERROR("Discord", "Failed to read Discord response");
+		LOG_WARNING("Discord", "Failed to read Discord response");
 	}
 }
 
@@ -415,7 +401,7 @@ void Discord::clearPresence()
 	LOG_DEBUG("Discord", "clearPresence called");
 	if (!ipc.isConnected())
 	{
-		LOG_ERROR("Discord", "Can't clear presence: not connected to Discord");
+		LOG_WARNING("Discord", "Can't clear presence: not connected to Discord");
 		return;
 	}
 
@@ -441,7 +427,7 @@ bool Discord::isStillAlive()
 {
 	if (!ipc.sendPing())
 	{
-		LOG_ERROR("Discord", "Failed to send ping");
+		LOG_WARNING("Discord", "Failed to send ping");
 		return false;
 	}
 
@@ -458,14 +444,13 @@ bool Discord::isStillAlive()
 	}
 	else
 	{
-		LOG_ERROR("Discord", "Failed to read PONG response");
+		LOG_WARNING("Discord", "Failed to read PONG response");
 		return false;
 	}
 
 	return true;
 }
 
-// Lifecycle control
 void Discord::start()
 {
 	LOG_INFO("Discord", "Starting Discord Rich Presence");

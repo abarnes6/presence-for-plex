@@ -1,14 +1,4 @@
 #include "plex.h"
-#include "config.h"
-#include "logger.h"
-#include <random>
-#include <iomanip>
-#include <sstream>
-#include <curl/curl.h>
-#include "uuid.h"
-#ifdef _WIN32
-#include <shellapi.h>
-#endif
 
 // API endpoints and constants
 namespace
@@ -22,7 +12,43 @@ namespace
     constexpr const char *TMDB_IMAGE_BASE_URL = "https://image.tmdb.org/t/p/w500";
     constexpr const char *SSE_NOTIFICATIONS_ENDPOINT = "/:/eventsource/notifications?filters=playing";
     constexpr const char *SESSION_ENDPOINT = "/status/sessions";
+
+    // Cache timeouts (in seconds)
+    constexpr const int TMDB_CACHE_TIMEOUT = 86400;  // 24 hours
+    constexpr const int MAL_CACHE_TIMEOUT = 86400;   // 24 hours
+    constexpr const int MEDIA_CACHE_TIMEOUT = 3600;  // 1 hour
+    constexpr const int SESSION_CACHE_TIMEOUT = 300; // 5 minutes
 }
+
+// Cache structures
+struct TimedCacheEntry
+{
+    time_t timestamp;
+    bool valid() const { return (std::time(nullptr) - timestamp) < MEDIA_CACHE_TIMEOUT; }
+};
+
+struct TMDBCacheEntry : TimedCacheEntry
+{
+    std::string artPath;
+    bool valid() const { return (std::time(nullptr) - timestamp) < TMDB_CACHE_TIMEOUT; }
+};
+
+struct MALCacheEntry : TimedCacheEntry
+{
+    std::string malId;
+    bool valid() const { return (std::time(nullptr) - timestamp) < MAL_CACHE_TIMEOUT; }
+};
+
+struct MediaCacheEntry : TimedCacheEntry
+{
+    MediaInfo info;
+};
+
+struct SessionUserCacheEntry : TimedCacheEntry
+{
+    std::string username;
+    bool valid() const { return (std::time(nullptr) - timestamp) < SESSION_CACHE_TIMEOUT; }
+};
 
 Plex::Plex() : m_initialized(false)
 {
@@ -521,13 +547,67 @@ void Plex::updateSessionInfo(const std::string &serverId, const std::string &ses
     // Determine the URI to use (prefer local)
     std::string serverUri = !server->localUri.empty() ? server->localUri : server->publicUri;
 
-    // Fetch detailed media info
-    MediaInfo info = fetchMediaDetails(serverUri, server->accessToken, mediaKey);
+    // Create a cache key for media info
+    std::string mediaInfoCacheKey = serverUri + mediaKey;
+
+    // Check if we have cached media info that's still valid
+    MediaInfo info;
+    bool needMediaFetch = true;
+
+    {
+        std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
+        auto cacheIt = m_mediaInfoCache.find(mediaInfoCacheKey);
+        if (cacheIt != m_mediaInfoCache.end() && cacheIt->second.valid())
+        {
+            info = cacheIt->second.info;
+            needMediaFetch = false;
+            LOG_DEBUG("Plex", "Using cached media info for key: " + mediaKey);
+        }
+    }
+
+    // Fetch media details if needed
+    if (needMediaFetch)
+    {
+        info = fetchMediaDetails(serverUri, server->accessToken, mediaKey);
+
+        // Cache the result
+        std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
+        MediaCacheEntry entry;
+        entry.timestamp = std::time(nullptr);
+        entry.info = info;
+        m_mediaInfoCache[mediaInfoCacheKey] = entry;
+    }
 
     // For owned servers, we need to check if this session belongs to the current user
     if (server->owned)
     {
-        fetchSessionUserInfo(serverUri, server->accessToken, sessionKey, info);
+        // Create cache key for session user info
+        std::string sessionUserCacheKey = serverUri + sessionKey;
+        bool needUserFetch = true;
+
+        {
+            std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
+            auto cacheIt = m_sessionUserCache.find(sessionUserCacheKey);
+            if (cacheIt != m_sessionUserCache.end() && cacheIt->second.valid())
+            {
+                info.username = cacheIt->second.username;
+                needUserFetch = false;
+                LOG_DEBUG("Plex", "Using cached user info for session: " + sessionKey);
+            }
+        }
+
+        if (needUserFetch)
+        {
+            fetchSessionUserInfo(serverUri, server->accessToken, sessionKey, info);
+
+            // Cache the result
+            std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
+            SessionUserCacheEntry entry;
+            entry.timestamp = std::time(nullptr);
+            entry.username = info.username;
+            m_sessionUserCache[sessionUserCacheKey] = entry;
+        }
+
         // Skip sessions that don't belong to the current user
         if (info.username != Config::getInstance().getPlexUsername())
         {
@@ -787,7 +867,35 @@ void Plex::parseGuid(const nlohmann::json &metadata, MediaInfo &info)
             else if (id.find("tmdb://") == 0)
             {
                 info.tmdbId = id.substr(7);
-                fetchTMDBArtwork(info.tmdbId, info);
+
+                // Check TMDB artwork cache
+                bool needArtworkFetch = true;
+                {
+                    std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
+                    auto cacheIt = m_tmdbArtworkCache.find(info.tmdbId);
+                    if (cacheIt != m_tmdbArtworkCache.end() && cacheIt->second.valid())
+                    {
+                        info.artPath = cacheIt->second.artPath;
+                        needArtworkFetch = false;
+                        LOG_DEBUG("Plex", "Using cached TMDB artwork for ID: " + info.tmdbId);
+                    }
+                }
+
+                if (needArtworkFetch)
+                {
+                    fetchTMDBArtwork(info.tmdbId, info);
+
+                    // Cache the result if we found artwork
+                    if (!info.artPath.empty())
+                    {
+                        std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
+                        TMDBCacheEntry entry;
+                        entry.timestamp = std::time(nullptr);
+                        entry.artPath = info.artPath;
+                        m_tmdbArtworkCache[info.tmdbId] = entry;
+                    }
+                }
+
                 LOG_INFO("Plex", "Found TMDB ID: " + info.tmdbId);
             }
         }
@@ -830,41 +938,67 @@ void Plex::fetchAnimeMetadata(MediaInfo &info)
 {
     LOG_INFO("Plex", "Anime detected, searching MyAnimeList via Jikan API");
 
-    HttpClient jikanClient;
-    std::string encodedTitle = info.originalTitle.empty() ? info.title : info.originalTitle;
-    std::string::size_type pos = 0;
-    while ((pos = encodedTitle.find(' ', pos)) != std::string::npos)
+    // Create cache key (use title as key)
+    std::string cacheKey = info.originalTitle.empty() ? info.title : info.originalTitle;
+
+    // Check if we have cached MAL info
+    bool needMALFetch = true;
     {
-        encodedTitle.replace(pos, 1, "%20");
-        pos += 3;
+        std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
+        auto cacheIt = m_malIdCache.find(cacheKey);
+        if (cacheIt != m_malIdCache.end() && cacheIt->second.valid())
+        {
+            info.malId = cacheIt->second.malId;
+            needMALFetch = false;
+            LOG_DEBUG("Plex", "Using cached MAL ID for: " + cacheKey);
+        }
     }
 
-    std::string jikanUrl = std::string(JIKAN_API_URL) + "?q=" + encodedTitle;
-
-    std::string jikanResponse;
-    if (jikanClient.get(jikanUrl, {}, jikanResponse))
+    if (needMALFetch)
     {
-        try
+        HttpClient jikanClient;
+        std::string encodedTitle = cacheKey;
+        std::string::size_type pos = 0;
+        while ((pos = encodedTitle.find(' ', pos)) != std::string::npos)
         {
-            auto jikanJson = nlohmann::json::parse(jikanResponse);
-            if (jikanJson.contains("data") && !jikanJson["data"].empty())
+            encodedTitle.replace(pos, 1, "%20");
+            pos += 3;
+        }
+
+        std::string jikanUrl = std::string(JIKAN_API_URL) + "?q=" + encodedTitle;
+
+        std::string jikanResponse;
+        if (jikanClient.get(jikanUrl, {}, jikanResponse))
+        {
+            try
             {
-                auto firstResult = jikanJson["data"][0];
-                if (firstResult.contains("mal_id"))
+                auto jikanJson = nlohmann::json::parse(jikanResponse);
+                if (jikanJson.contains("data") && !jikanJson["data"].empty())
                 {
-                    info.malId = std::to_string(firstResult["mal_id"].get<int>());
-                    LOG_INFO("Plex", "Found MyAnimeList ID: " + info.malId);
+                    auto firstResult = jikanJson["data"][0];
+                    if (firstResult.contains("mal_id"))
+                    {
+                        info.malId = std::to_string(firstResult["mal_id"].get<int>());
+                        LOG_INFO("Plex", "Found MyAnimeList ID: " + info.malId);
+
+                        // Cache the result
+                        std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
+                        MALCacheEntry entry;
+                        entry.timestamp = std::time(nullptr);
+                        entry.malId = info.malId;
+                        m_malIdCache[cacheKey] = entry;
+                    }
                 }
             }
+            catch (const std::exception &e)
+            {
+                LOG_ERROR("Plex", "Error parsing Jikan API response: " + std::string(e.what()));
+            }
         }
-        catch (const std::exception &e)
+        else
         {
-            LOG_ERROR("Plex", "Error parsing Jikan API response: " + std::string(e.what()));
+            LOG_ERROR("Plex", "Failed to fetch data from Jikan API");
         }
-    }
-    else
-    {
-        LOG_ERROR("Plex", "Failed to fetch data from Jikan API");
     }
 }
 
@@ -1002,6 +1136,13 @@ void Plex::stopConnections()
             server->httpClient.reset();
         }
     }
+
+    // Clear any cached data
+    std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
+    m_tmdbArtworkCache.clear();
+    m_malIdCache.clear();
+    m_mediaInfoCache.clear();
+    m_sessionUserCache.clear();
 
     LOG_INFO("Plex", "All Plex connections stopped");
 }

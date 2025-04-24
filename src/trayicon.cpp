@@ -1,5 +1,4 @@
 #include "trayicon.h"
-#include "resources.h"
 
 #ifdef _WIN32
 // Static instance pointer for Windows callback
@@ -166,6 +165,22 @@ void TrayIcon::updateMenu()
     InsertMenuW(m_hMenu, 0, MF_BYPOSITION | MF_STRING | MF_DISABLED | MF_GRAYED, ID_TRAY_STATUS, wStatus.c_str());
 }
 
+void TrayIcon::executeExitCallback()
+{
+    if (m_exitCallback)
+    {
+        // Create a local copy of the callback to avoid potential use-after-free
+        auto exitCallback = m_exitCallback;
+        // Execute the callback on a separate thread to avoid blocking WndProc
+        std::thread([exitCallback]()
+                    {
+            if (exitCallback) {
+                exitCallback();
+            } })
+            .detach();
+    }
+}
+
 // Static window procedure
 LRESULT CALLBACK TrayIcon::WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
@@ -198,18 +213,7 @@ LRESULT CALLBACK TrayIcon::WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARA
         {
         case ID_TRAY_EXIT:
             LOG_INFO("TrayIcon", "Exit selected from menu via WM_COMMAND");
-            if (instance->m_exitCallback)
-            {
-                // Create a local copy of the callback to avoid potential use-after-free
-                auto exitCallback = instance->m_exitCallback;
-                // Execute the callback on a separate thread to avoid blocking WndProc
-                std::thread([exitCallback]()
-                            {
-                    if (exitCallback) {
-                        exitCallback();
-                    } })
-                    .detach();
-            }
+            instance->executeExitCallback();
             break;
         }
         break;
@@ -233,18 +237,7 @@ LRESULT CALLBACK TrayIcon::WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARA
             {
             case ID_TRAY_EXIT:
                 LOG_INFO("TrayIcon", "Exit selected from tray menu");
-                if (instance->m_exitCallback)
-                {
-                    // Create a local copy of the callback to avoid potential use-after-free
-                    auto exitCallback = instance->m_exitCallback;
-                    // Execute the callback on a separate thread to avoid blocking WndProc
-                    std::thread([exitCallback]()
-                                {
-                        if (exitCallback) {
-                            exitCallback();
-                        } })
-                        .detach();
-                }
+                instance->executeExitCallback();
                 break;
             }
         }
@@ -263,7 +256,7 @@ LRESULT CALLBACK TrayIcon::WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARA
     return 0;
 }
 
-void TrayIcon::uiThreadFunction()
+bool TrayIcon::initializeWindow()
 {
     // Register window class
     const wchar_t *className = L"PlexPresenceTray";
@@ -273,7 +266,55 @@ void TrayIcon::uiThreadFunction()
     wc.lpfnWndProc = WndProc;
     wc.hInstance = GetModuleHandle(NULL);
     wc.lpszClassName = className;
+    wc.hCursor = LoadCursorW(NULL, MAKEINTRESOURCEW(IDC_ARROW));
 
+    // Load icon for window class
+    HICON hIcon = initializeIcon() ? m_nid.hIcon : LoadIconW(NULL, MAKEINTRESOURCEW(IDI_APPLICATION));
+    wc.hIcon = hIcon;
+
+    if (!RegisterClassExW(&wc))
+    {
+        DWORD error = GetLastError();
+        LOG_ERROR_STREAM("TrayIcon", "Failed to register window class, error code: " << error);
+        return false;
+    }
+
+    // Convert app name to wide string
+    std::wstring wAppName;
+    int length = MultiByteToWideChar(CP_UTF8, 0, m_appName.c_str(), -1, NULL, 0);
+    if (length > 0)
+    {
+        wAppName.resize(length);
+        MultiByteToWideChar(CP_UTF8, 0, m_appName.c_str(), -1, &wAppName[0], length);
+    }
+    else
+    {
+        wAppName = L"Plex Presence";
+    }
+
+    // Create the hidden window
+    m_hWnd = CreateWindowExW(
+        0,
+        className, wAppName.c_str(),
+        WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT,
+        10, 10, NULL, NULL, GetModuleHandle(NULL), NULL);
+
+    if (!m_hWnd)
+    {
+        DWORD error = GetLastError();
+        LOG_ERROR_STREAM("TrayIcon", "Failed to create window, error code: " << error);
+        return false;
+    }
+
+    // Keep window hidden
+    ShowWindow(m_hWnd, SW_HIDE);
+    UpdateWindow(m_hWnd);
+
+    return true;
+}
+
+bool TrayIcon::initializeIcon()
+{
     // Load icon with error checking - try multiple methods
     HICON hIcon = NULL;
 
@@ -301,47 +342,11 @@ void TrayIcon::uiThreadFunction()
         LOG_INFO("TrayIcon", "Application icon loaded successfully");
     }
 
-    wc.hIcon = hIcon;
-    wc.hCursor = LoadCursorW(NULL, MAKEINTRESOURCEW(IDC_ARROW));
+    return hIcon != NULL;
+}
 
-    if (!RegisterClassExW(&wc))
-    {
-        DWORD error = GetLastError();
-        LOG_ERROR_STREAM("TrayIcon", "Failed to register window class, error code: " << error);
-        return;
-    }
-
-    // Convert app name to wide string
-    std::wstring wAppName;
-    int length = MultiByteToWideChar(CP_UTF8, 0, m_appName.c_str(), -1, NULL, 0);
-    if (length > 0)
-    {
-        wAppName.resize(length);
-        MultiByteToWideChar(CP_UTF8, 0, m_appName.c_str(), -1, &wAppName[0], length);
-    }
-    else
-    {
-        wAppName = L"Plex Presence";
-    }
-
-    // Create the hidden window
-    m_hWnd = CreateWindowExW(
-        0,
-        className, wAppName.c_str(),
-        WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT,
-        10, 10, NULL, NULL, GetModuleHandle(NULL), NULL);
-
-    if (!m_hWnd)
-    {
-        DWORD error = GetLastError();
-        LOG_ERROR_STREAM("TrayIcon", "Failed to create window, error code: " << error);
-        return;
-    }
-
-    // Keep window hidden
-    ShowWindow(m_hWnd, SW_HIDE);
-    UpdateWindow(m_hWnd);
-
+void TrayIcon::setupTrayIcon(HICON hIcon)
+{
     // Initialize tray icon
     ZeroMemory(&m_nid, sizeof(m_nid));
     m_nid.cbSize = sizeof(NOTIFYICONDATAW);
@@ -377,6 +382,22 @@ void TrayIcon::uiThreadFunction()
     wcscpy_s(m_nid.szTip, _countof(m_nid.szTip), L"Plex Presence");
 
     LOG_INFO("TrayIcon", "Tray icon initialized, ready to be shown");
+}
+
+void TrayIcon::uiThreadFunction()
+{
+    // Initialize window for the tray icon
+    if (!initializeWindow())
+    {
+        LOG_ERROR("TrayIcon", "Failed to initialize window for tray icon");
+        return;
+    }
+
+    // Load icon for the tray
+    HICON hIcon = initializeIcon() ? m_nid.hIcon : LoadIconW(NULL, MAKEINTRESOURCEW(IDI_APPLICATION));
+
+    // Setup tray icon with the loaded icon
+    setupTrayIcon(hIcon);
 
     // Message loop
     MSG msg;

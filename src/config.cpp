@@ -1,7 +1,4 @@
 #include "config.h"
-#include "logger.h"
-#include <fstream>
-#include <yaml-cpp/yaml.h>
 
 Config &Config::getInstance()
 {
@@ -41,7 +38,7 @@ std::filesystem::path Config::getConfigDirectory()
     return configDir;
 }
 
-Config::Config() : logLevel(1), discordClientId(1359742002618564618), tmdbAccessToken("eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiIzNmMxOTI3ZjllMTlkMzUxZWFmMjAxNGViN2JmYjNkZiIsIm5iZiI6MTc0NTQzMTA3NC4yMjcsInN1YiI6IjY4MDkyYTIyNmUxYTc2OWU4MWVmMGJhOSIsInNjb3BlcyI6WyJhcGlfcmVhZCJdLCJ2ZXJzaW9uIjoxfQ.Td6eAbW7SgQOMmQpRDwVM-_3KIMybGRqWNK8Yqw1Zzs")
+Config::Config()
 {
     configPath = getConfigDirectory() / "config.yaml";
     loadConfig();
@@ -49,7 +46,6 @@ Config::Config() : logLevel(1), discordClientId(1359742002618564618), tmdbAccess
 
 Config::~Config()
 {
-    // Ensure config is saved
     saveConfig();
 }
 
@@ -63,8 +59,14 @@ bool Config::loadConfig()
 
     try
     {
-        YAML::Node config = YAML::LoadFile(configPath.string());
-        loadFromYaml(config);
+        YAML::Node loadedConfig = YAML::LoadFile(configPath.string());
+
+        // Thread-safe update of configuration
+        {
+            std::unique_lock lock(mutex);
+            loadFromYaml(loadedConfig);
+        }
+
         LOG_INFO("Config", "Config loaded successfully");
         LOG_DEBUG("Config", "Found " + std::to_string(plexServers.size()) + " Plex servers in config");
         return true;
@@ -87,8 +89,12 @@ bool Config::saveConfig()
             std::filesystem::create_directories(configDir);
         }
 
-        // Build YAML data
-        YAML::Node config = saveToYaml();
+        // Build YAML data with thread safety
+        YAML::Node configToSave;
+        {
+            std::shared_lock lock(mutex);
+            configToSave = saveToYaml();
+        }
 
         // Write to file
         std::ofstream ofs(configPath);
@@ -98,7 +104,7 @@ bool Config::saveConfig()
             return false;
         }
 
-        ofs << config;
+        ofs << configToSave;
         ofs.close();
 
         LOG_INFO("Config", "Config saved successfully");
@@ -122,7 +128,7 @@ void Config::loadFromYaml(const YAML::Node &config)
         const auto &plex = config["plex"];
         plexAuthToken = plex["auth_token"] ? plex["auth_token"].as<std::string>() : "";
         plexClientIdentifier = plex["client_identifier"] ? plex["client_identifier"].as<std::string>() : "";
-        plexUsername = plex["username"] ? plex["username"].as<std::string>() : ""; // Load username
+        plexUsername = plex["username"] ? plex["username"].as<std::string>() : "";
     }
 
     // Plex servers
@@ -138,14 +144,15 @@ void Config::loadFromYaml(const YAML::Node &config)
             std::string accessToken = server["access_token"] ? server["access_token"].as<std::string>() : "";
             bool owned = server["owned"] ? server["owned"].as<bool>() : false;
 
-            // Create the server directly with make_shared
-            plexServers[clientId] = std::make_shared<PlexServer>();
-            plexServers[clientId]->name = name;
-            plexServers[clientId]->clientIdentifier = clientId;
-            plexServers[clientId]->localUri = localUri;
-            plexServers[clientId]->publicUri = publicUri;
-            plexServers[clientId]->accessToken = accessToken;
-            plexServers[clientId]->owned = owned;
+            auto serverPtr = std::make_shared<PlexServer>();
+            serverPtr->name = name;
+            serverPtr->clientIdentifier = clientId;
+            serverPtr->localUri = localUri;
+            serverPtr->publicUri = publicUri;
+            serverPtr->accessToken = accessToken;
+            serverPtr->owned = owned;
+
+            plexServers[clientId] = serverPtr;
         }
     }
 
@@ -153,7 +160,7 @@ void Config::loadFromYaml(const YAML::Node &config)
     if (config["discord"])
     {
         const auto &discord = config["discord"];
-        discordClientId = discord["client_id"] ? discord["client_id"].as<uint64_t>() : discordClientId;
+        discordClientId = discord["client_id"] ? discord["client_id"].as<uint64_t>() : discordClientId.load();
     }
 
     // TMDB API key
@@ -168,13 +175,13 @@ YAML::Node Config::saveToYaml() const
     YAML::Node config;
 
     // General settings
-    config["log_level"] = logLevel;
+    config["log_level"] = logLevel.load();
 
     // Plex auth
     YAML::Node plex;
     plex["auth_token"] = plexAuthToken;
     plex["client_identifier"] = plexClientIdentifier;
-    plex["username"] = plexUsername; // Save username
+    plex["username"] = plexUsername;
     config["plex"] = plex;
 
     // Plex servers
@@ -187,14 +194,14 @@ YAML::Node Config::saveToYaml() const
         serverNode["local_uri"] = server->localUri;
         serverNode["public_uri"] = server->publicUri;
         serverNode["access_token"] = server->accessToken;
-        serverNode["owned"] = server->owned; // Save owned status
+        serverNode["owned"] = server->owned;
         servers.push_back(serverNode);
     }
     config["plex_servers"] = servers;
 
     // Discord settings
     YAML::Node discord;
-    discord["client_id"] = discordClientId;
+    discord["client_id"] = discordClientId.load();
     config["discord"] = discord;
 
     // TMDB API key
@@ -203,48 +210,57 @@ YAML::Node Config::saveToYaml() const
     return config;
 }
 
+// General settings
 int Config::getLogLevel() const
 {
-    return logLevel;
+    return logLevel.load();
 }
 
 void Config::setLogLevel(int level)
 {
-    logLevel = level;
+    logLevel.store(level);
 }
 
+// Plex settings
 std::string Config::getPlexAuthToken() const
 {
+    std::shared_lock lock(mutex);
     return plexAuthToken;
 }
 
 void Config::setPlexAuthToken(const std::string &token)
 {
+    std::unique_lock lock(mutex);
     plexAuthToken = token;
 }
 
 std::string Config::getPlexClientIdentifier() const
 {
+    std::shared_lock lock(mutex);
     return plexClientIdentifier;
 }
 
 void Config::setPlexClientIdentifier(const std::string &id)
 {
+    std::unique_lock lock(mutex);
     plexClientIdentifier = id;
 }
 
 std::string Config::getPlexUsername() const
 {
+    std::shared_lock lock(mutex);
     return plexUsername;
 }
 
 void Config::setPlexUsername(const std::string &username)
 {
+    std::unique_lock lock(mutex);
     plexUsername = username;
 }
 
 const std::map<std::string, std::shared_ptr<PlexServer>> &Config::getPlexServers() const
 {
+    std::shared_lock lock(mutex);
     return plexServers;
 }
 
@@ -252,6 +268,8 @@ void Config::addPlexServer(const std::string &name, const std::string &clientId,
                            const std::string &localUri, const std::string &publicUri,
                            const std::string &accessToken, bool owned)
 {
+    std::unique_lock lock(mutex);
+
     // Check if this server already exists
     auto it = plexServers.find(clientId);
     if (it != plexServers.end())
@@ -265,7 +283,7 @@ void Config::addPlexServer(const std::string &name, const std::string &clientId,
         return;
     }
 
-    // Add new server by creating it directly
+    // Add new server
     auto server = std::make_shared<PlexServer>();
     server->name = name;
     server->clientIdentifier = clientId;
@@ -278,25 +296,29 @@ void Config::addPlexServer(const std::string &name, const std::string &clientId,
 
 void Config::clearPlexServers()
 {
+    std::unique_lock lock(mutex);
     plexServers.clear();
 }
 
+// Discord settings
 uint64_t Config::getDiscordClientId() const
 {
-    return discordClientId;
+    return discordClientId.load();
 }
 
-void Config::setDiscordClientId(const uint64_t &id)
+void Config::setDiscordClientId(uint64_t id)
 {
-    discordClientId = id;
+    discordClientId.store(id);
 }
 
 std::string Config::getTMDBAccessToken() const
 {
+    std::shared_lock lock(mutex);
     return tmdbAccessToken;
 }
 
 void Config::setTMDBAccessToken(const std::string &token)
 {
+    std::unique_lock lock(mutex);
     tmdbAccessToken = token;
 }

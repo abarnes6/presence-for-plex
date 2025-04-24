@@ -1,10 +1,19 @@
 #pragma once
-#include "http_client.h"
-#include <string>
-#include <shared_mutex>
+
+// Standard library headers
+#include <atomic>
+#include <chrono>
 #include <memory>
 #include <mutex>
-#include <ctime>
+#include <shared_mutex>
+#include <string>
+#include <vector>
+
+// Project headers
+#include "http_client.h"
+
+// Forward declarations
+class HttpClient;
 
 // Define the PlexServer struct
 struct PlexServer

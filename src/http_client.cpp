@@ -1,18 +1,18 @@
 #include "http_client.h"
-#include "logger.h"
-#include <sstream>
-#include <future>
 
 HttpClient::HttpClient()
 {
     curl_global_init(CURL_GLOBAL_ALL);
     m_curl = curl_easy_init();
+    LOG_DEBUG("HttpClient", "HttpClient initialized");
 }
 
 HttpClient::~HttpClient()
 {
-    stopSSE();
-
+    if (m_sseRunning)
+    {
+        stopSSE();
+    }
     if (m_sseThread.joinable())
     {
         m_sseThread.join();
@@ -25,17 +25,30 @@ HttpClient::~HttpClient()
     }
 
     curl_global_cleanup();
-    LOG_INFO("HttpClient", "HttpClient object destroyed");
+    LOG_DEBUG("HttpClient", "HttpClient object destroyed");
 }
 
 size_t HttpClient::writeCallback(char *ptr, size_t size, size_t nmemb, void *userdata)
 {
     std::string *response = static_cast<std::string *>(userdata);
-    response->append(ptr, size * nmemb);
-    return size * nmemb;
+    size_t totalSize = size * nmemb;
+    response->append(ptr, totalSize);
+    return totalSize;
 }
 
-bool HttpClient::get(const std::string &url, const std::map<std::string, std::string> &headers, std::string &response)
+struct curl_slist *HttpClient::createHeaderList(const std::map<std::string, std::string> &headers)
+{
+    struct curl_slist *curl_headers = NULL;
+    for (const auto &[key, value] : headers)
+    {
+        std::string header = key + ": " + value;
+        curl_headers = curl_slist_append(curl_headers, header.c_str());
+    }
+    LOG_DEBUG_STREAM("HttpClient", "Created header list with " << headers.size() << " headers");
+    return curl_headers;
+}
+
+bool HttpClient::setupCommonOptions(const std::string &url, const std::map<std::string, std::string> &headers)
 {
     if (!m_curl)
     {
@@ -45,81 +58,89 @@ bool HttpClient::get(const std::string &url, const std::map<std::string, std::st
 
     curl_easy_reset(m_curl);
     curl_easy_setopt(m_curl, CURLOPT_URL, url.c_str());
-    curl_easy_setopt(m_curl, CURLOPT_WRITEFUNCTION, writeCallback);
-    curl_easy_setopt(m_curl, CURLOPT_WRITEDATA, &response);
     curl_easy_setopt(m_curl, CURLOPT_TIMEOUT, 10L);
 
-    struct curl_slist *curl_headers = NULL;
-    for (const auto &[key, value] : headers)
-    {
-        std::string header = key + ": " + value;
-        curl_headers = curl_slist_append(curl_headers, header.c_str());
-    }
-    curl_easy_setopt(m_curl, CURLOPT_HTTPHEADER, curl_headers);
+    LOG_DEBUG_STREAM("HttpClient", "Set up request to URL: " << url);
+    return true;
+}
 
-    CURLcode res = curl_easy_perform(m_curl);
-    curl_slist_free_all(curl_headers);
-
+bool HttpClient::checkResponse(CURLcode res)
+{
     if (res != CURLE_OK)
     {
-        LOG_ERROR("HttpClient", "GET request failed: " + std::string(curl_easy_strerror(res)));
+        LOG_ERROR("HttpClient", "Request failed: " + std::string(curl_easy_strerror(res)));
         return false;
     }
 
     long response_code;
     curl_easy_getinfo(m_curl, CURLINFO_RESPONSE_CODE, &response_code);
+
     if (response_code < 200 || response_code >= 300)
     {
-        LOG_ERROR("HttpClient", "GET request failed with code: " + std::to_string(response_code));
+        LOG_ERROR("HttpClient", "Request failed with HTTP status code: " + std::to_string(response_code));
         return false;
     }
 
+    LOG_DEBUG_STREAM("HttpClient", "Request successful with status code: " << response_code);
     return true;
+}
+
+bool HttpClient::get(const std::string &url, const std::map<std::string, std::string> &headers, std::string &response)
+{
+    LOG_INFO_STREAM("HttpClient", "Sending GET request to: " << url);
+
+    if (!setupCommonOptions(url, headers))
+    {
+        return false;
+    }
+
+    curl_easy_setopt(m_curl, CURLOPT_WRITEFUNCTION, writeCallback);
+    curl_easy_setopt(m_curl, CURLOPT_WRITEDATA, &response);
+
+    struct curl_slist *curl_headers = createHeaderList(headers);
+    curl_easy_setopt(m_curl, CURLOPT_HTTPHEADER, curl_headers);
+
+    LOG_DEBUG("HttpClient", "Executing GET request");
+    CURLcode res = curl_easy_perform(m_curl);
+    curl_slist_free_all(curl_headers);
+
+    bool success = checkResponse(res);
+    if (success)
+    {
+        LOG_DEBUG_STREAM("HttpClient", "GET request succeeded with response size: " << response.size() << " bytes");
+    }
+    return success;
 }
 
 bool HttpClient::post(const std::string &url, const std::map<std::string, std::string> &headers,
                       const std::string &body, std::string &response)
 {
-    if (!m_curl)
+    LOG_INFO_STREAM("HttpClient", "Sending POST request to: " << url);
+    LOG_DEBUG_STREAM("HttpClient", "POST body size: " << body.size() << " bytes");
+
+    if (!setupCommonOptions(url, headers))
     {
-        LOG_ERROR("HttpClient", "CURL not initialized");
         return false;
     }
 
-    curl_easy_reset(m_curl);
-    curl_easy_setopt(m_curl, CURLOPT_URL, url.c_str());
     curl_easy_setopt(m_curl, CURLOPT_POST, 1L);
     curl_easy_setopt(m_curl, CURLOPT_POSTFIELDS, body.c_str());
     curl_easy_setopt(m_curl, CURLOPT_WRITEFUNCTION, writeCallback);
     curl_easy_setopt(m_curl, CURLOPT_WRITEDATA, &response);
-    curl_easy_setopt(m_curl, CURLOPT_TIMEOUT, 10L);
 
-    struct curl_slist *curl_headers = NULL;
-    for (const auto &[key, value] : headers)
-    {
-        std::string header = key + ": " + value;
-        curl_headers = curl_slist_append(curl_headers, header.c_str());
-    }
+    struct curl_slist *curl_headers = createHeaderList(headers);
     curl_easy_setopt(m_curl, CURLOPT_HTTPHEADER, curl_headers);
 
+    LOG_DEBUG("HttpClient", "Executing POST request");
     CURLcode res = curl_easy_perform(m_curl);
     curl_slist_free_all(curl_headers);
 
-    if (res != CURLE_OK)
+    bool success = checkResponse(res);
+    if (success)
     {
-        LOG_ERROR("HttpClient", "POST request failed: " + std::string(curl_easy_strerror(res)));
-        return false;
+        LOG_DEBUG_STREAM("HttpClient", "POST request succeeded with response size: " << response.size() << " bytes");
     }
-
-    long response_code;
-    curl_easy_getinfo(m_curl, CURLINFO_RESPONSE_CODE, &response_code);
-    if (response_code < 200 || response_code >= 300)
-    {
-        LOG_ERROR("HttpClient", "POST request failed with code: " + std::to_string(response_code));
-        return false;
-    }
-
-    return true;
+    return success;
 }
 
 size_t HttpClient::sseCallback(char *ptr, size_t size, size_t nmemb, void *userdata)
@@ -128,7 +149,9 @@ size_t HttpClient::sseCallback(char *ptr, size_t size, size_t nmemb, void *userd
     size_t total_size = size * nmemb;
 
     client->m_sseBuffer.append(ptr, total_size);
+    LOG_DEBUG_STREAM("HttpClient", "SSE received " << total_size << " bytes");
 
+    // Process events in buffer
     size_t pos;
     while ((pos = client->m_sseBuffer.find("\n\n")) != std::string::npos)
     {
@@ -139,8 +162,10 @@ size_t HttpClient::sseCallback(char *ptr, size_t size, size_t nmemb, void *userd
         if (data_pos != std::string::npos)
         {
             std::string data = event.substr(data_pos + 6);
+            LOG_DEBUG_STREAM("HttpClient", "SSE event received, data size: " << data.size() << " bytes");
             if (client->m_eventCallback)
             {
+                LOG_DEBUG("HttpClient", "Calling SSE event callback");
                 client->m_eventCallback(data);
             }
         }
@@ -153,18 +178,19 @@ int HttpClient::sseCallbackProgress(void *clientp, curl_off_t dltotal, curl_off_
                                     curl_off_t ultotal, curl_off_t ulnow)
 {
     HttpClient *httpClient = static_cast<HttpClient *>(clientp);
-    LOG_DEBUG_STREAM("HttpClient", "SSE progress called, stop flag: " << httpClient->m_stopFlag.load());
     if (httpClient->m_stopFlag)
     {
-        return 1;
+        LOG_DEBUG("HttpClient", "SSE connection termination requested");
+        return 1; // Abort transfer
     }
-    return 0;
+    return 0; // Continue transfer
 }
 
 bool HttpClient::stopSSE()
 {
     // Set the stop flag
     m_stopFlag = true;
+    LOG_INFO("HttpClient", "Requesting SSE connection termination");
 
     // Wait for the SSE thread to finish
     std::unique_lock<std::mutex> lock(m_sseMutex);
@@ -175,13 +201,15 @@ bool HttpClient::stopSSE()
                           { return !m_sseRunning; });
     }
 
-    LOG_INFO("HttpClient", "SSE thread stopped");
+    LOG_INFO("HttpClient", "SSE thread stopped successfully");
     return true;
 }
 
 bool HttpClient::startSSE(const std::string &url, const std::map<std::string, std::string> &headers,
                           EventCallback callback)
 {
+    LOG_INFO_STREAM("HttpClient", "Starting SSE connection to: " << url);
+
     {
         std::lock_guard<std::mutex> lock(m_sseMutex);
         m_stopFlag = false;
@@ -195,61 +223,73 @@ bool HttpClient::startSSE(const std::string &url, const std::map<std::string, st
         LOG_INFO("HttpClient", "SSE thread starting");
         
         try {
-            
             CURL* sse_curl = curl_easy_init();
             if (!sse_curl) {
-                LOG_ERROR("HttpClient", "Failed to initialize CURL for SSE");
+                LOG_ERROR("HttpClient", "Failed to initialize CURL for SSE connection");
                 std::lock_guard<std::mutex> lock(m_sseMutex);
                 m_sseRunning = false;
                 m_sseCondVar.notify_all();
                 return;
             }
+            LOG_DEBUG("HttpClient", "CURL initialized for SSE connection");
 
+            int retryCount = 0;
             while (!m_stopFlag) {
-                
+                // Setup SSE connection
                 curl_easy_reset(sse_curl);
                 curl_easy_setopt(sse_curl, CURLOPT_URL, url.c_str());
                 curl_easy_setopt(sse_curl, CURLOPT_WRITEFUNCTION, sseCallback);
                 curl_easy_setopt(sse_curl, CURLOPT_WRITEDATA, this);
                 curl_easy_setopt(sse_curl, CURLOPT_TCP_NODELAY, 1L);
                 
+                // Setup progress monitoring for cancelation
                 curl_easy_setopt(sse_curl, CURLOPT_XFERINFOFUNCTION, sseCallbackProgress);
                 curl_easy_setopt(sse_curl, CURLOPT_XFERINFODATA, this);
                 curl_easy_setopt(sse_curl, CURLOPT_NOPROGRESS, 0L);
 
-                struct curl_slist *curl_headers = NULL;
-                for (const auto& [key, value] : headers) {
-                    std::string header = key + ": " + value;
-                    curl_headers = curl_slist_append(curl_headers, header.c_str());
-                }
+                // Setup headers
+                struct curl_slist *curl_headers = createHeaderList(headers);
                 curl_headers = curl_slist_append(curl_headers, "Accept: text/event-stream");
                 curl_easy_setopt(sse_curl, CURLOPT_HTTPHEADER, curl_headers);
 
                 if (m_stopFlag) {
+                    LOG_INFO("HttpClient", "SSE connection setup aborted due to stop request");
                     curl_slist_free_all(curl_headers);
                     break;
                 }
 
+                // Perform request
+                LOG_INFO_STREAM("HttpClient", "Establishing SSE connection, attempt #" << (retryCount + 1));
                 CURLcode res = curl_easy_perform(sse_curl);
                         
                 if (res == CURLE_ABORTED_BY_CALLBACK) {
-                    LOG_INFO("HttpClient", "SSE connection aborted");
+                    LOG_INFO("HttpClient", "SSE connection aborted by callback");
                 } else if (res != CURLE_OK) {
-                    LOG_ERROR_STREAM("HttpClient", "SSE connection error: " << curl_easy_strerror(res));
+                    retryCount++;
+                    LOG_WARNING_STREAM("HttpClient", "SSE connection error: " << curl_easy_strerror(res) 
+                                     << ", retry count: " << retryCount);
                     if (!m_stopFlag) {
-                        std::this_thread::sleep_for(std::chrono::seconds(5));
+                        int retryDelay = (std::min)(5 * retryCount, 60); // Exponential backoff with max 60 seconds
+                        LOG_DEBUG_STREAM("HttpClient", "Retrying SSE connection in " << retryDelay << " seconds");
+                        std::this_thread::sleep_for(std::chrono::seconds(retryDelay));
                     }
+                } else {
+                    // Connection ended normally, reset retry count
+                    LOG_INFO("HttpClient", "SSE connection ended normally");
+                    retryCount = 0;
                 }
 
                 curl_slist_free_all(curl_headers);
 
                 if (m_stopFlag) {
+                    LOG_INFO("HttpClient", "Exiting SSE connection loop due to stop request");
                     break;
                 }
             }
             
             if (sse_curl) {
                 curl_easy_cleanup(sse_curl);
+                LOG_DEBUG("HttpClient", "Cleaned up CURL handle for SSE");
             }
         }
         catch (const std::exception& e) {
@@ -268,5 +308,6 @@ bool HttpClient::startSSE(const std::string &url, const std::map<std::string, st
         
         LOG_INFO("HttpClient", "SSE thread exiting"); });
 
+    LOG_DEBUG("HttpClient", "SSE thread started successfully");
     return true;
 }

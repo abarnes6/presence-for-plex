@@ -1,8 +1,20 @@
 #include "logger.h"
-#include <chrono>
-#include <iomanip>
-#include <iostream>
-#include <fstream>
+
+// Constructor
+Logger::Logger() : logLevel(LogLevel::Info), logToFile(false)
+{
+#ifdef _WIN32
+    // Enable ANSI color codes on Windows
+    HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+    DWORD dwMode = 0;
+    GetConsoleMode(hOut, &dwMode);
+    dwMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+    SetConsoleMode(hOut, dwMode);
+    useColorOutput = true;
+#else
+    useColorOutput = true;
+#endif
+}
 
 // Get singleton instance
 Logger &Logger::getInstance()
@@ -21,6 +33,68 @@ void Logger::setLogLevel(LogLevel level)
 LogLevel Logger::getLogLevel() const
 {
     return logLevel;
+}
+
+// Get formatted timestamp with milliseconds
+std::string Logger::getTimestamp() const
+{
+    auto now = std::chrono::system_clock::now();
+    auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                      now.time_since_epoch())
+                      .count() %
+                  1000;
+    auto now_c = std::chrono::system_clock::to_time_t(now);
+    std::tm now_tm;
+
+#ifdef _WIN32
+    localtime_s(&now_tm, &now_c);
+#else
+    now_tm = *localtime(&now_c);
+#endif
+
+    std::ostringstream oss;
+    oss << std::put_time(&now_tm, "%H:%M:%S") << "."
+        << std::setfill('0') << std::setw(3) << now_ms;
+    return oss.str();
+}
+
+// Get string representation of log level
+std::string Logger::getLevelString(LogLevel level) const
+{
+    switch (level)
+    {
+    case LogLevel::Debug:
+        return "DEBUG";
+    case LogLevel::Info:
+        return "INFO";
+    case LogLevel::Warning:
+        return "WARN";
+    case LogLevel::Error:
+        return "ERROR";
+    default:
+        return "NONE";
+    }
+}
+
+// Apply color to text based on log level
+std::string Logger::colorize(const std::string &text, LogLevel level) const
+{
+    if (!useColorOutput)
+        return text;
+
+    switch (level)
+    {
+    case LogLevel::Debug:
+        return ANSI_BLUE + text + ANSI_RESET;
+    case LogLevel::Info:
+        return ANSI_GREEN + text + ANSI_RESET;
+    case LogLevel::Warning:
+        return ANSI_YELLOW + text + ANSI_RESET;
+    case LogLevel::Error:
+        return ANSI_RED + text + ANSI_RESET;
+    default:
+        return text;
+    }
 }
 
 // Initialize file logging
@@ -85,7 +159,7 @@ void Logger::debug(const std::string &component, const std::string &message)
 {
     if (logLevel <= LogLevel::Debug)
     {
-        log(component, "DEBUG", message);
+        log(LogLevel::Debug, component, message);
     }
 }
 
@@ -94,7 +168,7 @@ void Logger::info(const std::string &component, const std::string &message)
 {
     if (logLevel <= LogLevel::Info)
     {
-        log(component, "INFO", message);
+        log(LogLevel::Info, component, message);
     }
 }
 
@@ -103,7 +177,7 @@ void Logger::warning(const std::string &component, const std::string &message)
 {
     if (logLevel <= LogLevel::Warning)
     {
-        log(component, "WARNING", message);
+        log(LogLevel::Warning, component, message);
     }
 }
 
@@ -112,40 +186,37 @@ void Logger::error(const std::string &component, const std::string &message)
 {
     if (logLevel <= LogLevel::Error)
     {
-        log(component, "ERROR", message);
+        log(LogLevel::Error, component, message);
     }
 }
 
 // Internal logging implementation
-void Logger::log(const std::string &component, const std::string &level, const std::string &message)
+void Logger::log(LogLevel level, const std::string &component, const std::string &message)
 {
     std::lock_guard<std::mutex> lock(logMutex);
 
-    auto now = std::chrono::system_clock::now();
-    auto now_c = std::chrono::system_clock::to_time_t(now);
-    std::tm now_tm;
-
-#ifdef _WIN32
-    localtime_s(&now_tm, &now_c);
-#else
-    now_tm = *localtime(&now_c);
-#endif
+    std::string timestamp = getTimestamp();
+    std::string levelStr = getLevelString(level);
 
     // Format the log message
     std::stringstream formatted;
-    formatted << "[" << std::put_time(&now_tm, "%H:%M:%S") << "] "
+    formatted << "[" << timestamp << "] "
+              << "[" << levelStr << "] "
               << "[" << component << "] "
-              << "[" << level << "] "
               << message;
 
+    std::string consoleOutput = formatted.str();
+    std::string fileOutput = formatted.str();
+
 #if !defined(NDEBUG) || !defined(_WIN32)
-    std::cout << formatted.str() << std::endl;
+    // Apply color for console output
+    std::cout << colorize(consoleOutput, level) << std::endl;
 #endif
 
-    // Write to log file if enabled
+    // Write to log file if enabled (without color codes)
     if (logToFile && logFile.is_open())
     {
-        logFile << formatted.str() << std::endl;
+        logFile << fileOutput << std::endl;
         logFile.flush(); // Ensure immediate writing
     }
 }

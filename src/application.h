@@ -1,13 +1,16 @@
 #pragma once
 
-#include "plex.h"
-#include "discord.h"
-#include "config.h"
-#include "trayicon.h"
-#include <memory>
+// Standard library headers
 #include <atomic>
 #include <condition_variable>
+#include <memory>
 #include <mutex>
+
+// Project headers
+#include "config.h"
+#include "discord.h"
+#include "plex.h"
+#include "trayicon.h"
 
 class Application
 {
@@ -21,6 +24,13 @@ private:
     PlaybackState lastState = PlaybackState::Stopped;
     std::condition_variable discordConnectCv;
     std::mutex discordConnectMutex;
+
+    // Helper methods for improved readability
+    void setupLogging();
+    void setupDiscordCallbacks();
+    void updateTrayStatus(const MediaInfo &info);
+    void processPlaybackInfo(const MediaInfo &info);
+    void performCleanup();
 
 public:
     Application();

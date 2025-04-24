@@ -1,12 +1,4 @@
 #include "discord_ipc.h"
-#include "logger.h"
-#include <iostream>
-#include <sstream>
-#include <cstring>
-#include <vector>
-#include <nlohmann/json.hpp>
-#include <chrono>
-#include <iomanip>
 
 // Platform-specific localtime function
 #ifdef _WIN32
@@ -19,29 +11,6 @@ inline void safe_localtime(std::tm *tm_ptr, const std::time_t *time_ptr)
 {
     *tm_ptr = *localtime(time_ptr);
 }
-#endif
-
-#ifdef _WIN32
-#include <winsock2.h>
-#include <ws2tcpip.h>
-#else
-#include <sys/socket.h>
-#include <sys/un.h>
-#include <unistd.h>
-#include <errno.h>
-#include <sys/types.h>
-#include <pwd.h>
-#endif
-
-#if defined(_WIN32) && !defined(htole32)
-#define htole32(x) (x) // little-endian host
-#define le32toh(x) (x)
-#elif defined(__APPLE__)
-#include <libkern/OSByteOrder.h>
-#define htole32(x) OSSwapHostToLittleInt32(x)
-#define le32toh(x) OSSwapLittleToHostInt32(x)
-#elif defined(__linux__) || defined(__unix__)
-#include <endian.h>
 #endif
 
 using json = nlohmann::json;
@@ -67,7 +36,7 @@ DiscordIPC::~DiscordIPC()
 bool DiscordIPC::openPipe()
 {
     // Windows implementation using named pipes
-    LOG_DEBUG("DiscordIPC", "Attempting to connect to Discord via Windows named pipes");
+    LOG_INFO("DiscordIPC", "Attempting to connect to Discord via Windows named pipes");
     for (int i = 0; i < 10; i++)
     {
         std::string pipeName = "\\\\.\\pipe\\discord-ipc-" + std::to_string(i);
@@ -93,7 +62,7 @@ bool DiscordIPC::openPipe()
                 LOG_DEBUG("DiscordIPC", "Warning: Failed to set pipe mode. Using default mode. Error: " + std::to_string(error));
             }
 
-            LOG_DEBUG("DiscordIPC", "Successfully connected to Discord pipe: " + pipeName);
+            LOG_INFO("DiscordIPC", "Successfully connected to Discord pipe: " + pipeName);
             connected = true;
             return true;
         }
@@ -102,7 +71,7 @@ bool DiscordIPC::openPipe()
         DWORD error = GetLastError();
         LOG_DEBUG("DiscordIPC", "Failed to connect to " + pipeName + ": error code " + std::to_string(error));
     }
-    LOG_WARNING("DiscordIPC", "Could not connect to any Discord pipe. Is Discord running?");
+    LOG_INFO("DiscordIPC", "Could not connect to any Discord pipe. Is Discord running?");
     return false;
 }
 
@@ -110,6 +79,7 @@ bool DiscordIPC::openPipe()
 bool DiscordIPC::openPipe()
 {
     const char *temp = getenv("TMPDIR");
+    LOG_INFO("DiscordIPC", "Attempting to connect to Discord via Unix sockets on macOS");
     for (int i = 0; i < 10; i++)
     {
         std::string socket_path;
@@ -149,7 +119,7 @@ bool DiscordIPC::openPipe()
 
         if (::connect(pipe_fd, (struct sockaddr *)&addr, sizeof(addr)) == 0)
         {
-            LOG_DEBUG("DiscordIPC", "Successfully connected to Discord socket: " + socket_path);
+            LOG_INFO("DiscordIPC", "Successfully connected to Discord socket: " + socket_path);
 
             connected = true;
             return true;
@@ -159,12 +129,15 @@ bool DiscordIPC::openPipe()
         close(pipe_fd);
         pipe_fd = -1;
     }
+
+    LOG_INFO("DiscordIPC", "Could not connect to any Discord socket. Is Discord running?");
+    return false;
 }
 #elif defined(__linux__) || defined(__unix__)
 bool DiscordIPC::openPipe()
 {
     // Unix implementation using sockets
-    LOG_DEBUG("DiscordIPC", "Attempting to connect to Discord via Unix sockets");
+    LOG_INFO("DiscordIPC", "Attempting to connect to Discord via Unix sockets");
 
     // First try conventional socket paths
     for (int i = 0; i < 10; i++)
@@ -224,7 +197,7 @@ bool DiscordIPC::openPipe()
 
         if (::connect(pipe_fd, (struct sockaddr *)&addr, sizeof(addr)) == 0)
         {
-            LOG_DEBUG("DiscordIPC", "Successfully connected to Discord socket: " + socket_path);
+            LOG_INFO("DiscordIPC", "Successfully connected to Discord socket: " + socket_path);
 
             connected = true;
             return true;
@@ -250,7 +223,7 @@ bool DiscordIPC::openPipe()
 
         if (::connect(pipe_fd, (struct sockaddr *)&addr, sizeof(addr)) == 0)
         {
-            LOG_DEBUG("DiscordIPC", "Successfully connected to Discord Snap socket: " + snap_path);
+            LOG_INFO("DiscordIPC", "Successfully connected to Discord Snap socket: " + snap_path);
             connected = true;
             return true;
         }
@@ -274,7 +247,7 @@ bool DiscordIPC::openPipe()
 
         if (::connect(pipe_fd, (struct sockaddr *)&addr, sizeof(addr)) == 0)
         {
-            LOG_DEBUG("DiscordIPC", "Successfully connected to Discord Flatpak socket: " + flatpak_path);
+            LOG_INFO("DiscordIPC", "Successfully connected to Discord Flatpak socket: " + flatpak_path);
             connected = true;
             return true;
         }
@@ -284,7 +257,7 @@ bool DiscordIPC::openPipe()
         pipe_fd = -1;
     }
 
-    LOG_ERROR("DiscordIPC", "Could not connect to any Discord socket. Is Discord running?");
+    LOG_INFO("DiscordIPC", "Could not connect to any Discord socket. Is Discord running?");
     return false;
 }
 #endif
@@ -292,7 +265,7 @@ bool DiscordIPC::openPipe()
 void DiscordIPC::closePipe()
 {
     connected = false;
-    LOG_DEBUG("DiscordIPC", "Disconnecting from Discord...");
+    LOG_INFO("DiscordIPC", "Disconnecting from Discord...");
 #ifdef _WIN32
     if (pipe_handle != INVALID_HANDLE_VALUE)
     {
@@ -308,7 +281,7 @@ void DiscordIPC::closePipe()
         pipe_fd = -1;
     }
 #endif
-    LOG_DEBUG("DiscordIPC", "Disconnected from Discord");
+    LOG_INFO("DiscordIPC", "Disconnected from Discord");
 }
 
 bool DiscordIPC::isConnected() const
@@ -327,11 +300,12 @@ bool DiscordIPC::writeFrame(int opcode, const std::string &payload)
     LOG_DEBUG("DiscordIPC", "Writing frame - Opcode: " + std::to_string(opcode) + ", Data length: " + std::to_string(payload.size()));
     LOG_DEBUG("DiscordIPC", "Frame data: " + payload);
 
+    // Create a properly formatted Discord IPC message
     uint32_t len = static_cast<uint32_t>(payload.size());
-    std::vector<char> buf(8 + len); // Dynamic buffer sized exactly for our payload
+    std::vector<char> buf(8 + len); // Header (8 bytes) + payload
     auto *p = reinterpret_cast<uint32_t *>(buf.data());
-    p[0] = htole32(opcode); // endian-safe
-    p[1] = htole32(len);
+    p[0] = htole32(opcode); // First 4 bytes: opcode with proper endianness
+    p[1] = htole32(len);    // Next 4 bytes: payload length with proper endianness
     memcpy(buf.data() + 8, payload.data(), len);
 
 #ifdef _WIN32
@@ -351,6 +325,10 @@ bool DiscordIPC::writeFrame(int opcode, const std::string &payload)
     if (n != 8 + len)
     {
         LOG_ERROR("DiscordIPC", "Failed to write frame to socket. Expected: " + std::to_string(8 + len) + ", Actual: " + std::to_string(n));
+        if (n < 0)
+        {
+            LOG_ERROR("DiscordIPC", "Write error: " + std::string(strerror(errno)));
+        }
         connected = false;
         return false;
     }
@@ -369,7 +347,8 @@ bool DiscordIPC::readFrame(int &opcode, std::string &data)
 
     LOG_DEBUG("DiscordIPC", "Attempting to read frame from Discord");
     opcode = -1;
-    // Read header (8 bytes)
+
+    // First read the 8-byte header (opcode + length)
     char header[8];
     int header_bytes_read = 0;
 
@@ -419,7 +398,7 @@ bool DiscordIPC::readFrame(int &opcode, std::string &data)
     }
 #endif
 
-    // Extract opcode and length (with proper endianness handling)
+    // Parse the header with proper endianness handling
     uint32_t raw0, raw1;
     memcpy(&raw0, header, 4);
     memcpy(&raw1, header + 4, 4);
@@ -435,7 +414,7 @@ bool DiscordIPC::readFrame(int &opcode, std::string &data)
         return true;
     }
 
-    // Read data
+    // Now read the actual payload data
     data.resize(length);
     uint32_t data_bytes_read = 0;
 
@@ -485,7 +464,8 @@ bool DiscordIPC::readFrame(int &opcode, std::string &data)
     }
 #endif
 
-    LOG_DEBUG("DiscordIPC", "Successfully read complete frame. Data: " + data);
+    LOG_DEBUG("DiscordIPC", "Successfully read complete frame");
+    LOG_DEBUG("DiscordIPC", "Frame data: " + data);
     return true;
 }
 
@@ -497,7 +477,7 @@ bool DiscordIPC::sendHandshake(uint64_t clientId)
         return false;
     }
 
-    LOG_DEBUG("DiscordIPC", "Sending handshake with client ID: " + std::to_string(clientId));
+    LOG_INFO("DiscordIPC", "Sending handshake with client ID: " + std::to_string(clientId));
 
     // Create handshake payload
     json payload = {

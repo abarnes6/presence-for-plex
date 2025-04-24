@@ -1,60 +1,67 @@
 #include "uuid.h"
-#include <random>
-#include <sstream>
-#include <iomanip>
-
-#if defined(__APPLE__) || defined(__linux__) || defined(__unix__)
-#include <unistd.h>
-#include <sys/time.h>
-#endif
 
 namespace uuid
 {
-    static thread_local std::random_device rd;
-    static thread_local std::mt19937 gen(rd());
-    static thread_local std::uniform_int_distribution<unsigned int> dis(0, 15);
-    static thread_local std::uniform_int_distribution<unsigned int> dis2(8, 11);
+    namespace
+    {
+        // Random number generators
+        static thread_local std::random_device rd;
+        static thread_local std::mt19937 gen(rd());
+        static thread_local std::uniform_int_distribution<unsigned int> hex_dist(0, 15);
+        static thread_local std::uniform_int_distribution<unsigned int> variant_dist(8, 11);
+
+        // UUID v4 format constants
+        constexpr char UUID_VERSION = '4';
+        constexpr char UUID_SEPARATOR = '-';
+
+        // Group sizes in characters
+        constexpr int GROUP1_SIZE = 8;
+        constexpr int GROUP2_SIZE = 4;
+        constexpr int GROUP3_SIZE = 4;
+        constexpr int GROUP4_SIZE = 4;
+        constexpr int GROUP5_SIZE = 12;
+
+        // Helper function to generate a random hex character
+        char random_hex_char()
+        {
+            unsigned int val = hex_dist(gen);
+            return val < 10 ? '0' + val : 'a' + (val - 10);
+        }
+
+        // Helper function to generate a sequence of random hex characters
+        void append_random_hex(std::stringstream &ss, int count)
+        {
+            for (int i = 0; i < count; ++i)
+            {
+                ss << random_hex_char();
+            }
+        }
+    }
 
     std::string generate_uuid_v4()
     {
         std::stringstream ss;
-        ss << std::hex;
 
-        // First group (8 chars)
-        for (int i = 0; i < 8; i++)
-        {
-            ss << dis(gen);
-        }
-        ss << "-";
+        // Group 1: 8 random hex characters
+        append_random_hex(ss, GROUP1_SIZE);
+        ss << UUID_SEPARATOR;
 
-        // Second group (4 chars)
-        for (int i = 0; i < 4; i++)
-        {
-            ss << dis(gen);
-        }
-        ss << "-";
+        // Group 2: 4 random hex characters
+        append_random_hex(ss, GROUP2_SIZE);
+        ss << UUID_SEPARATOR;
 
-        // Third group (4 chars)
-        ss << "4";
-        for (int i = 0; i < 3; i++)
-        {
-            ss << dis(gen);
-        }
-        ss << "-";
+        // Group 3: 4 hex characters with version 4
+        ss << UUID_VERSION;
+        append_random_hex(ss, GROUP3_SIZE - 1);
+        ss << UUID_SEPARATOR;
 
-        // Fourth group (4 chars)
-        ss << dis2(gen);
-        for (int i = 0; i < 3; i++)
-        {
-            ss << dis(gen);
-        }
-        ss << "-";
+        // Group 4: 4 hex characters with variant (8, 9, A, or B)
+        ss << static_cast<char>('8' + (variant_dist(gen) - 8));
+        append_random_hex(ss, GROUP4_SIZE - 1);
+        ss << UUID_SEPARATOR;
 
-        // Fifth group (12 chars)
-        for (int i = 0; i < 12; i++)
-        {
-            ss << dis(gen);
-        }
+        // Group 5: 12 random hex characters
+        append_random_hex(ss, GROUP5_SIZE);
 
         return ss.str();
     }
