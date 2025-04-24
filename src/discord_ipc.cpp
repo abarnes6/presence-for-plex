@@ -288,7 +288,7 @@ bool DiscordIPC::writeFrame(int opcode, const std::string &payload)
     }
 
     LOG_DEBUG("DiscordIPC", "Writing frame - Opcode: " + std::to_string(opcode) + ", Data length: " + std::to_string(payload.size()));
-    LOG_DEBUG("DiscordIPC", "Frame data: " + payload);
+    LOG_DEBUG("DiscordIPC", "Writing frame data: " + payload);
 
     // Create a properly formatted Discord IPC message
     uint32_t len = static_cast<uint32_t>(payload.size());
@@ -453,9 +453,7 @@ bool DiscordIPC::readFrame(int &opcode, std::string &data)
         LOG_DEBUG("DiscordIPC", "Read " + std::to_string(bytes_read) + " data bytes, total: " + std::to_string(data_bytes_read) + "/" + std::to_string(length));
     }
 #endif
-
-    LOG_DEBUG("DiscordIPC", "Successfully read complete frame");
-    LOG_DEBUG("DiscordIPC", "Frame data: " + data);
+    LOG_DEBUG("DiscordIPC", "Reading frame data: " + data);
     return true;
 }
 

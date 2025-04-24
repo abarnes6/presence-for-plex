@@ -42,14 +42,7 @@
 class Discord
 {
 public:
-	/**
-	 * Constructor initializes Discord Rich Presence state
-	 */
 	Discord();
-
-	/**
-	 * Destructor ensures proper shutdown of Discord connections
-	 */
 	~Discord();
 
 	/**
@@ -105,6 +98,25 @@ public:
 	void setDisconnectedCallback(ConnectionCallback callback);
 
 private:
+
+	DiscordIPC ipc;
+	std::thread conn_thread;
+	std::mutex mutex;
+	bool running;
+	bool needs_reconnect;
+	int reconnect_attempts;
+	bool is_playing;
+	int64_t nonce_counter;
+
+	// New members for frame queue
+	std::mutex frame_queue_mutex;
+	std::string queued_frame;
+	bool has_queued_frame;
+	int64_t last_frame_write_time;
+
+	ConnectionCallback onConnected;
+	ConnectionCallback onDisconnected;
+
 	/**
 	 * Persistent connection thread to Discord IPC
 	 *
@@ -174,36 +186,18 @@ private:
 	 */
 	std::string generateNonce();
 
-	/** Component responsible for Discord IPC communication */
-	DiscordIPC ipc;
+	/**
+	 * Queues a presence message to be sent to Discord
+	 *
+	 * @param message The JSON payload to queue
+	 */
+	void queuePresenceMessage(const std::string &message);
+    
+	/**
+	 * Processes the queued frame and sends it to Discord
+	 *
+	 * This method is called when a frame is available in the queue.
+	 */
+	void processQueuedFrame();
 
-	/** Background thread for connection management */
-	std::thread conn_thread;
-
-	/** Flag indicating if the connection thread should continue running */
-	std::atomic<bool> running;
-
-	/** Flag indicating if reconnection is needed */
-	std::atomic<bool> needs_reconnect;
-
-	/** Flag indicating if we're waiting for Discord to start */
-	std::atomic<bool> waiting_for_discord;
-
-	/** Mutex for thread synchronization */
-	std::mutex mutex;
-
-	/** Number of consecutive connection attempts */
-	int reconnect_attempts;
-
-	/** Flag indicating if media is currently playing */
-	std::atomic<bool> is_playing;
-
-	/** Counter for generating unique message identifiers */
-	std::atomic<uint64_t> nonce_counter;
-
-	/** Callback for successful connection */
-	ConnectionCallback onConnected;
-
-	/** Callback for disconnection */
-	ConnectionCallback onDisconnected;
 };

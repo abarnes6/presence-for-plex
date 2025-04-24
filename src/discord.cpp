@@ -10,7 +10,9 @@ Discord::Discord() : running(false),
 					 is_playing(false),
 					 nonce_counter(0),
 					 onConnected(nullptr),
-					 onDisconnected(nullptr)
+					 onDisconnected(nullptr),
+					 has_queued_frame(false),
+					 last_frame_write_time(0)
 {
 }
 
@@ -77,7 +79,7 @@ void Discord::connectionThread()
 				{
 					ipc.closePipe();
 				}
-				needs_reconnect = false;
+				needs_reconnect = true;
 
 				// Call disconnected callback if set
 				if (onDisconnected)
@@ -86,11 +88,15 @@ void Discord::connectionThread()
 				}
 				continue;
 			}
+			else {
+				needs_reconnect = false;
+			}
 
 			// Connection is healthy, wait before next check
-			for (int i = 0; i < 30 && running; ++i)
+			for (int i = 0; i < 60 && running && !needs_reconnect; ++i)
 			{
 				std::this_thread::sleep_for(std::chrono::seconds(1));
+				processQueuedFrame();
 			}
 		}
 	}
@@ -195,11 +201,16 @@ void Discord::updatePresence(const MediaInfo &info)
 
 		std::string nonce = generateNonce();
 		std::string presence = createPresence(info, nonce);
-		sendPresenceMessage(presence);
+		
+		LOG_INFO_STREAM("Discord", "Queuing presence update: " << info.title << " - " << info.username
+			<< (info.state == PlaybackState::Paused ? " (Paused)" : "")
+			<< (info.state == PlaybackState::Buffering ? " (Buffering)" : ""));
 
-		LOG_INFO_STREAM("Discord", "Updated presence: " << info.title << " - " << info.username
-														<< (info.state == PlaybackState::Paused ? " (Paused)" : "")
-														<< (info.state == PlaybackState::Buffering ? " (Buffering)" : ""));
+		// Queue the presence update
+		queuePresenceMessage(presence);
+
+		// Attempt to send it immediately
+		processQueuedFrame();
 	}
 	else
 	{
@@ -327,8 +338,7 @@ json Discord::createActivity(const MediaInfo &info)
 	}
 	else if (info.state == PlaybackState::Paused || info.state == PlaybackState::Buffering)
 	{
-		auto max_duration = std::chrono::duration_cast<std::chrono::seconds>(
-								std::chrono::hours(MAX_PAUSED_DURATION))
+		auto max_duration = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::hours(MAX_PAUSED_DURATION))
 								.count();
 		start_timestamp = current_time + max_duration;
 		end_timestamp = start_timestamp + static_cast<int64_t>(info.duration);
@@ -358,7 +368,7 @@ json Discord::createActivity(const MediaInfo &info)
 		{"details", details},
 		{"timestamps", timestamps},
 		{"assets", assets},
-		{"instance", false}};
+		{"instance", true}};
 
 	if (!buttons.empty())
 	{
@@ -400,6 +410,42 @@ void Discord::sendPresenceMessage(const std::string &message)
 	}
 }
 
+void Discord::queuePresenceMessage(const std::string &message)
+{
+	std::lock_guard<std::mutex> lock(frame_queue_mutex);
+	queued_frame = message;
+	has_queued_frame = true;
+	LOG_DEBUG("Discord", "Frame queued for sending");
+}
+
+void Discord::processQueuedFrame()
+{
+	std::string frame_to_send;
+	
+	{
+		std::lock_guard<std::mutex> lock(frame_queue_mutex);
+		if (!has_queued_frame) {
+			return;
+		}
+		
+		auto now = std::chrono::steady_clock::now();
+		auto now_seconds = std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch()).count();
+		
+		// Only send a frame if at least 12 seconds has passed since the last send
+		// I don't know if this is true, but I believe rate limit is 5 per 60 seconds?
+		if (now_seconds - last_frame_write_time < 12) {
+			return;
+		}
+		
+		frame_to_send = queued_frame;
+		has_queued_frame = false;
+		last_frame_write_time = now_seconds;
+	}
+	
+	LOG_DEBUG("Discord", "Processing queued frame");
+	sendPresenceMessage(frame_to_send);
+}
+
 void Discord::clearPresence()
 {
 	LOG_DEBUG("Discord", "clearPresence called");
@@ -424,11 +470,23 @@ void Discord::clearPresence()
 
 	std::string presence_str = presence.dump();
 
-	sendPresenceMessage(presence_str);
+	// Queue the clear presence message instead of sending immediately
+	queuePresenceMessage(presence_str);
 }
 
 bool Discord::isStillAlive()
 {
+
+	// Get current time
+	auto now = std::chrono::duration_cast<std::chrono::seconds>(
+		std::chrono::steady_clock::now().time_since_epoch()).count();
+	
+	// Skip ping if there was a recent write
+	if (now - last_frame_write_time < 60) {
+		LOG_DEBUG("Discord", "Skipping ping due to recent write activity");
+		return true;
+	}
+
 	if (!ipc.sendPing())
 	{
 		LOG_WARNING("Discord", "Failed to send ping");

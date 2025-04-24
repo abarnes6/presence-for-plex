@@ -736,7 +736,7 @@ void Plex::fetchSessionUserInfo(const std::string &serverUri, const std::string 
 
         if (!json.contains("MediaContainer") || !json["MediaContainer"].contains("Metadata"))
         {
-            LOG_ERROR("Plex", "Invalid session response format");
+            LOG_ERROR("Plex", "Invalid session response format" + response);
             return;
         }
 
@@ -1171,7 +1171,7 @@ MediaInfo Plex::getCurrentPlayback()
         return info;
     }
 
-    LOG_DEBUG("Plex", "Returning playback info for: " + oldest.title);
+    LOG_DEBUG("Plex", "Returning playback info for: " + oldest.title + " (" + std::to_string(static_cast<int>(oldest.state)) + ")");
     return oldest;
 }
 

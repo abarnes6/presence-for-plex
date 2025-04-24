@@ -99,10 +99,16 @@ void Application::processPlaybackInfo(const MediaInfo &info)
     {
         if (info.state != lastState)
         {
-            LOG_DEBUG("Application", "Playback state changed, updating Discord presence");
+            LOG_DEBUG("Application", "Playback state changed, updating Discord presence to " + std::to_string(static_cast<int>(info.state)));
             discord->updatePresence(info);
         }
         lastState = info.state;
+    }
+    else
+    {
+        LOG_ERROR("Application", "Invalid Plex token, stopping Discord presence updates");
+        discord->clearPresence();
+        lastState = PlaybackState::BadToken;
     }
 }
 
@@ -130,6 +136,7 @@ void Application::run()
             }
 
             MediaInfo info = plex->getCurrentPlayback();
+
             updateTrayStatus(info);
             processPlaybackInfo(info);
         }
