@@ -60,9 +60,6 @@ private:
     void uiThreadFunction();
     void updateMenu();
     void executeExitCallback();
-    bool initializeIcon();
-    bool initializeWindow();
-    void setupTrayIcon(HICON hIcon);
 
     // Window and menu handles
     HWND m_hWnd;
