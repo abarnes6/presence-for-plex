@@ -91,7 +91,7 @@ private:
 	void parseGuid(const nlohmann::json &metadata, MediaInfo &info);
 	void parseGenres(const nlohmann::json &metadata, MediaInfo &info);
 	bool isAnimeContent(const nlohmann::json &metadata);
-	void fetchAnimeMetadata(MediaInfo &info);
+	void fetchAnimeMetadata(const nlohmann::json &metadata, MediaInfo &info);
 	void fetchTMDBArtwork(const std::string &tmdbId, MediaInfo &info);
 
 	// Helper methods

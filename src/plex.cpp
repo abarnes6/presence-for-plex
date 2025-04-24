@@ -969,7 +969,7 @@ void Plex::parseGenres(const nlohmann::json &metadata, MediaInfo &info)
 
     if (isAnimeContent(metadata))
     {
-        fetchAnimeMetadata(info);
+        fetchAnimeMetadata(metadata, info);
     }
 }
 
@@ -989,12 +989,13 @@ bool Plex::isAnimeContent(const nlohmann::json &metadata)
     return false;
 }
 
-void Plex::fetchAnimeMetadata(MediaInfo &info)
+void Plex::fetchAnimeMetadata(const nlohmann::json &metadata, MediaInfo &info)
 {
     LOG_INFO("Plex", "Anime detected, searching MyAnimeList via Jikan API");
 
     // Create cache key (use title as key)
-    std::string cacheKey = info.originalTitle.empty() ? info.title : info.originalTitle;
+    std::string cacheKey = metadata.value("title", "Unknown") + "_" +
+                           std::to_string(metadata.value("year", 0));
 
     // Check if we have cached MAL info
     bool needMALFetch = true;
