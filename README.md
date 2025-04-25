@@ -6,7 +6,6 @@ A lightweight application written in C++ that displays your current Plex media a
 
 -   Show what you're watching on Plex in your Discord status
 -   Displays show titles, episode information, and progress
--   Cross-platform (Windows, macOS, Linux)
 -   Runs in the system tray for easy access (Windows only)
 
 ## Installation
@@ -27,9 +26,12 @@ Download the latest release from the [Releases](https://github.com/abarnes6/plex
 
 -   C++17 compatible compiler
 -   CMake 3.25+
+-   Ninja
 -   vcpkg
 
 ### Build Instructions
+
+If on Windows, use a Visual Studio terminal with CMake tools and vcpkg components installed. This is also how you would need to open VS code to compile with it.
 
 ```bash
 git clone https://github.com/abarnes6/plex-presence.git
