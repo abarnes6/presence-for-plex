@@ -1145,8 +1145,8 @@ MediaInfo Plex::getCurrentPlayback()
     }
 
     // Find the oldest playing/paused/buffering session
-    MediaInfo oldest;
-    time_t oldestTime = (std::numeric_limits<time_t>::max)();
+    MediaInfo newest;
+    time_t newestTime = (std::numeric_limits<time_t>::min)();
 
     for (const auto &[key, info] : m_activeSessions)
     {
@@ -1155,15 +1155,15 @@ MediaInfo Plex::getCurrentPlayback()
             info.state == PlaybackState::Buffering)
         {
 
-            if (info.startTime < oldestTime)
+            if (info.startTime > newestTime)
             {
-                oldest = info;
-                oldestTime = info.startTime;
+                newest = info;
+                newestTime = info.startTime;
             }
         }
     }
 
-    if (oldestTime == (std::numeric_limits<time_t>::max)())
+    if (newestTime == (std::numeric_limits<time_t>::min)())
     {
         // No playing/paused/buffering sessions
         LOG_DEBUG("Plex", "No active playing sessions");
@@ -1172,8 +1172,8 @@ MediaInfo Plex::getCurrentPlayback()
         return info;
     }
 
-    LOG_DEBUG("Plex", "Returning playback info for: " + oldest.title + " (" + std::to_string(static_cast<int>(oldest.state)) + ")");
-    return oldest;
+    LOG_DEBUG("Plex", "Returning playback info for: " + newest.title + " (" + std::to_string(static_cast<int>(newest.state)) + ")");
+    return newest;
 }
 
 void Plex::stopConnections()
