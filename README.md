@@ -48,6 +48,13 @@ Check the log file located at:
 -   Windows: `%APPDATA%\Plex Presence\log.txt`
 -   macOS/Linux: `~/.config/plex-presence/log.txt`
 
+## Attribution
+
+![blue_square_2-d537fb228cf3ded904ef09b136fe3fec72548ebc1fea3fbbd1ad9e36364db38b](https://github.com/user-attachments/assets/38abfb34-72cf-46d9-9d17-724761aa570a)
+
+(image API)
+
+
 ## License
 
 [MIT License](LICENSE)
