@@ -35,7 +35,8 @@ enum class PlaybackState
     Playing,   // Media is playing
     Paused,    // Media is paused
     Buffering, // Media is buffering
-    BadToken   // Server configuration issue
+    BadToken,   // Server configuration issue
+    NotInitialized // Server not initialized
 };
 
 enum class MediaType

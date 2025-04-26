@@ -59,10 +59,6 @@ struct ServerUriCacheEntry : TimedCacheEntry
 Plex::Plex() : m_initialized(false), m_shuttingDown(false)
 {
     LOG_INFO("Plex", "Plex object created");
-    m_serverUriCache = std::map<std::string, ServerUriCacheEntry>();
-    m_mediaInfoCache = std::map<std::string, MediaCacheEntry>();
-    m_sessionUserCache = std::map<std::string, SessionUserCacheEntry>();
-    m_activeSessions = std::map<std::string, MediaInfo>();
 }
 
 Plex::~Plex()
@@ -73,6 +69,13 @@ Plex::~Plex()
 bool Plex::init()
 {
     LOG_INFO("Plex", "Initializing Plex connection");
+    if (m_initialized)
+    {
+        LOG_WARNING("Plex", "Plex already initialized, skipping init");
+        return true;
+    }
+    m_initialized = false;
+    m_shuttingDown = false;
 
     // Check if we have a Plex auth token
     auto &config = Config::getInstance();
@@ -743,7 +746,8 @@ void Plex::updateSessionInfo(const std::string &serverId, const std::string &ses
                 }
                 else
                 {
-                    LOG_WARNING("Plex", "Did not find a username tied to session (skipping cache): " + sessionKey);
+                    return;
+                    LOG_WARNING("Plex", "Did not find a username tied to session, not updating: " + sessionKey);
                 }
             }
         }
@@ -1290,5 +1294,6 @@ void Plex::stop()
     m_sessionUserCache.clear();
     m_serverUriCache.clear();
 
+    m_initialized = false;
     LOG_INFO("Plex", "All Plex connections stopped");
 }

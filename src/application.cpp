@@ -23,14 +23,23 @@ void Application::setupDiscordCallbacks()
     m_discord->setConnectedCallback([this]()
                                   {
 #ifdef _WIN32
-        m_trayIcon->setConnectionStatus("Status: Connecting to Plex...");
+        // Check if this is first launch by looking for auth token
+        bool isFirstLaunch = Config::getInstance().getPlexAuthToken().empty();
+        if (isFirstLaunch) {
+            m_trayIcon->setConnectionStatus("Status: Setup Required");
+        } else {
+            m_trayIcon->setConnectionStatus("Status: Connecting to Plex...");
+        }
+        m_plex->init();
 #endif
         std::unique_lock<std::mutex> lock(m_discordConnectMutex);
         m_discordConnectCv.notify_all(); });
 
 #ifdef _WIN32
     m_discord->setDisconnectedCallback([this]()
-                                     { m_trayIcon->setConnectionStatus("Status: Waiting for Discord..."); });
+                                     { 
+                                        m_plex->stop();
+                                        m_trayIcon->setConnectionStatus("Status: Waiting for Discord..."); });
 #endif
 }
 
@@ -40,32 +49,17 @@ bool Application::initialize()
     {
         m_plex = std::make_unique<Plex>();
         m_discord = std::make_unique<Discord>();
-
 #ifdef _WIN32
         m_trayIcon = std::make_unique<TrayIcon>("Plex Presence");
+#endif
         
+
+#ifdef _WIN32
         m_trayIcon->setExitCallback([this]()
                                   {
             LOG_INFO("Application", "Exit triggered from tray icon");
             stop(); });
         m_trayIcon->show();
-        
-        // Check if this is first launch by looking for auth token
-        bool isFirstLaunch = Config::getInstance().getPlexAuthToken().empty();
-        if (isFirstLaunch) {
-            m_trayIcon->setConnectionStatus("Status: Setup Required");
-        } else {
-            m_trayIcon->setConnectionStatus("Status: Waiting for Discord...");
-        }
-#endif
-        
-
-        if (!m_plex->init()) {
-            LOG_ERROR("Application", "Plex initialization failed");
-            return false;
-        }
-
-#ifdef _WIN32
         m_trayIcon->setConnectionStatus("Status: Waiting for Discord...");
 #endif
 
@@ -114,7 +108,7 @@ void Application::updateTrayStatus(const MediaInfo &info)
 
 void Application::processPlaybackInfo(const MediaInfo &info)
 {
-    if (info.state != PlaybackState::BadToken)
+    if (info.state != PlaybackState::BadToken && info.state != PlaybackState::NotInitialized)
     {
         if (info.state != m_lastState || (info.state == PlaybackState::Playing && abs(info.startTime - m_lastStartTime) > 5))
         {
@@ -123,6 +117,11 @@ void Application::processPlaybackInfo(const MediaInfo &info)
         }
         m_lastStartTime = info.startTime;
         m_lastState = info.state;
+    }
+    else if (info.state == PlaybackState::NotInitialized)
+    {
+        LOG_INFO("Application", "Plex server not initialized, skipping update");
+        m_lastState = PlaybackState::NotInitialized;
     }
     else
     {
