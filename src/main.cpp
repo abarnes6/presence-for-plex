@@ -1,5 +1,6 @@
 ﻿#include "main.h"
 #include "config.h"
+#include "single_instance.h"
 
 /**
  * Global application instance used by signal handlers
@@ -25,6 +26,22 @@ void signalHandler(int sig)
  */
 int main()
 {
+    // Check for an existing instance
+    SingleInstance singleInstance("PlexPresence");
+    if (!singleInstance.isFirstInstance()) {
+        // Another instance is already running
+        #ifdef _WIN32
+        MessageBoxA(NULL, 
+            "Another instance of Plex Presence is already running.",
+            "Plex Presence", 
+            MB_ICONINFORMATION | MB_OK);
+        #else
+        // For non-Windows platforms, just print a message to stderr
+        fprintf(stderr, "Another instance of Plex Presence is already running.\n");
+        #endif
+        return 1;
+    }
+
     // Register signal handlers for graceful shutdown
 #ifndef _WIN32
     if (signal(SIGINT, signalHandler) == SIG_ERR ||
