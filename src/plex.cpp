@@ -1220,7 +1220,7 @@ MediaInfo Plex::getCurrentPlayback()
     {
         LOG_WARNING("Plex", "Plex not initialized");
         MediaInfo info;
-        info.state = PlaybackState::BadToken;
+        info.state = PlaybackState::NotInitialized;
         return info;
     }
 
