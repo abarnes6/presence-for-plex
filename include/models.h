@@ -31,11 +31,11 @@ struct PlexServer
 
 enum class PlaybackState
 {
-    Stopped,   // No active session
-    Playing,   // Media is playing
-    Paused,    // Media is paused
-    Buffering, // Media is buffering
-    BadToken,   // Server configuration issue
+    Stopped,       // No active session
+    Playing,       // Media is playing
+    Paused,        // Media is paused
+    Buffering,     // Media is buffering
+    BadToken,      // Server configuration issue
     NotInitialized // Server not initialized
 };
 
@@ -43,6 +43,7 @@ enum class MediaType
 {
     Movie,
     TVShow,
+    Music,
     Unknown
 };
 
@@ -77,6 +78,10 @@ struct MediaInfo
     std::string grandparentKey;   // Parent ID (tv show ID)
     int season;                   // Season number
     int episode;                  // Episode number
+
+    // Music specific
+    std::string album;  // Album title
+    std::string artist; // Artist name
 
     // Playback info
     std::string username; // Username of the person watching

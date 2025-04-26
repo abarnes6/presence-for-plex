@@ -4,10 +4,10 @@ constexpr int MAX_PAUSED_DURATION = 9999;
 
 // Rate limit constants chosen based on how Music Presence does it - kind of...
 // I can't find anything online about Discord's rate limits, but there is definitely something
-constexpr int MAX_FRAMES_PER_WINDOW = 5;      
-constexpr int RATE_LIMIT_WINDOW_SECONDS = 15; 
-constexpr int MIN_FRAME_INTERVAL_SECONDS = 1; 
-constexpr int MAX_FRAMES_SHORT_WINDOW = 3;    
+constexpr int MAX_FRAMES_PER_WINDOW = 5;
+constexpr int RATE_LIMIT_WINDOW_SECONDS = 15;
+constexpr int MIN_FRAME_INTERVAL_SECONDS = 1;
+constexpr int MAX_FRAMES_SHORT_WINDOW = 3;
 constexpr int RATE_LIMIT_SHORT_WINDOW = 5;
 
 using json = nlohmann::json;
@@ -48,10 +48,11 @@ void Discord::connectionThread()
 				LOG_INFO("Discord", "Reconnection attempt " + std::to_string(reconnect_attempts) +
 										", waiting " + std::to_string(delay) + " seconds");
 
-				for (int i = 0; i < delay*2 && running; ++i)
+				for (int i = 0; i < delay * 2 && running; ++i)
 				{
 					std::this_thread::sleep_for(std::chrono::milliseconds(500));
-					if (i % 10 == 0) {
+					if (i % 10 == 0)
+					{
 						processQueuedFrame(); // Process frames more frequently during wait
 					}
 				}
@@ -99,7 +100,8 @@ void Discord::connectionThread()
 				}
 				continue;
 			}
-			else {
+			else
+			{
 				needs_reconnect = false;
 			}
 
@@ -107,7 +109,8 @@ void Discord::connectionThread()
 			for (int i = 0; i < 600 && running && !needs_reconnect; ++i) // 600 * 100ms = 60s
 			{
 				std::this_thread::sleep_for(std::chrono::milliseconds(100));
-				if (i % 10 == 0) {
+				if (i % 10 == 0)
+				{
 					processQueuedFrame();
 				}
 			}
@@ -214,10 +217,10 @@ void Discord::updatePresence(const MediaInfo &info)
 
 		std::string nonce = generateNonce();
 		std::string presence = createPresence(info, nonce);
-		
+
 		LOG_INFO_STREAM("Discord", "Queuing presence update: " << info.title << " - " << info.username
-			<< (info.state == PlaybackState::Paused ? " (Paused)" : "")
-			<< (info.state == PlaybackState::Buffering ? " (Buffering)" : ""));
+															   << (info.state == PlaybackState::Paused ? " (Paused)" : "")
+															   << (info.state == PlaybackState::Buffering ? " (Buffering)" : ""));
 
 		// Queue the presence update
 		queuePresenceMessage(presence);
@@ -282,29 +285,32 @@ json Discord::createActivity(const MediaInfo &info)
 {
 	std::string state;
 	std::string details;
-	json assets = {{"large_text", info.title}};
+	json assets = {};
+	int activityType = 3; // Default: Watching
 
-	if (info.artPath != "")
+	// Default large image
+	assets["large_image"] = "plex_logo";
+
+	if (!info.artPath.empty())
 	{
 		assets["large_image"] = info.artPath;
-	}
-	else
-	{
-		assets["large_image"] = "plex_logo";
 	}
 
 	if (info.type == MediaType::TVShow)
 	{
+		activityType = 3; // Watching
 		std::stringstream ss;
 		ss << "S" << info.season;
 		ss << " • ";
 		ss << "E" << info.episode;
 
-		details = info.grandparentTitle;
-		state = ss.str() + " - " + info.title;
+		details = info.grandparentTitle;			  // Show Title
+		state = ss.str() + " - " + info.title;		  // SXX • EXX - Episode Title
+		assets["large_text"] = info.grandparentTitle; // Show Title on hover
 	}
-	else
+	else if (info.type == MediaType::Movie)
 	{
+		activityType = 3; // Watching
 		details = info.title + " (" + std::to_string(info.year) + ")";
 		if (!info.genres.empty())
 		{
@@ -317,26 +323,49 @@ json Discord::createActivity(const MediaInfo &info)
 		}
 		else
 		{
-			state = info.grandparentTitle;
+			state = "Watching Movie"; // Fallback state
 		}
+		assets["large_text"] = info.title; // Movie title on hover
+	}
+	else if (info.type == MediaType::Music)
+	{
+		activityType = 2;						  // Listening
+		details = info.title;					  // Track Title
+		state = info.artist + " - " + info.album; // Artist - Album
+	}
+	else // Unknown or other types
+	{
+		activityType = 0; // Playing (generic)
+		details = info.title;
+		state = "Playing media";
+		assets["large_text"] = info.title;
 	}
 
 	if (info.state == PlaybackState::Buffering)
 	{
 		state = "🔄 Buffering...";
+		// Keep existing details
 	}
 	else if (info.state == PlaybackState::Paused)
 	{
 		assets["small_image"] = "paused";
 		assets["small_text"] = "Paused";
+		// Keep existing details and state
 	}
 	else if (info.state == PlaybackState::Stopped)
 	{
+		// This case might not be reached if filtering happens earlier, but good practice
 		state = "Stopped";
+		// Keep existing details
 	}
 
-	if (state.empty()) {
-		state = "Watching";
+	if (details.empty())
+	{
+		details = "Watching something..."; // Fallback if details somehow ends up empty
+	}
+	if (state.empty())
+	{
+		state = "Idle"; // Fallback if state somehow ends up empty
 	}
 
 	// Calculate timestamps for progress bar
@@ -375,14 +404,20 @@ json Discord::createActivity(const MediaInfo &info)
 		buttons.push_back({{"label", "View on IMDb"},
 						   {"url", "https://www.imdb.com/title/" + info.imdbId}});
 	}
+	// Potentially add buttons for music later (e.g., MusicBrainz, Spotify link if available)
 
 	json ret = {
-		{"type", 3}, // 3 = "Watching"
+		{"type", activityType},
 		{"state", state},
 		{"details", details},
-		{"timestamps", timestamps},
+		//{"timestamps", timestamps}, // Only add if valid
 		{"assets", assets},
 		{"instance", true}};
+
+	if (!timestamps.empty())
+	{
+		ret["timestamps"] = timestamps;
+	}
 
 	if (!buttons.empty())
 	{
@@ -440,29 +475,31 @@ void Discord::queuePresenceMessage(const std::string &message)
 void Discord::processQueuedFrame()
 {
 	std::string frame_to_send;
-	
+
 	{
 		std::lock_guard<std::mutex> lock(frame_queue_mutex);
-		if (!has_queued_frame) {
+		if (!has_queued_frame)
+		{
 			return;
 		}
-		
+
 		auto now = std::chrono::steady_clock::now();
 		auto now_seconds = std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch()).count();
-		
+
 		// Check rate limits
-		if (!canSendFrame(now_seconds)) {
+		if (!canSendFrame(now_seconds))
+		{
 			return;
 		}
-		
+
 		frame_to_send = queued_frame;
 		has_queued_frame = false;
-		
+
 		// Record this frame write time
 		frame_write_times.push_back(now_seconds);
 		last_frame_write_time = now_seconds;
 	}
-	
+
 	LOG_DEBUG("Discord", "Processing queued frame");
 	sendPresenceMessage(frame_to_send);
 }
@@ -470,34 +507,40 @@ void Discord::processQueuedFrame()
 bool Discord::canSendFrame(int64_t current_time)
 {
 	// Enforce minimum interval between frames
-	if (current_time - last_frame_write_time < MIN_FRAME_INTERVAL_SECONDS) {
+	if (current_time - last_frame_write_time < MIN_FRAME_INTERVAL_SECONDS)
+	{
 		LOG_DEBUG("Discord", "Rate limit: Too soon since last frame");
 		return false;
 	}
-	
-	while (!frame_write_times.empty() && 
-		   frame_write_times.front() < current_time - RATE_LIMIT_WINDOW_SECONDS) {
+
+	while (!frame_write_times.empty() &&
+		   frame_write_times.front() < current_time - RATE_LIMIT_WINDOW_SECONDS)
+	{
 		frame_write_times.pop_front();
 	}
-	
+
 	// Check if we've reached the maximum frames per long window (15 seconds)
-	if (frame_write_times.size() >= MAX_FRAMES_PER_WINDOW - 1) {
+	if (frame_write_times.size() >= MAX_FRAMES_PER_WINDOW - 1)
+	{
 		LOG_DEBUG("Discord", "Rate limit: Maximum frames per 15-second window reached");
 		return false;
 	}
-	
+
 	int frames_in_short_window = 0;
-	for (const auto& timestamp : frame_write_times) {
-		if (timestamp >= current_time - RATE_LIMIT_SHORT_WINDOW) {
+	for (const auto &timestamp : frame_write_times)
+	{
+		if (timestamp >= current_time - RATE_LIMIT_SHORT_WINDOW)
+		{
 			frames_in_short_window++;
 		}
 	}
-	
-	if (frames_in_short_window >= MAX_FRAMES_SHORT_WINDOW - 1) {
+
+	if (frames_in_short_window >= MAX_FRAMES_SHORT_WINDOW - 1)
+	{
 		LOG_DEBUG("Discord", "Rate limit: Maximum frames per 5-second window reached");
 		return false;
 	}
-	
+
 	return true;
 }
 
@@ -534,10 +577,12 @@ bool Discord::isStillAlive()
 
 	// Get current time
 	auto now = std::chrono::duration_cast<std::chrono::seconds>(
-		std::chrono::steady_clock::now().time_since_epoch()).count();
-	
+				   std::chrono::steady_clock::now().time_since_epoch())
+				   .count();
+
 	// Skip ping if there was a recent write
-	if (now - last_frame_write_time < 60) {
+	if (now - last_frame_write_time < 60)
+	{
 		LOG_DEBUG("Discord", "Skipping ping due to recent write activity");
 		return true;
 	}
@@ -577,18 +622,18 @@ void Discord::start()
 
 void Discord::stop()
 {
-    LOG_INFO("Discord", "Stopping Discord Rich Presence");
-    running = false;
+	LOG_INFO("Discord", "Stopping Discord Rich Presence");
+	running = false;
 
-    if (conn_thread.joinable())
-    {
-        ThreadUtils::joinWithTimeout(conn_thread, std::chrono::seconds(3), "Discord connection thread");
-    }
-    
-    if (ipc.isConnected())
-    {
-        ipc.closePipe();
-    }
+	if (conn_thread.joinable())
+	{
+		ThreadUtils::joinWithTimeout(conn_thread, std::chrono::seconds(3), "Discord connection thread");
+	}
+
+	if (ipc.isConnected())
+	{
+		ipc.closePipe();
+	}
 }
 
 void Discord::setConnectedCallback(ConnectionCallback callback)

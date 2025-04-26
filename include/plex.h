@@ -53,6 +53,25 @@ public:
 	void stop();
 
 private:
+	// Helper methods
+	std::map<std::string, std::string> getStandardHeaders(const std::string &token = "");
+
+	// State variables
+	std::atomic<bool> m_initialized;
+	std::atomic<bool> m_shuttingDown;
+
+	// Cache mutexes and maps
+	std::mutex m_cacheMutex;
+	std::map<std::string, TMDBCacheEntry> m_tmdbArtworkCache;
+	std::map<std::string, MALCacheEntry> m_malIdCache;
+	std::map<std::string, MediaCacheEntry> m_mediaInfoCache;
+	std::map<std::string, SessionUserCacheEntry> m_sessionUserCache;
+	std::map<std::string, ServerUriCacheEntry> m_serverUriCache;
+
+	// Active sessions
+	std::mutex m_sessionMutex;
+	std::map<std::string, MediaInfo> m_activeSessions;
+
 	// Authentication methods
 	bool acquireAuthToken();
 	bool requestPlexPin(std::string &pinId, std::string &pin, HttpClient &client,
@@ -87,32 +106,14 @@ private:
 	void extractTVShowSpecificInfo(const nlohmann::json &metadata, MediaInfo &info);
 	void fetchGrandparentMetadata(const std::string &serverUrl, const std::string &accessToken,
 								  MediaInfo &info);
-	void fetchSessionUserInfo(const std::string &serverUri, const std::string &accessToken,
-							  const std::string &sessionKey, MediaInfo &info);
 	void parseGuid(const nlohmann::json &metadata, MediaInfo &info);
 	void parseGenres(const nlohmann::json &metadata, MediaInfo &info);
 	bool isAnimeContent(const nlohmann::json &metadata);
 	void fetchAnimeMetadata(const nlohmann::json &metadata, MediaInfo &info);
 	void fetchTMDBArtwork(const std::string &tmdbId, MediaInfo &info);
-
-	// Helper methods
-	std::map<std::string, std::string> getStandardHeaders(const std::string &token = "");
-
-	// State variables
-	std::atomic<bool> m_initialized;
-	std::atomic<bool> m_shuttingDown;
-
-	// Cache mutexes and maps
-	std::mutex m_cacheMutex;
-	std::map<std::string, TMDBCacheEntry> m_tmdbArtworkCache;
-	std::map<std::string, MALCacheEntry> m_malIdCache;
-	std::map<std::string, MediaCacheEntry> m_mediaInfoCache;
-	std::map<std::string, SessionUserCacheEntry> m_sessionUserCache;
-	std::map<std::string, ServerUriCacheEntry> m_serverUriCache;
-	
-	// Active sessions
-	std::mutex m_sessionMutex;
-	std::map<std::string, MediaInfo> m_activeSessions;
-	
+	std::string fetchSessionUsername(const std::string &serverUri, const std::string &accessToken,
+									 const std::string &sessionKey);
 	std::string getPreferredServerUri(const std::shared_ptr<PlexServer> &server);
+	void Plex::extractMusicSpecificInfo(const nlohmann::json &metadata, MediaInfo &info,
+										const std::string &serverUri, const std::string &accessToken);
 };

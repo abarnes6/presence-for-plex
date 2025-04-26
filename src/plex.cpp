@@ -165,7 +165,7 @@ std::map<std::string, std::string> Plex::getStandardHeaders(const std::string &t
 bool Plex::acquireAuthToken()
 {
     LOG_INFO("Plex", "Acquiring Plex auth token");
-    
+
 #ifdef _WIN32
     // Inform the user about the authentication process through the tray icon
     // This will be handled by the Application class's initialization
@@ -232,13 +232,13 @@ void Plex::openAuthorizationUrl(const std::string &pin, const std::string &clien
 
 #ifdef _WIN32
     // Show a message box to instruct the user before opening the browser
-    MessageBoxA(NULL, 
-        "A browser window will open for Plex authentication.\n\n"
-        "Please log in to your Plex account and authorize Plex Presence.\n\n"
-        "The application will continue setup after successful authentication.",
-        "Plex Authentication Required", 
-        MB_ICONINFORMATION | MB_OK);
-        
+    MessageBoxA(NULL,
+                "A browser window will open for Plex authentication.\n\n"
+                "Please log in to your Plex account and authorize Plex Presence.\n\n"
+                "The application will continue setup after successful authentication.",
+                "Plex Authentication Required",
+                MB_ICONINFORMATION | MB_OK);
+
     ShellExecuteA(NULL, "open", authUrl.c_str(), NULL, NULL, SW_SHOWNORMAL);
 #else
     // For non-Windows platforms
@@ -265,13 +265,13 @@ bool Plex::pollForPinAuthorization(const std::string &pinId, const std::string &
             LOG_INFO("Plex", "Application is shutting down, aborting PIN authorization");
             return false;
         }
-        
+
         // Wait before polling, but check for shutdown more frequently
         for (int i = 0; i < sleepChunks && !m_shuttingDown; ++i)
         {
             std::this_thread::sleep_for(std::chrono::seconds(pollInterval / sleepChunks));
         }
-        
+
         if (m_shuttingDown)
         {
             LOG_INFO("Plex", "Application is shutting down, aborting PIN authorization");
@@ -324,9 +324,9 @@ bool Plex::pollForPinAuthorization(const std::string &pinId, const std::string &
 
 #ifdef _WIN32
     MessageBoxA(NULL,
-        "Plex authentication timed out. Please try again.",
-        "Plex Authentication Timeout",
-        MB_ICONERROR | MB_OK);
+                "Plex authentication timed out. Please try again.",
+                "Plex Authentication Timeout",
+                MB_ICONERROR | MB_OK);
 #endif
 
     LOG_ERROR("Plex", "Timed out waiting for PIN authorization");
@@ -532,26 +532,32 @@ std::string Plex::getPreferredServerUri(const std::shared_ptr<PlexServer> &serve
             return cacheIt->second.uri;
         }
     }
-    
+
     // No valid cache entry, determine the best URI to use
     std::string serverUri;
-    
+
     // Only test local URI if it exists
-    if (!server->localUri.empty()) {
+    if (!server->localUri.empty())
+    {
         LOG_DEBUG("Plex", "Testing local URI accessibility: " + server->localUri);
         HttpClient testClient;
         std::map<std::string, std::string> headers = getStandardHeaders(server->accessToken);
         std::string response;
-        
+
         // Try a basic request to check connectivity
-        if (testClient.get(server->localUri, headers, response)) {
+        if (testClient.get(server->localUri, headers, response))
+        {
             LOG_INFO("Plex", "Local URI is accessible, using it: " + server->localUri);
             serverUri = server->localUri;
-        } else {
+        }
+        else
+        {
             LOG_INFO("Plex", "Local URI not accessible, falling back to public URI");
             serverUri = server->publicUri;
         }
-    } else {
+    }
+    else
+    {
         serverUri = server->publicUri;
     }
 
@@ -582,8 +588,8 @@ void Plex::setupServerSSEConnection(const std::shared_ptr<PlexServer> &server)
         return;
     }
 
-    LOG_INFO("Plex", "Setting up SSE connection to server: " + server->name + " using " + 
-             (serverUri == server->localUri ? "local" : "public") + " URI");
+    LOG_INFO("Plex", "Setting up SSE connection to server: " + server->name + " using " +
+                         (serverUri == server->localUri ? "local" : "public") + " URI");
 
     // Set up headers
     std::map<std::string, std::string> headers = getStandardHeaders(server->accessToken);
@@ -670,6 +676,67 @@ void Plex::updateSessionInfo(const std::string &serverId, const std::string &ses
     // Get the preferred URI
     std::string serverUri = getPreferredServerUri(server);
 
+    // For owned servers, we need to check if this session belongs to the current user
+    if (server->owned)
+    {
+        // Create cache key for session user info
+        std::string sessionUserCacheKey = serverUri + sessionKey;
+        bool needUserFetch = true;
+        std::string username;
+
+        {
+            std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
+            auto cacheIt = m_sessionUserCache.find(sessionUserCacheKey);
+            if (cacheIt != m_sessionUserCache.end() && cacheIt->second.valid())
+            {
+                username = cacheIt->second.username;
+                needUserFetch = false;
+                LOG_DEBUG("Plex", "Using cached user info for session: " + sessionKey);
+            }
+        }
+
+        if (needUserFetch)
+        {
+            username = fetchSessionUsername(serverUri, server->accessToken, sessionKey);
+
+            if (!username.empty())
+            {
+                std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
+                SessionUserCacheEntry entry;
+                entry.timestamp = std::time(nullptr);
+                entry.username = username;
+                m_sessionUserCache[sessionUserCacheKey] = entry;
+            }
+            else
+            {
+                LOG_DEBUG("Plex", "No username found for session: " + sessionKey +
+                                      ", retrying after a short delay");
+                std::this_thread::sleep_for(std::chrono::seconds(1));
+                username = fetchSessionUsername(serverUri, server->accessToken, sessionKey);
+                if (!username.empty())
+                {
+                    std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
+                    SessionUserCacheEntry entry;
+                    entry.timestamp = std::time(nullptr);
+                    entry.username = username;
+                    m_sessionUserCache[sessionUserCacheKey] = entry;
+                }
+                else
+                {
+                    LOG_WARNING("Plex", "Did not find a username tied to session, not updating: " + sessionKey);
+                    return;
+                }
+            }
+        }
+
+        // Skip sessions that don't belong to the current user
+        if (username != Config::getInstance().getPlexUsername())
+        {
+            LOG_DEBUG("Plex", "Ignoring session for different user: " + username);
+            return;
+        }
+    }
+
     // Create a cache key for media info
     std::string mediaInfoCacheKey = serverUri + mediaKey;
 
@@ -701,65 +768,6 @@ void Plex::updateSessionInfo(const std::string &serverId, const std::string &ses
         m_mediaInfoCache[mediaInfoCacheKey] = entry;
     }
 
-    // For owned servers, we need to check if this session belongs to the current user
-    if (server->owned)
-    {
-        // Create cache key for session user info
-        std::string sessionUserCacheKey = serverUri + sessionKey;
-        bool needUserFetch = true;
-
-        {
-            std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
-            auto cacheIt = m_sessionUserCache.find(sessionUserCacheKey);
-            if (cacheIt != m_sessionUserCache.end() && cacheIt->second.valid())
-            {
-                info.username = cacheIt->second.username;
-                needUserFetch = false;
-                LOG_DEBUG("Plex", "Using cached user info for session: " + sessionKey);
-            }
-        }
-
-        if (needUserFetch)
-        {
-            fetchSessionUserInfo(serverUri, server->accessToken, sessionKey, info);
-
-            if (!info.username.empty())
-            {
-                std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
-                SessionUserCacheEntry entry;
-                entry.timestamp = std::time(nullptr);
-                entry.username = info.username;
-                m_sessionUserCache[sessionUserCacheKey] = entry;
-            }
-            else {
-                LOG_DEBUG("Plex", "No username found for session: " + sessionKey +
-                                  ", retrying after a short delay");
-                std::this_thread::sleep_for(std::chrono::seconds(1));
-                fetchSessionUserInfo(serverUri, server->accessToken, sessionKey, info);
-                if (!info.username.empty())
-                {
-                    std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
-                    SessionUserCacheEntry entry;
-                    entry.timestamp = std::time(nullptr);
-                    entry.username = info.username;
-                    m_sessionUserCache[sessionUserCacheKey] = entry;
-                }
-                else
-                {
-                    return;
-                    LOG_WARNING("Plex", "Did not find a username tied to session, not updating: " + sessionKey);
-                }
-            }
-        }
-
-        // Skip sessions that don't belong to the current user
-        if (info.username != Config::getInstance().getPlexUsername())
-        {
-            LOG_DEBUG("Plex", "Ignoring session for different user: " + info.username);
-            return;
-        }
-    }
-
     // Update playback state
     updatePlaybackState(info, state, viewOffset);
 
@@ -774,10 +782,8 @@ void Plex::updateSessionInfo(const std::string &serverId, const std::string &ses
                          " (" + std::to_string(info.progress) + "/" + std::to_string(info.duration) + "s)");
 }
 
-// Helper method to update playback state (extracted from updateSessionInfo for clarity)
 void Plex::updatePlaybackState(MediaInfo &info, const std::string &state, int64_t viewOffset)
 {
-    // Update state based on string value
     if (state == "playing")
     {
         info.state = PlaybackState::Playing;
@@ -791,32 +797,25 @@ void Plex::updatePlaybackState(MediaInfo &info, const std::string &state, int64_
         info.state = PlaybackState::Buffering;
     }
 
-    // Convert milliseconds to seconds and update progress
-    info.progress = viewOffset / 1000.0;
-
-    // Calculate start time based on current time and progress
+    info.progress = viewOffset / 1000.0; // Convert from milliseconds to seconds
     info.startTime = std::time(nullptr) - static_cast<time_t>(info.progress);
 }
 
-void Plex::fetchSessionUserInfo(const std::string &serverUri, const std::string &accessToken,
-                                const std::string &sessionKey, MediaInfo &info)
+std::string Plex::fetchSessionUsername(const std::string &serverUri, const std::string &accessToken,
+                                       const std::string &sessionKey)
 {
-    LOG_DEBUG("Plex", "Fetching user info for session: " + sessionKey);
+    LOG_DEBUG("Plex", "Fetching username for session: " + sessionKey);
 
-    // Create HTTP client
     HttpClient client;
-
-    // Set up headers
     std::map<std::string, std::string> headers = getStandardHeaders(accessToken);
 
-    // Make the request to get session data
     std::string url = serverUri + SESSION_ENDPOINT;
     std::string response;
 
     if (!client.get(url, headers, response))
     {
         LOG_ERROR("Plex", "Failed to fetch session information");
-        return;
+        return "";
     }
 
     try
@@ -826,12 +825,12 @@ void Plex::fetchSessionUserInfo(const std::string &serverUri, const std::string 
         if (!json.contains("MediaContainer"))
         {
             LOG_ERROR("Plex", "Invalid session response format" + response);
-            return;
+            return "";
         }
         if (json["MediaContainer"].contains("size") && json["MediaContainer"]["size"].get<int>() == 0)
         {
             LOG_DEBUG("Plex", "No active sessions found");
-            return;
+            return "";
         }
 
         // Find the matching session by sessionKey
@@ -842,8 +841,9 @@ void Plex::fetchSessionUserInfo(const std::string &serverUri, const std::string 
                 // Extract user info
                 if (session.contains("User") && session["User"].contains("title"))
                 {
-                    info.username = session["User"]["title"].get<std::string>();
-                    LOG_INFO("Plex", "Found user for session " + sessionKey + ": " + info.username);
+                    std::string username = session["User"]["title"].get<std::string>();
+                    LOG_INFO("Plex", "Found user for session " + sessionKey + ": " + username);
+                    return username;
                 }
                 break;
             }
@@ -853,6 +853,8 @@ void Plex::fetchSessionUserInfo(const std::string &serverUri, const std::string 
     {
         LOG_ERROR("Plex", "Error parsing session data: " + std::string(e.what()));
     }
+
+    return "";
 }
 
 MediaInfo Plex::fetchMediaDetails(const std::string &serverUri, const std::string &accessToken,
@@ -863,11 +865,9 @@ MediaInfo Plex::fetchMediaDetails(const std::string &serverUri, const std::strin
     MediaInfo info;
     info.state = PlaybackState::Stopped;
 
-    // Create HTTP client
     HttpClient client;
     std::map<std::string, std::string> headers = getStandardHeaders(accessToken);
 
-    // Make the request
     std::string url = serverUri + mediaKey;
     std::string response;
 
@@ -890,7 +890,7 @@ MediaInfo Plex::fetchMediaDetails(const std::string &serverUri, const std::strin
 
         auto metadata = json["MediaContainer"]["Metadata"][0];
 
-        // Extract basic media info that applies to all media types
+        // Extract common info first
         extractBasicMediaInfo(metadata, info);
 
         // Handle media type-specific details
@@ -902,7 +902,12 @@ MediaInfo Plex::fetchMediaDetails(const std::string &serverUri, const std::strin
         else if (type == "episode")
         {
             extractTVShowSpecificInfo(metadata, info);
+            // Fetch grandparent metadata for GUIDs and Genres if needed
             fetchGrandparentMetadata(serverUri, accessToken, info);
+        }
+        else if (type == "track")
+        {
+            extractMusicSpecificInfo(metadata, info, serverUri, accessToken);
         }
         else
         {
@@ -927,6 +932,9 @@ void Plex::extractBasicMediaInfo(const nlohmann::json &metadata, MediaInfo &info
     info.duration = metadata.value("duration", 0) / 1000.0; // Convert from milliseconds to seconds
     info.summary = metadata.value("summary", "No summary available");
     info.year = metadata.value("year", 0);
+    // Extract potential album/parent title
+    info.album = metadata.value("parentTitle", "");       // Often the album for music
+    info.artist = metadata.value("grandparentTitle", ""); // Often the artist for music
 }
 
 void Plex::extractMovieSpecificInfo(const nlohmann::json &metadata, MediaInfo &info)
@@ -939,7 +947,7 @@ void Plex::extractMovieSpecificInfo(const nlohmann::json &metadata, MediaInfo &i
 void Plex::extractTVShowSpecificInfo(const nlohmann::json &metadata, MediaInfo &info)
 {
     info.type = MediaType::TVShow;
-    info.grandparentTitle = metadata.value("grandparentTitle", "Unknown");
+    // info.grandparentTitle is already extracted in basic info as artist
     info.season = metadata.value("parentIndex", 0);
     info.episode = metadata.value("index", 0);
 
@@ -947,6 +955,14 @@ void Plex::extractTVShowSpecificInfo(const nlohmann::json &metadata, MediaInfo &
     {
         info.grandparentKey = metadata.value("grandparentKey", "");
     }
+}
+
+void Plex::extractMusicSpecificInfo(const nlohmann::json &metadata, MediaInfo &info,
+                                    const std::string &serverUri, const std::string &accessToken)
+{
+    info.type = MediaType::Music;
+
+    parseGenres(metadata, info);
 }
 
 void Plex::fetchGrandparentMetadata(const std::string &serverUrl, const std::string &accessToken,
@@ -1270,7 +1286,7 @@ MediaInfo Plex::getCurrentPlayback()
 void Plex::stop()
 {
     LOG_INFO("Plex", "Stopping all Plex connections");
-    
+
     m_shuttingDown = true;
 
     // Stop all SSE connections with a very short timeout since we're shutting down
