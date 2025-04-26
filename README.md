@@ -60,6 +60,10 @@ If the application is connecting to your Plex server but not detecting your medi
     - If set to "Auto", try selecting your specific network interface instead
     - This is particularly important for servers with multiple network interfaces
 
+### Why do the buttons not work?
+
+They do, but only for others! For some reason Discord doesn't like to show you your own rich presence buttons.
+
 ## Attribution
 
 ![blue_square_2-d537fb228cf3ded904ef09b136fe3fec72548ebc1fea3fbbd1ad9e36364db38b](https://github.com/user-attachments/assets/38abfb34-72cf-46d9-9d17-724761aa570a)
