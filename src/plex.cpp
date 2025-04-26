@@ -650,7 +650,7 @@ void Plex::processPlaySessionStateNotification(const std::string &serverId, cons
     std::string mediaKey = notification.value("key", "");
     int64_t viewOffset = notification.value("viewOffset", 0);
 
-    LOG_INFO("Plex", "Playback state update: " + state + " at " + std::to_string(viewOffset) + "ms");
+    LOG_DEBUG("Plex", "Playback state update received: " + state + " sessionKey: " + sessionKey);
 
     std::lock_guard<std::mutex> lock(m_sessionMutex);
 

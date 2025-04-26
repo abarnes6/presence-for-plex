@@ -131,6 +131,53 @@ void TrayIcon::setExitCallback(std::function<void()> callback)
     m_exitCallback = callback;
 }
 
+void TrayIcon::setUpdateCheckCallback(std::function<void()> callback)
+{
+    m_updateCheckCallback = callback;
+}
+
+void TrayIcon::executeExitCallback()
+{
+    if (m_exitCallback)
+    {
+        // Create a local copy of the callback to avoid potential use-after-free
+        auto exitCallback = m_exitCallback;
+
+        // Use ThreadUtils to execute the callback with a timeout
+        ThreadUtils::executeWithTimeout(
+            [exitCallback]()
+            {
+                if (exitCallback)
+                {
+                    exitCallback();
+                }
+            },
+            std::chrono::seconds(5),
+            "Exit callback");
+    }
+}
+
+void TrayIcon::executeUpdateCheckCallback()
+{
+    if (m_updateCheckCallback)
+    {
+        // Create a local copy of the callback to avoid potential use-after-free
+        auto updateCheckCallback = m_updateCheckCallback;
+
+        // Use ThreadUtils to execute the callback with a timeout
+        ThreadUtils::executeWithTimeout(
+            [updateCheckCallback]()
+            {
+                if (updateCheckCallback)
+                {
+                    updateCheckCallback();
+                }
+            },
+            std::chrono::seconds(5),
+            "Update check callback");
+    }
+}
+
 void TrayIcon::setConnectionStatus(const std::string &status)
 {
     if (status == m_connectionStatus)
@@ -165,23 +212,104 @@ void TrayIcon::updateMenu()
     InsertMenuW(m_hMenu, 0, MF_BYPOSITION | MF_STRING | MF_DISABLED | MF_GRAYED, ID_TRAY_STATUS, wStatus.c_str());
 }
 
-void TrayIcon::executeExitCallback()
+void TrayIcon::showNotification(const std::string &title, const std::string &message, bool isError)
 {
-    if (m_exitCallback)
+    if (!m_hWnd || !m_iconShown)
     {
-        // Create a local copy of the callback to avoid potential use-after-free
-        auto exitCallback = m_exitCallback;
-        
-        // Use ThreadUtils to execute the callback with a timeout
-        ThreadUtils::executeWithTimeout(
-            [exitCallback]() { 
-                if (exitCallback) {
-                    exitCallback();
-                }
-            },
-            std::chrono::seconds(5),
-            "Exit callback"
-        );
+        LOG_ERROR("TrayIcon", "Cannot show notification: window handle is NULL or icon not shown");
+        return;
+    }
+
+    // Convert title and message to wide strings
+    std::wstring wTitle, wMessage;
+    int titleLength = MultiByteToWideChar(CP_UTF8, 0, title.c_str(), -1, NULL, 0);
+    int messageLength = MultiByteToWideChar(CP_UTF8, 0, message.c_str(), -1, NULL, 0);
+
+    if (titleLength > 0 && messageLength > 0)
+    {
+        wTitle.resize(titleLength);
+        wMessage.resize(messageLength);
+
+        MultiByteToWideChar(CP_UTF8, 0, title.c_str(), -1, &wTitle[0], titleLength);
+        MultiByteToWideChar(CP_UTF8, 0, message.c_str(), -1, &wMessage[0], messageLength);
+    }
+    else
+    {
+        LOG_ERROR("TrayIcon", "Failed to convert notification text to wide string");
+        return;
+    }
+
+    // Show the notification in a non-blocking way
+    NOTIFYICONDATAW nid = {0};
+    nid.cbSize = sizeof(NOTIFYICONDATAW);
+    nid.hWnd = m_hWnd;
+    nid.uID = m_nid.uID;
+    nid.uFlags = NIF_INFO;
+    nid.dwInfoFlags = isError ? NIIF_ERROR : NIIF_INFO;
+
+    wcsncpy_s(nid.szInfoTitle, _countof(nid.szInfoTitle), wTitle.c_str(), _TRUNCATE);
+    wcsncpy_s(nid.szInfo, _countof(nid.szInfo), wMessage.c_str(), _TRUNCATE);
+
+    if (!Shell_NotifyIconW(NIM_MODIFY, &nid))
+    {
+        DWORD error = GetLastError();
+        LOG_ERROR_STREAM("TrayIcon", "Failed to show notification, error code: " << error);
+
+        // Fall back to a threaded MessageBox if balloon notification fails
+        std::thread([wTitle, wMessage, isError]()
+                    {
+            UINT type = MB_OK | (isError ? MB_ICONERROR : MB_ICONINFORMATION);
+            MessageBoxW(NULL, wMessage.c_str(), wTitle.c_str(), type); })
+            .detach();
+    }
+    else
+    {
+        LOG_INFO("TrayIcon", "Notification shown successfully");
+    }
+}
+
+void TrayIcon::showUpdateNotification(const std::string &title, const std::string &message, const std::string &downloadUrl)
+{
+    // Store download URL for later use if notification is clicked
+    m_downloadUrl = downloadUrl;
+    LOG_DEBUG_STREAM("TrayIcon", "Storing download URL for notification: " << downloadUrl);
+
+    // Use the regular notification system
+    showNotification(title, message, false);
+}
+
+void TrayIcon::openDownloadUrl()
+{
+    if (m_downloadUrl.empty())
+    {
+        LOG_DEBUG("TrayIcon", "No download URL available to open");
+        return;
+    }
+
+    LOG_INFO_STREAM("TrayIcon", "Opening download URL: " << m_downloadUrl);
+
+    // Convert URL to wide string
+    std::wstring wUrl;
+    int urlLength = MultiByteToWideChar(CP_UTF8, 0, m_downloadUrl.c_str(), -1, NULL, 0);
+    if (urlLength > 0)
+    {
+        wUrl.resize(urlLength);
+        MultiByteToWideChar(CP_UTF8, 0, m_downloadUrl.c_str(), -1, &wUrl[0], urlLength);
+
+        // Open URL in default browser
+        INT_PTR result = (INT_PTR)ShellExecuteW(NULL, L"open", wUrl.c_str(), NULL, NULL, SW_SHOWNORMAL);
+        if (result <= 32) // ShellExecute returns a value <= 32 for errors
+        {
+            LOG_ERROR_STREAM("TrayIcon", "Failed to open URL, error code: " << result);
+        }
+        else
+        {
+            LOG_INFO("TrayIcon", "URL opened successfully");
+        }
+    }
+    else
+    {
+        LOG_ERROR("TrayIcon", "Failed to convert URL to wide string");
     }
 }
 
@@ -202,6 +330,8 @@ LRESULT CALLBACK TrayIcon::WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARA
         instance->m_hMenu = CreatePopupMenu();
         // Status will be added dynamically
         AppendMenuW(instance->m_hMenu, MF_SEPARATOR, 0, NULL); // Add separator
+        AppendMenuW(instance->m_hMenu, MF_STRING, ID_TRAY_CHECK_UPDATES, L"Check for Updates");
+        AppendMenuW(instance->m_hMenu, MF_SEPARATOR, 0, NULL); // Add separator
         AppendMenuW(instance->m_hMenu, MF_STRING, ID_TRAY_EXIT, L"Exit");
 
         // Initialize with default status
@@ -218,6 +348,10 @@ LRESULT CALLBACK TrayIcon::WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARA
         case ID_TRAY_EXIT:
             LOG_INFO("TrayIcon", "Exit selected from menu via WM_COMMAND");
             instance->executeExitCallback();
+            break;
+        case ID_TRAY_CHECK_UPDATES:
+            LOG_INFO("TrayIcon", "Check for updates selected from menu via WM_COMMAND");
+            instance->executeUpdateCheckCallback();
             break;
         }
         break;
@@ -243,7 +377,16 @@ LRESULT CALLBACK TrayIcon::WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARA
                 LOG_INFO("TrayIcon", "Exit selected from tray menu");
                 instance->executeExitCallback();
                 break;
+            case ID_TRAY_CHECK_UPDATES:
+                LOG_INFO("TrayIcon", "Check for updates selected from tray menu");
+                instance->executeUpdateCheckCallback();
+                break;
             }
+        }
+        else if (LOWORD(lParam) == NIN_BALLOONUSERCLICK)
+        {
+            LOG_INFO("TrayIcon", "Notification balloon clicked");
+            instance->openDownloadUrl();
         }
         break;
 

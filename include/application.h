@@ -6,6 +6,10 @@
 #include <memory>
 #include <mutex>
 
+// Third-party headers
+#include <nlohmann/json.hpp>
+using json = nlohmann::json;
+
 // Project headers
 #include "config.h"
 #include "discord.h"
@@ -14,6 +18,13 @@
 
 class Application
 {
+public:
+    Application();
+
+    bool initialize();
+    void run();
+    void stop();
+
 private:
     std::unique_ptr<Plex> m_plex;
     std::unique_ptr<Discord> m_discord;
@@ -33,11 +44,5 @@ private:
     void updateTrayStatus(const MediaInfo &info);
     void processPlaybackInfo(const MediaInfo &info);
     void performCleanup();
-
-public:
-    Application();
-
-    bool initialize();
-    void run();
-    void stop();
+    void checkForUpdates();
 };
