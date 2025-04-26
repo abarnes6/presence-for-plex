@@ -1,4 +1,5 @@
 #include "http_client.h"
+#include "thread_utils.h"
 
 HttpClient::HttpClient()
 {
@@ -12,10 +13,6 @@ HttpClient::~HttpClient()
     if (m_sseRunning)
     {
         stopSSE();
-    }
-    if (m_sseThread.joinable())
-    {
-        m_sseThread.join();
     }
 
     if (m_curl)
@@ -188,17 +185,26 @@ int HttpClient::sseCallbackProgress(void *clientp, curl_off_t dltotal, curl_off_
 
 bool HttpClient::stopSSE()
 {
-    // Set the stop flag
     m_stopFlag = true;
     LOG_INFO("HttpClient", "Requesting SSE connection termination");
 
-    // Wait for the SSE thread to finish
-    std::unique_lock<std::mutex> lock(m_sseMutex);
-    if (m_sseRunning)
+    if (m_sseThread.joinable())
     {
-        LOG_INFO("HttpClient", "Waiting for SSE thread to stop");
-        m_sseCondVar.wait(lock, [this]
-                          { return !m_sseRunning; });
+        std::unique_lock<std::mutex> lock(m_sseMutex);
+        if (m_sseRunning)
+        {
+            LOG_INFO("HttpClient", "Waiting for SSE thread to stop");
+            
+            bool threadStopped = m_sseCondVar.wait_for(lock, std::chrono::seconds(5), 
+                [this] { return !m_sseRunning; });
+                
+            if (!threadStopped) {
+                LOG_WARNING("HttpClient", "SSE thread did not respond to stop request in time");
+            }
+        }
+        
+        lock.unlock();
+        ThreadUtils::joinWithTimeout(m_sseThread, std::chrono::seconds(2), "SSE thread");
     }
 
     LOG_INFO("HttpClient", "SSE thread stopped successfully");

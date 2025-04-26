@@ -12,20 +12,20 @@ project ("PlexPresence" VERSION 0.3.3 LANGUAGES CXX)
 
 # Configure version.h from template
 configure_file(
-  ${CMAKE_CURRENT_LIST_DIR}/src/version.h.in
-  ${CMAKE_CURRENT_LIST_DIR}/src/version.h
+  ${CMAKE_CURRENT_LIST_DIR}/include/version.h.in
+  ${CMAKE_CURRENT_LIST_DIR}/include/version.h
   @ONLY
 )
 
-# Add the binary directory to include paths so the generated header can be found
-include_directories(${CMAKE_CURRENT_BINARY_DIR})
+# Add both project include directories and binary directory to include paths
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include ${CMAKE_CURRENT_BINARY_DIR})
 
 file(GLOB_RECURSE SOURCES src/*.cpp)
-file(GLOB_RECURSE HEADERS src/*.h)
+file(GLOB_RECURSE HEADERS include/*.h)
 
 # Add resource file for Windows
 if(WIN32)
-  set(RES_FILES src/resources.rc)
+  set(RES_FILES assets/resources.rc)
 endif()
 
 find_package(CURL CONFIG REQUIRED) 
@@ -51,6 +51,7 @@ else()
     add_executable(PlexPresence src/main.cpp ${SOURCES} ${HEADERS} ${RES_FILES})
 endif()
 
+target_include_directories(PlexPresence PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(PlexPresence PRIVATE CURL::libcurl yaml-cpp::yaml-cpp)
 
 if (CMAKE_VERSION VERSION_GREATER 3.25)
@@ -74,8 +75,8 @@ endif()
 if(WIN32)
     set(CPACK_GENERATOR "NSIS")
     # Set icon for NSIS installer
-    set(CPACK_NSIS_MUI_ICON "${CMAKE_CURRENT_SOURCE_DIR}/src/icon.ico")
-    set(CPACK_NSIS_MUI_UNIICON "${CMAKE_CURRENT_SOURCE_DIR}/src/icon.ico")
+    set(CPACK_NSIS_MUI_ICON "${CMAKE_CURRENT_SOURCE_DIR}/assets/icon.ico")
+    set(CPACK_NSIS_MUI_UNIICON "${CMAKE_CURRENT_SOURCE_DIR}/assets/icon.ico")
     
     # Add option for startup
     set(CPACK_NSIS_EXTRA_INSTALL_COMMANDS "

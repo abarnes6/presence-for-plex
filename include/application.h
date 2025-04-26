@@ -15,16 +15,17 @@
 class Application
 {
 private:
-    std::unique_ptr<Plex> plex;
-    std::unique_ptr<Discord> discord;
+    std::unique_ptr<Plex> m_plex;
+    std::unique_ptr<Discord> m_discord;
 #ifdef _WIN32
-    std::unique_ptr<TrayIcon> trayIcon;
+    std::unique_ptr<TrayIcon> m_trayIcon;
 #endif
-    std::atomic<bool> running{false};
-    PlaybackState lastState = PlaybackState::Stopped;
-    std::condition_variable discordConnectCv;
-    std::mutex discordConnectMutex;
-    time_t lastStartTime = 0;
+    std::atomic<bool> m_running{false};
+    std::atomic<bool> m_initialized{false};
+    PlaybackState m_lastState = PlaybackState::Stopped;
+    std::condition_variable m_discordConnectCv;
+    std::mutex m_discordConnectMutex;
+    time_t m_lastStartTime = 0;
 
     // Helper methods for improved readability
     void setupLogging();

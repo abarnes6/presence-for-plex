@@ -17,6 +17,7 @@
 // Project headers
 #include "logger.h"
 #include "resources.h"
+#include "thread_utils.h"
 
 // Constants for Windows
 #ifdef _WIN32

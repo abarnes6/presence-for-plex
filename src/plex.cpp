@@ -56,8 +56,13 @@ struct ServerUriCacheEntry : TimedCacheEntry
     bool valid() const { return (std::time(nullptr) - timestamp) < SESSION_CACHE_TIMEOUT; } // Reuse session timeout
 };
 
-Plex::Plex() : m_initialized(false)
+Plex::Plex() : m_initialized(false), m_shuttingDown(false)
 {
+    LOG_INFO("Plex", "Plex object created");
+    m_serverUriCache = std::map<std::string, ServerUriCacheEntry>();
+    m_mediaInfoCache = std::map<std::string, MediaCacheEntry>();
+    m_sessionUserCache = std::map<std::string, SessionUserCacheEntry>();
+    m_activeSessions = std::map<std::string, MediaInfo>();
 }
 
 Plex::~Plex()
@@ -157,6 +162,11 @@ std::map<std::string, std::string> Plex::getStandardHeaders(const std::string &t
 bool Plex::acquireAuthToken()
 {
     LOG_INFO("Plex", "Acquiring Plex auth token");
+    
+#ifdef _WIN32
+    // Inform the user about the authentication process through the tray icon
+    // This will be handled by the Application class's initialization
+#endif
 
     std::string clientId = getClientIdentifier();
     HttpClient client;
@@ -218,6 +228,14 @@ void Plex::openAuthorizationUrl(const std::string &pin, const std::string &clien
     LOG_INFO("Plex", "Opening browser for authentication: " + authUrl);
 
 #ifdef _WIN32
+    // Show a message box to instruct the user before opening the browser
+    MessageBoxA(NULL, 
+        "A browser window will open for Plex authentication.\n\n"
+        "Please log in to your Plex account and authorize Plex Presence.\n\n"
+        "The application will continue setup after successful authentication.",
+        "Plex Authentication Required", 
+        MB_ICONINFORMATION | MB_OK);
+        
     ShellExecuteA(NULL, "open", authUrl.c_str(), NULL, NULL, SW_SHOWNORMAL);
 #else
     // For non-Windows platforms
@@ -232,13 +250,30 @@ bool Plex::pollForPinAuthorization(const std::string &pinId, const std::string &
 {
     const int maxAttempts = 30;  // Try for about 5 minutes
     const int pollInterval = 10; // seconds
+    const int sleepChunks = 10;  // Break sleep into smaller chunks
 
     LOG_INFO("Plex", "Waiting for user to authorize PIN...");
 
     for (int attempt = 0; attempt < maxAttempts; ++attempt)
     {
-        // Wait before polling
-        std::this_thread::sleep_for(std::chrono::seconds(pollInterval));
+        // Check if application is shutting down
+        if (m_shuttingDown)
+        {
+            LOG_INFO("Plex", "Application is shutting down, aborting PIN authorization");
+            return false;
+        }
+        
+        // Wait before polling, but check for shutdown more frequently
+        for (int i = 0; i < sleepChunks && !m_shuttingDown; ++i)
+        {
+            std::this_thread::sleep_for(std::chrono::seconds(pollInterval / sleepChunks));
+        }
+        
+        if (m_shuttingDown)
+        {
+            LOG_INFO("Plex", "Application is shutting down, aborting PIN authorization");
+            return false;
+        }
 
         // Check PIN status
         std::string statusUrl = std::string(PLEX_PIN_URL) + "/" + pinId;
@@ -283,6 +318,13 @@ bool Plex::pollForPinAuthorization(const std::string &pinId, const std::string &
             LOG_ERROR("Plex", "Error parsing PIN status: " + std::string(e.what()));
         }
     }
+
+#ifdef _WIN32
+    MessageBoxA(NULL,
+        "Plex authentication timed out. Please try again.",
+        "Plex Authentication Timeout",
+        MB_ICONERROR | MB_OK);
+#endif
 
     LOG_ERROR("Plex", "Timed out waiting for PIN authorization");
     return false;
@@ -1221,9 +1263,11 @@ MediaInfo Plex::getCurrentPlayback()
     return newest;
 }
 
-void Plex::stopConnections()
+void Plex::stop()
 {
     LOG_INFO("Plex", "Stopping all Plex connections");
+    
+    m_shuttingDown = true;
 
     // Stop all SSE connections with a very short timeout since we're shutting down
     for (auto &[id, server] : Config::getInstance().getPlexServers())

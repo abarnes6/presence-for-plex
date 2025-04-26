@@ -50,7 +50,10 @@ void Discord::connectionThread()
 
 				for (int i = 0; i < delay && running; ++i)
 				{
-					std::this_thread::sleep_for(std::chrono::seconds(1));
+					std::this_thread::sleep_for(std::chrono::milliseconds(100));
+					if (i % 10 == 0) {
+						processQueuedFrame(); // Process frames more frequently during wait
+					}
 				}
 				if (!running)
 				{
@@ -100,11 +103,13 @@ void Discord::connectionThread()
 				needs_reconnect = false;
 			}
 
-			// Connection is healthy, wait before next check
-			for (int i = 0; i < 60 && running && !needs_reconnect; ++i)
+			// Connection health check sleep
+			for (int i = 0; i < 600 && running && !needs_reconnect; ++i) // 600 * 100ms = 60s
 			{
-				std::this_thread::sleep_for(std::chrono::seconds(1));
-				processQueuedFrame();
+				std::this_thread::sleep_for(std::chrono::milliseconds(100));
+				if (i % 10 == 0) {
+					processQueuedFrame();
+				}
 			}
 		}
 	}
@@ -567,17 +572,18 @@ void Discord::start()
 
 void Discord::stop()
 {
-	LOG_INFO("Discord", "Stopping Discord Rich Presence");
-	running = false;
+    LOG_INFO("Discord", "Stopping Discord Rich Presence");
+    running = false;
 
-	if (conn_thread.joinable())
-	{
-		conn_thread.join();
-	}
-	if (ipc.isConnected())
-	{
-		ipc.closePipe();
-	}
+    if (conn_thread.joinable())
+    {
+        ThreadUtils::joinWithTimeout(conn_thread, std::chrono::seconds(3), "Discord connection thread");
+    }
+    
+    if (ipc.isConnected())
+    {
+        ipc.closePipe();
+    }
 }
 
 void Discord::setConnectedCallback(ConnectionCallback callback)

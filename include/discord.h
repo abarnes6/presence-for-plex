@@ -31,6 +31,7 @@
 #include "discord_ipc.h"
 #include "logger.h"
 #include "models.h"
+#include "thread_utils.h"
 
 /**
  * Main interface for Discord Rich Presence integration

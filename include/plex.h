@@ -50,7 +50,7 @@ public:
 	MediaInfo getCurrentPlayback();
 
 	// Stop all connections
-	void stopConnections();
+	void stop();
 
 private:
 	// Authentication methods
@@ -100,6 +100,7 @@ private:
 
 	// State variables
 	std::atomic<bool> m_initialized;
+	std::atomic<bool> m_shuttingDown;
 
 	// Cache mutexes and maps
 	std::mutex m_cacheMutex;

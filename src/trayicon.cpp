@@ -171,13 +171,17 @@ void TrayIcon::executeExitCallback()
     {
         // Create a local copy of the callback to avoid potential use-after-free
         auto exitCallback = m_exitCallback;
-        // Execute the callback on a separate thread to avoid blocking WndProc
-        std::thread([exitCallback]()
-                    {
-            if (exitCallback) {
-                exitCallback();
-            } })
-            .detach();
+        
+        // Use ThreadUtils to execute the callback with a timeout
+        ThreadUtils::executeWithTimeout(
+            [exitCallback]() { 
+                if (exitCallback) {
+                    exitCallback();
+                }
+            },
+            std::chrono::seconds(5),
+            "Exit callback"
+        );
     }
 }
 
