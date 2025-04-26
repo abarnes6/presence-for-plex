@@ -48,12 +48,23 @@ Check the log file located at:
 -   Windows: `%APPDATA%\Plex Presence\log.txt`
 -   macOS/Linux: `~/.config/plex-presence/log.txt`
 
+## FAQ
+
+### Why does Plex Presence show "No active sessions"?
+
+If the application is connecting to your Plex server but not detecting your media playback:
+
+1. Check your Plex server's network settings
+2. Go to Plex server Settings → Network
+3. Verify that "Preferred network interface" is set correctly
+    - If set to "Auto", try selecting your specific network interface instead
+    - This is particularly important for servers with multiple network interfaces
+
 ## Attribution
 
 ![blue_square_2-d537fb228cf3ded904ef09b136fe3fec72548ebc1fea3fbbd1ad9e36364db38b](https://github.com/user-attachments/assets/38abfb34-72cf-46d9-9d17-724761aa570a)
 
 (image API)
-
 
 ## License
 
