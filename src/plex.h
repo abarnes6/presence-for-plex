@@ -77,6 +77,7 @@ private:
 						   const std::string &state, const std::string &mediaKey,
 						   int64_t viewOffset, const std::shared_ptr<PlexServer> &server);
 	void updatePlaybackState(MediaInfo &info, const std::string &state, int64_t viewOffset);
+	std::string urlEncode(const std::string &value);
 
 	// Media info methods
 	MediaInfo fetchMediaDetails(const std::string &serverUri, const std::string &accessToken,

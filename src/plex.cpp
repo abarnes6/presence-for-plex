@@ -105,6 +105,29 @@ bool Plex::init()
     return true;
 }
 
+// Helper function for URL encoding
+std::string Plex::urlEncode(const std::string &value)
+{
+    std::ostringstream escaped;
+    escaped.fill('0');
+    escaped << std::hex;
+
+    for (char c : value)
+    {
+        if (isalnum(static_cast<unsigned char>(c)) || c == '-' || c == '_' || c == '.' || c == '~')
+        {
+            escaped << c;
+        }
+        else
+        {
+            escaped << '%' << std::uppercase << std::setw(2) << int(static_cast<unsigned char>(c));
+            escaped << std::nouppercase;
+        }
+    }
+
+    return escaped.str();
+}
+
 // Standard headers helper method
 std::map<std::string, std::string> Plex::getStandardHeaders(const std::string &token)
 {
@@ -655,12 +678,32 @@ void Plex::updateSessionInfo(const std::string &serverId, const std::string &ses
         {
             fetchSessionUserInfo(serverUri, server->accessToken, sessionKey, info);
 
-            // Cache the result
-            std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
-            SessionUserCacheEntry entry;
-            entry.timestamp = std::time(nullptr);
-            entry.username = info.username;
-            m_sessionUserCache[sessionUserCacheKey] = entry;
+            if (!info.username.empty())
+            {
+                std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
+                SessionUserCacheEntry entry;
+                entry.timestamp = std::time(nullptr);
+                entry.username = info.username;
+                m_sessionUserCache[sessionUserCacheKey] = entry;
+            }
+            else {
+                LOG_DEBUG("Plex", "No username found for session: " + sessionKey +
+                                  ", retrying after a short delay");
+                std::this_thread::sleep_for(std::chrono::seconds(1));
+                fetchSessionUserInfo(serverUri, server->accessToken, sessionKey, info);
+                if (!info.username.empty())
+                {
+                    std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
+                    SessionUserCacheEntry entry;
+                    entry.timestamp = std::time(nullptr);
+                    entry.username = info.username;
+                    m_sessionUserCache[sessionUserCacheKey] = entry;
+                }
+                else
+                {
+                    LOG_WARNING("Plex", "Did not find a username tied to session (skipping cache): " + sessionKey);
+                }
+            }
         }
 
         // Skip sessions that don't belong to the current user
@@ -734,9 +777,14 @@ void Plex::fetchSessionUserInfo(const std::string &serverUri, const std::string 
     {
         auto json = nlohmann::json::parse(response);
 
-        if (!json.contains("MediaContainer") || !json["MediaContainer"].contains("Metadata"))
+        if (!json.contains("MediaContainer"))
         {
             LOG_ERROR("Plex", "Invalid session response format" + response);
+            return;
+        }
+        if (json["MediaContainer"].contains("size") && json["MediaContainer"]["size"].get<int>() == 0)
+        {
+            LOG_DEBUG("Plex", "No active sessions found");
             return;
         }
 
@@ -1015,11 +1063,8 @@ void Plex::fetchAnimeMetadata(const nlohmann::json &metadata, MediaInfo &info)
         HttpClient jikanClient;
         std::string encodedTitle = cacheKey;
         std::string::size_type pos = 0;
-        while ((pos = encodedTitle.find(' ', pos)) != std::string::npos)
-        {
-            encodedTitle.replace(pos, 1, "%20");
-            pos += 3;
-        }
+
+        encodedTitle = urlEncode(encodedTitle);
 
         std::string jikanUrl = std::string(JIKAN_API_URL) + "?q=" + encodedTitle;
 
