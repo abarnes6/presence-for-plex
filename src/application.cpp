@@ -30,17 +30,19 @@ void Application::setupDiscordCallbacks()
         } else {
             m_trayIcon->setConnectionStatus("Status: Connecting to Plex...");
         }
+#endif
         m_plex->init();
-#endif
         std::unique_lock<std::mutex> lock(m_discordConnectMutex);
-        m_discordConnectCv.notify_all(); });
+        m_discordConnectCv.notify_all();
+                                    });
 
+        m_discord->setDisconnectedCallback([this]()
+                                           {
+            m_plex->stop();
 #ifdef _WIN32
-    m_discord->setDisconnectedCallback([this]()
-                                       { 
-                                        m_plex->stop();
-                                        m_trayIcon->setConnectionStatus("Status: Waiting for Discord..."); });
+            m_trayIcon->setConnectionStatus("Status: Waiting for Discord...");
 #endif
+                                           });
 }
 
 bool Application::initialize()
