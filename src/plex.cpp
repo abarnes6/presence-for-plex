@@ -947,7 +947,7 @@ void Plex::extractMovieSpecificInfo(const nlohmann::json &metadata, MediaInfo &i
 void Plex::extractTVShowSpecificInfo(const nlohmann::json &metadata, MediaInfo &info)
 {
     info.type = MediaType::TVShow;
-    // info.grandparentTitle is already extracted in basic info as artist
+    info.grandparentTitle = metadata.value("grandparentTitle", "Unknown");
     info.season = metadata.value("parentIndex", 0);
     info.episode = metadata.value("index", 0);
 
