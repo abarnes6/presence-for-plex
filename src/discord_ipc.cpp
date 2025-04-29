@@ -144,12 +144,12 @@ bool DiscordIPC::openPipe()
     {
         std::string socket_path;
         // Check environment variables first (XDG standard)
-        const char *temp = getenv("XDG_RUNTIME_DIR");
+        const char *xdgRuntime = getenv("XDG_RUNTIME_DIR");
         const char *home = getenv("HOME");
 
-        if (temp)
+        if (xdgRuntime)
         {
-            socket_path = std::string(temp) + "/discord-ipc-" + std::to_string(i);
+            socket_path = std::string(xdgRuntime) + "/discord-ipc-" + std::to_string(i);
         }
         else if (home)
         {
