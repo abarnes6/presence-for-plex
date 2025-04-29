@@ -1,4 +1,4 @@
-# Plex Presence
+# Presence For Plex
 
 A lightweight application written in C++ that displays your current Plex media activity in Discord's Rich Presence.
 
@@ -12,7 +12,7 @@ A lightweight application written in C++ that displays your current Plex media a
 
 ### Download
 
-Download the latest release from the [Releases](https://github.com/abarnes6/plex-presence/releases) page.
+Download the latest release from the [Releases](https://github.com/abarnes6/presence-for-plex/releases) page.
 
 ### Setup
 
@@ -34,8 +34,8 @@ Download the latest release from the [Releases](https://github.com/abarnes6/plex
 If on Windows, use a Visual Studio terminal with CMake tools and vcpkg components installed. This is also how you would need to open VS code to compile with it.
 
 ```bash
-git clone https://github.com/abarnes6/plex-presence.git
-cd plex-presence
+git clone https://github.com/abarnes6/presence-for-plex.git
+cd presence-for-plex
 mkdir build && cd build
 cmake --preset=release ..
 cmake --build release
@@ -45,12 +45,12 @@ cmake --build release
 
 Check the log file located at:
 
--   Windows: `%APPDATA%\Plex Presence\log.txt`
--   macOS/Linux: `~/.config/plex-presence/log.txt`
+-   Windows: `%APPDATA%\Presence For Plex\log.txt`
+-   macOS/Linux: `~/.config/presence-for-plex/log.txt`
 
 ## FAQ
 
-### Why does Plex Presence show "No active sessions"?
+### Why does Presence For Plex show "No active sessions"?
 
 If the application is connecting to your Plex server but not detecting your media playback:
 

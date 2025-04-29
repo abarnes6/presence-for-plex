@@ -406,7 +406,7 @@ LRESULT CALLBACK TrayIcon::WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARA
 void TrayIcon::uiThreadFunction()
 {
     // Register window class
-    const wchar_t *className = L"PlexPresenceTray";
+    const wchar_t *className = L"PresenceForPlexTray";
 
     WNDCLASSEXW wc = {0};
     wc.cbSize = sizeof(WNDCLASSEXW);
@@ -461,7 +461,7 @@ void TrayIcon::uiThreadFunction()
     }
     else
     {
-        wAppName = L"Plex Presence";
+        wAppName = L"Presence For Plex";
     }
 
     // Create the hidden window
@@ -514,7 +514,7 @@ void TrayIcon::uiThreadFunction()
     }
 
     // Set initial tooltip
-    wcscpy_s(m_nid.szTip, _countof(m_nid.szTip), L"Plex Presence");
+    wcscpy_s(m_nid.szTip, _countof(m_nid.szTip), L"Presence For Plex");
 
     LOG_INFO("TrayIcon", "Tray icon initialized, ready to be shown");
 

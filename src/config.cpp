@@ -11,21 +11,21 @@ std::filesystem::path Config::getConfigDirectory()
     std::filesystem::path configDir;
 
 #ifdef _WIN32
-    // Windows: %APPDATA%\Plex Presence
+    // Windows: %APPDATA%/Presence For Plex
     char *appData = nullptr;
     size_t appDataSize = 0;
     _dupenv_s(&appData, &appDataSize, "APPDATA");
     if (appData)
     {
-        configDir = std::filesystem::path(appData) / "Plex Presence";
+        configDir = std::filesystem::path(appData) / "Presence For Plex";
         free(appData);
     }
 #else
-    // Linux/macOS: ~/.config/plex-presence
+    // Linux/macOS: ~/.config/presence-for-plex
     char *home = getenv("HOME");
     if (home)
     {
-        configDir = std::filesystem::path(home) / ".config" / "plex-presence";
+        configDir = std::filesystem::path(home) / ".config" / "presence-for-plex";
     }
 #endif
 

@@ -27,17 +27,17 @@ void signalHandler(int sig)
 int main()
 {
     // Check for an existing instance
-    SingleInstance singleInstance("PlexPresence");
+    SingleInstance singleInstance("PresenceForPlex");
     if (!singleInstance.isFirstInstance()) {
         // Another instance is already running
         #ifdef _WIN32
         MessageBoxA(NULL, 
-            "Another instance of Plex Presence is already running.",
-            "Plex Presence", 
+            "Another instance of Presence For Plex is already running.",
+            "Presence For Plex", 
             MB_ICONINFORMATION | MB_OK);
         #else
         // For non-Windows platforms, just print a message to stderr
-        fprintf(stderr, "Another instance of Plex Presence is already running.\n");
+        fprintf(stderr, "Another instance of Presence For Plex is already running.\n");
         #endif
         return 1;
     }
@@ -64,7 +64,7 @@ int main()
     g_app = &app;
 
     auto &config = Config::getInstance();
-    LOG_INFO("Application", "Starting Plex Presence v" + config.getVersionString());
+    LOG_INFO("Application", "Starting Presence For Plex v" + config.getVersionString());
 
     if (!app.initialize())
     {

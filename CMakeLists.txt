@@ -8,7 +8,7 @@ if (POLICY CMP0141)
   set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<IF:$<AND:$<C_COMPILER_ID:MSVC>,$<CXX_COMPILER_ID:MSVC>>,$<$<CONFIG:Debug,RelWithDebInfo>:EditAndContinue>,$<$<CONFIG:Debug,RelWithDebInfo>:ProgramDatabase>>")
 endif()
 
-project ("PlexPresence" VERSION 0.3.5 LANGUAGES CXX)
+project ("PresenceForPlex" VERSION 0.3.6 LANGUAGES CXX)
 
 # Configure version.h from template
 configure_file(
@@ -46,25 +46,25 @@ find_path(_TP_INC
 if(WIN32)
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /SUBSYSTEM:WINDOWS")
     add_compile_definitions(WIN32_LEAN_AND_MEAN)
-    add_executable(PlexPresence WIN32 src/main.cpp ${SOURCES} ${HEADERS} ${RES_FILES})
+    add_executable(PresenceForPlex WIN32 src/main.cpp ${SOURCES} ${HEADERS} ${RES_FILES})
 else()
-    add_executable(PlexPresence src/main.cpp ${SOURCES} ${HEADERS} ${RES_FILES})
+    add_executable(PresenceForPlex src/main.cpp ${SOURCES} ${HEADERS} ${RES_FILES})
 endif()
 
-target_include_directories(PlexPresence PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
-target_link_libraries(PlexPresence PRIVATE CURL::libcurl yaml-cpp::yaml-cpp)
+target_include_directories(PresenceForPlex PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_link_libraries(PresenceForPlex PRIVATE CURL::libcurl yaml-cpp::yaml-cpp)
 
 if (CMAKE_VERSION VERSION_GREATER 3.25)
-  set_property(TARGET PlexPresence PROPERTY CXX_STANDARD 17)
+  set_property(TARGET PresenceForPlex PROPERTY CXX_STANDARD 17)
 endif()
 
-install(TARGETS PlexPresence
+install(TARGETS PresenceForPlex
     RUNTIME DESTINATION .)         # Root of staging dir
 install(FILES LICENSE README.md
     DESTINATION .)
 if (WIN32)
   install(FILES
-    $<TARGET_RUNTIME_DLLS:PlexPresence>
+    $<TARGET_RUNTIME_DLLS:PresenceForPlex>
     $<$<CONFIG:Debug>:${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/debug/bin/zlibd1.dll>
     $<$<NOT:$<CONFIG:Debug>>:${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/bin/zlib1.dll>
     DESTINATION .
@@ -80,38 +80,36 @@ if(WIN32)
     
     # Add option for startup
     set(CPACK_NSIS_EXTRA_INSTALL_COMMANDS "
-        CreateShortCut \\\"$DESKTOP\\\\Plex Presence.lnk\\\" \\\"$INSTDIR\\\\PlexPresence.exe\\\" 
-        CreateDirectory \\\"$SMPROGRAMS\\\\Plex Presence\\\" 
-        CreateShortCut \\\"$SMPROGRAMS\\\\Plex Presence\\\\Plex Presence.lnk\\\" \\\"$INSTDIR\\\\PlexPresence.exe\\\" 
-        WriteRegStr HKCU \\\"Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Run\\\" \\\"PlexPresence\\\" \\\"$INSTDIR\\\\PlexPresence.exe\\\" 
+        CreateShortCut \\\"$DESKTOP\\\\Presence For Plex.lnk\\\" \\\"$INSTDIR\\\\PresenceForPlex.exe\\\" 
+        CreateDirectory \\\"$SMPROGRAMS\\\\Presence For Plex\\\" 
+        CreateShortCut \\\"$SMPROGRAMS\\\\Presence For Plex\\\\Presence For Plex.lnk\\\" \\\"$INSTDIR\\\\PresenceForPlex.exe\\\" 
+        WriteRegStr HKCU \\\"Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Run\\\" \\\"PresenceForPlex\\\" \\\"$INSTDIR\\\\PresenceForPlex.exe\\\" 
     ")
     set(CPACK_NSIS_EXTRA_UNINSTALL_COMMANDS "
-        Delete \\\"$DESKTOP\\\\Plex Presence.lnk\\\" 
-        Delete \\\"$SMPROGRAMS\\\\Plex Presence\\\\Plex Presence.lnk\\\" 
-        RMDir \\\"$SMPROGRAMS\\\\Plex Presence\\\" 
-        DeleteRegValue HKCU \\\"Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Run\\\" \\\"PlexPresence\\\" 
+        Delete \\\"$DESKTOP\\\\Presence For Plex.lnk\\\" 
+        Delete \\\"$SMPROGRAMS\\\\Presence For Plex\\\\Presence For Plex.lnk\\\" 
+        RMDir \\\"$SMPROGRAMS\\\\Presence For Plex\\\" 
+        DeleteRegValue HKCU \\\"Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Run\\\" \\\"PresenceForPlex\\\" 
     ")
     set(CPACK_NSIS_ENABLE_UNINSTALL_BEFORE_INSTALL ON)
+    set(CPACK_PACKAGE_INSTALL_DIRECTORY "Presence For Plex")
 elseif(APPLE)
     set(CPACK_GENERATOR "DragNDrop")
-    set(CPACK_DMG_VOLUME_NAME "PlexPresence")
+    set(CPACK_DMG_VOLUME_NAME "PresenceForPlex")
 elseif(UNIX)
-    set(CPACK_GENERATOR "DEB;RPM")
-    set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Andrew Barnes")
-    set(CPACK_DEBIAN_PACKAGE_DEPENDS "libcurl4, libc6")
-    set(CPACK_RPM_PACKAGE_REQUIRES "libcurl")
+    set(CPACK_GENERATOR "TGZ")
+    set(CPACK_PACKAGE_INSTALL_DIRECTORY "PresenceForPlex")
     
     # Install to standard Linux locations
     set(CPACK_SET_DESTDIR ON)
     set(CPACK_INSTALL_PREFIX "/usr")
 endif()
 
-set(CPACK_PACKAGE_NAME "Plex Presence")
+set(CPACK_PACKAGE_NAME "PresenceForPlex")
 set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
 set(CPACK_PACKAGE_VENDOR "Andrew Barnes")
-set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Plex Presence for Discord")
-set(CPACK_PACKAGE_EXECUTABLES "PlexPresence" "Plex Presence")
-set(CPACK_PACKAGE_INSTALL_DIRECTORY "Plex Presence")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Discord Rich Presence for Plex")
+set(CPACK_PACKAGE_EXECUTABLES "PresenceForPlex" "Presence For Plex")
 set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
 
 include(CPack)

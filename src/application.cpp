@@ -15,7 +15,7 @@ void Application::setupLogging()
 #ifndef NDEBUG
     Logger::getInstance().setLogLevel(LogLevel::Debug);
 #endif
-    LOG_INFO("Application", "Plex Presence starting up");
+    LOG_INFO("Application", "Presence For Plex starting up");
 }
 
 void Application::setupDiscordCallbacks()
@@ -52,7 +52,7 @@ bool Application::initialize()
         m_plex = std::make_unique<Plex>();
         m_discord = std::make_unique<Discord>();
 #ifdef _WIN32
-        m_trayIcon = std::make_unique<TrayIcon>("Plex Presence");
+        m_trayIcon = std::make_unique<TrayIcon>("Presence For Plex");
 #endif
 
 #ifdef _WIN32
@@ -89,11 +89,11 @@ void Application::checkForUpdates()
     try
     {
         // Fetch the latest release information from GitHub
-        std::string apiUrl = "https://api.github.com/repos/abarnes6/plex-presence/releases/latest";
+        std::string apiUrl = "https://api.github.com/repos/abarnes6/presence-for-plex/releases/latest";
 
         // Setup headers required by GitHub API
         std::map<std::string, std::string> headers = {
-            {"User-Agent", "Plex-Presence-Update-Checker"},
+            {"User-Agent", "Presence-For-Plex-Update-Checker"},
             {"Accept", "application/json"}};
 
         // Response from GitHub API
@@ -148,11 +148,11 @@ void Application::checkForUpdates()
                 // Show the result as a notification
                 if (updateAvailable)
                 {
-                    m_trayIcon->showUpdateNotification("Plex Presence Update", message, downloadUrl);
+                    m_trayIcon->showUpdateNotification("Presence For Plex Update", message, downloadUrl);
                 }
                 else
                 {
-                    m_trayIcon->showNotification("Plex Presence Update", message);
+                    m_trayIcon->showNotification("Presence For Plex Update", message);
                 }
 #endif
             }
@@ -231,7 +231,7 @@ void Application::processPlaybackInfo(const MediaInfo &info)
     }
     else if (info.state == PlaybackState::NotInitialized)
     {
-        LOG_INFO("Application", "Plex server not initialized, skipping update");
+        LOG_INFO("Application", "Plex class not initialized, skipping update");
         m_lastState = PlaybackState::NotInitialized;
     }
     else

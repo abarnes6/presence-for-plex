@@ -67,14 +67,14 @@
     ],
     "packagePresets": [
         {
-            "name": "debug",
+            "name": "debug-windows",
             "displayName": "Debug Package",
             "description": "Create debug package with symbols",
             "configurePreset": "debug",
             "generators": ["NSIS"]
         },
         {
-            "name": "release",
+            "name": "release-windows",
             "displayName": "Release Package",
             "description": "Create optimized release package",
             "configurePreset": "release",
@@ -86,6 +86,20 @@
             "description": "Create release package for GitHub Actions CI",
             "configurePreset": "github",
             "generators": ["NSIS"]
+        },
+        {
+            "name": "debug-linux",
+            "displayName": "Debug Package (Linux)",
+            "description": "Create debug package with symbols for Linux",
+            "configurePreset": "debug",
+            "generators": ["TGZ"]
+        },
+        {
+            "name": "release-linux",
+            "displayName": "Release Package (Linux)",
+            "description": "Create optimized release package for Linux",
+            "configurePreset": "release",
+            "generators": ["TGZ"]
         }
     ]
 }

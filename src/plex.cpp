@@ -141,7 +141,7 @@ std::map<std::string, std::string> Plex::getStandardHeaders(const std::string &t
 {
     std::map<std::string, std::string> headers = {
         {"X-Plex-Client-Identifier", getClientIdentifier()},
-        {"X-Plex-Product", "Plex Presence"},
+        {"X-Plex-Product", "Presence For Plex"},
         {"X-Plex-Version", Config::getInstance().getVersionString()},
         {"X-Plex-Device", "PC"},
 #if defined(_WIN32)
@@ -226,7 +226,7 @@ void Plex::openAuthorizationUrl(const std::string &pin, const std::string &clien
     std::string authUrl = std::string(PLEX_AUTH_URL) +
                           "?clientID=" + clientId +
                           "&code=" + pin +
-                          "&context%5Bdevice%5D%5Bproduct%5D=Plex%20Presence";
+                          "&context%5Bdevice%5D%5Bproduct%5D=Presence%20For%20Plex";
 
     LOG_INFO("Plex", "Opening browser for authentication: " + authUrl);
 
@@ -234,7 +234,7 @@ void Plex::openAuthorizationUrl(const std::string &pin, const std::string &clien
     // Show a message box to instruct the user before opening the browser
     MessageBoxA(NULL,
                 "A browser window will open for Plex authentication.\n\n"
-                "Please log in to your Plex account and authorize Plex Presence.\n\n"
+                "Please log in to your Plex account and authorize Presence For Plex.\n\n"
                 "The application will continue setup after successful authentication.",
                 "Plex Authentication Required",
                 MB_ICONINFORMATION | MB_OK);
