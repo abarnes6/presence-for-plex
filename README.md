@@ -12,7 +12,8 @@ A lightweight application written in C++ that displays your current Plex media a
 
 ### Download
 
-Download the latest release from the [Releases](https://github.com/abarnes6/presence-for-plex/releases) page.
+1. (Windows only) Ensure you have the latest [C++ Redistributables](https://aka.ms/vs/17/release/vc_redist.x64.exe) 
+2. Download the latest release from the [Releases](https://github.com/abarnes6/presence-for-plex/releases) page.
 
 ### Setup
 
@@ -28,6 +29,8 @@ Download the latest release from the [Releases](https://github.com/abarnes6/pres
 -   CMake 3.25+
 -   Ninja
 -   vcpkg
+-   (Windows only) Windows 11 SDK
+-   (Windows only) [NSIS3](https://prdownloads.sourceforge.net/nsis/nsis-3.11-setup.exe?download)
 
 ### Build Instructions
 
