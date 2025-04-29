@@ -21,9 +21,15 @@ std::filesystem::path Config::getConfigDirectory()
         free(appData);
     }
 #else
-    // Linux/macOS: ~/.config/presence-for-plex
+    // Unix/Linux/macOS: $XDG_CONFIG_DIR/presence-for-plex or ~/.config/presence-for-plex
+    char *xdgConfig = getenv("XDG_CONFIG_DIR");
     char *home = getenv("HOME");
-    if (home)
+
+    if (xdgConfig)
+    {
+        configDir = std::filesystem::path(xdgConfig) / "presence-for-plex";
+    }
+    else if (home)
     {
         configDir = std::filesystem::path(home) / ".config" / "presence-for-plex";
     }
