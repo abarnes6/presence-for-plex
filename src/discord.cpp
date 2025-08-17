@@ -410,7 +410,7 @@ json Discord::createActivity(const MediaInfo &info)
 		{"type", activityType},
 		{"state", state},
 		{"details", details},
-		//{"timestamps", timestamps}, // Only add if valid
+		{"status_display_type", 2},
 		{"assets", assets},
 		{"instance", true}};
 
