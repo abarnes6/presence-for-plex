@@ -2,19 +2,16 @@
     "version": 6,
     "configurePresets": [
         {
-            "name": "vcpkg-base",
+            "name": "base",
             "hidden": true,
             "generator": "Ninja",
-            "binaryDir": "${sourceDir}/build",
-            "cacheVariables": {
-                "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
-            }
+            "binaryDir": "${sourceDir}/build"
         },
         {
             "name": "debug",
             "displayName": "Debug",
             "description": "Debug build with symbols for development",
-            "inherits": "vcpkg-base",
+            "inherits": "base",
             "binaryDir": "${sourceDir}/build/debug",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Debug"
@@ -24,7 +21,7 @@
             "name": "release",
             "displayName": "Release",
             "description": "Optimized release build",
-            "inherits": "vcpkg-base",
+            "inherits": "base",
             "binaryDir": "${sourceDir}/build/release",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release"
@@ -37,8 +34,7 @@
             "generator": "Ninja",
             "binaryDir": "${sourceDir}/build/github",
             "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Release",
-                "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/vcpkg/scripts/buildsystems/vcpkg.cmake"
+                "CMAKE_BUILD_TYPE": "Release"
             }
         }
     ],

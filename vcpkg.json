@@ -1,3 +1,0 @@
-{
-    "dependencies": ["curl", "nlohmann-json", "yaml-cpp"]
-}

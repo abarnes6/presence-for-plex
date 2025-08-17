@@ -28,19 +28,30 @@ if(WIN32)
   set(RES_FILES assets/resources.rc)
 endif()
 
-find_package(CURL CONFIG REQUIRED) 
-find_package(nlohmann_json REQUIRED)
-find_package(yaml-cpp CONFIG REQUIRED)
+# Packages
+include(FetchContent)
 
-# print the link‑dependent libraries of CURL::libcurl
-get_target_property(_curl_deps CURL::libcurl
-    INTERFACE_LINK_LIBRARIES)
-message(STATUS "CURL::libcurl deps = ${_curl_deps}")
+## yaml-cpp
+FetchContent_Declare(
+	yaml-cpp
+	GIT_REPOSITORY https://github.com/jbeder/yaml-cpp.git
+	GIT_TAG master
+) 
+FetchContent_MakeAvailable(yaml-cpp)
 
-find_path(_TP_INC
-  NAMES toml++/toml.hpp
-  HINTS "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/include"
+## nlohmann_json
+FetchContent_Declare(
+  json
+  URL https://github.com/nlohmann/json/releases/download/v3.12.0/json.tar.xz
 )
+FetchContent_MakeAvailable(json)
+
+## curl
+FetchContent_Declare(
+  curl
+  URL https://github.com/curl/curl/releases/download/curl-7_86_0/curl-7.86.0.tar.gz
+)
+FetchContent_MakeAvailable(curl)
 
 # Add source to this project's executable.
 if(WIN32)
@@ -52,7 +63,7 @@ else()
 endif()
 
 target_include_directories(PresenceForPlex PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
-target_link_libraries(PresenceForPlex PRIVATE CURL::libcurl yaml-cpp::yaml-cpp)
+target_link_libraries(PresenceForPlex PRIVATE CURL::libcurl yaml-cpp::yaml-cpp nlohmann_json::nlohmann_json)
 
 if (CMAKE_VERSION VERSION_GREATER 3.25)
   set_property(TARGET PresenceForPlex PROPERTY CXX_STANDARD 17)
@@ -65,8 +76,6 @@ install(FILES LICENSE README.md
 if (WIN32)
   install(FILES
     $<TARGET_RUNTIME_DLLS:PresenceForPlex>
-    $<$<CONFIG:Debug>:${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/debug/bin/zlibd1.dll>
-    $<$<NOT:$<CONFIG:Debug>>:${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/bin/zlib1.dll>
     DESTINATION .
   )
 endif()
