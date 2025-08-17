@@ -19,29 +19,22 @@ jobs:
         include:
           - os: ubuntu-latest
             cpp_compiler: g++
-            vcpkg_triplet: x64-linux
             label: gcc
 
           - os: ubuntu-latest
             cpp_compiler: clang++
-            vcpkg_triplet: x64-linux
             label: clang
 
           - os: windows-latest
             cpp_compiler: cl
-            vcpkg_triplet: x64-windows
             label: msvc
 
           - os: macos-latest
             cpp_compiler: clang++
-            vcpkg_triplet: arm64-osx
             label: clang
 
     steps:
       - uses: actions/checkout@v4
-
-      - name: run-vcpkg
-        uses: lukka/run-vcpkg@v11
 
       - name: Set reusable strings
         id: strings
@@ -54,9 +47,7 @@ jobs:
           cmake -B "${{ steps.strings.outputs.build-output-dir }}" \
                 -S "${{ github.workspace }}" \
                 -DCMAKE_CXX_COMPILER="${{ matrix.cpp_compiler }}" \
-                -DCMAKE_BUILD_TYPE="${{ matrix.build_type }}" \
-                -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
-                -DVCPKG_TARGET_TRIPLET="${{ matrix.vcpkg_triplet }}"
+                -DCMAKE_BUILD_TYPE="${{ matrix.build_type }}"
 
       - name: Build
         shell: bash
