@@ -66,6 +66,22 @@ If the application is connecting to your Plex server but not detecting your medi
 
 They do, but only for others! For some reason Discord doesn't like to show you your own rich presence buttons.
 
+### Could not connect to any Discord socket. Is Discord running?
+
+You need to have a Discord app running in the same machine as the application.
+
+It will try to connect to Discord using the following files:
+
+-   Windows: `\\.pipe\discord-ipc-0` to `discord-ipc-9`
+-   macOS: `$TMPDIR/discord-ipc-0` to `discord-ipc-9`
+-   Linux:
+    - `$XDG_RUNTIME_DIR/discord-ipc-0` to `discord-ipc-9`
+    - `$HOME/.discord-ipc-0` to `discord-ipc-9`
+    - `/var/run/$UID/snap.discord/discord-ipc-0`
+    - `/var/run/$UID/app/com.discordapp.Discord/discord-ipc-0`
+
+If none of those succeed, it means it can not talk to your Discord local client.
+
 ## Attribution
 
 ![blue_square_2-d537fb228cf3ded904ef09b136fe3fec72548ebc1fea3fbbd1ad9e36364db38b](https://github.com/user-attachments/assets/38abfb34-72cf-46d9-9d17-724761aa570a)

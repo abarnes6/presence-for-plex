@@ -28,30 +28,38 @@ if(WIN32)
   set(RES_FILES assets/resources.rc)
 endif()
 
-# Packages
-include(FetchContent)
-
-## yaml-cpp
-FetchContent_Declare(
-	yaml-cpp
-	GIT_REPOSITORY https://github.com/jbeder/yaml-cpp.git
-	GIT_TAG master
-) 
-FetchContent_MakeAvailable(yaml-cpp)
-
-## nlohmann_json
-FetchContent_Declare(
-  json
-  URL https://github.com/nlohmann/json/releases/download/v3.12.0/json.tar.xz
-)
-FetchContent_MakeAvailable(json)
-
-## curl
-FetchContent_Declare(
-  curl
-  URL https://github.com/curl/curl/releases/download/curl-7_86_0/curl-7.86.0.tar.gz
-)
-FetchContent_MakeAvailable(curl)
+# Allow to use system libraries
+if(USE_DYNAMIC_LINKS)
+    find_package(CURL REQUIRED)
+    find_package(nlohmann_json REQUIRED)
+    find_package(yaml-cpp REQUIRED)
+else()
+    # Packages
+    include(FetchContent)
+    set(BUILD_SHARED_LIBS OFF)
+    
+    ## yaml-cpp
+    FetchContent_Declare(
+      yaml-cpp
+      GIT_REPOSITORY https://github.com/jbeder/yaml-cpp.git
+      GIT_TAG master
+    )
+    FetchContent_MakeAvailable(yaml-cpp)
+    
+    ## nlohmann_json
+    FetchContent_Declare(
+      json
+      URL https://github.com/nlohmann/json/releases/download/v3.12.0/json.tar.xz
+    )
+    FetchContent_MakeAvailable(json)
+    
+    ## curl
+    FetchContent_Declare(
+      curl
+      URL https://github.com/curl/curl/releases/download/curl-7_86_0/curl-7.86.0.tar.gz
+    )
+    FetchContent_MakeAvailable(curl)
+endif()
 
 # Add source to this project's executable.
 if(WIN32)
