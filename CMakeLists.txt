@@ -38,24 +38,13 @@ else()
     include(FetchContent)
     set(BUILD_SHARED_LIBS OFF)
     if(WIN32)
-      set(CURL_USE_SCHANNEL ON CACHE BOOL "" FORCE)
+      set(CURL_USE_SCHANNEL ON CACHE BOOL "" FORCE)  # SSL support
     elseif(APPLE)
-      set(CURL_USE_SECTRANSP ON CACHE BOOL "" FORCE)
-    else()
-      find_package(OpenSSL QUIET)
-      if(OPENSSL_FOUND)
-        set(CURL_USE_OPENSSL ON CACHE BOOL "" FORCE)
-      endif()
+      set(CURL_USE_SECTRANSP ON CACHE BOOL "" FORCE)  # SSL support
     endif()
 
-    set(BUILD_CURL_EXE OFF CACHE BOOL "" FORCE)
-    set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
-    set(BUILD_CURL_TESTS OFF CACHE BOOL "" FORCE)      # Disable curl tests
-    set(CURL_DISABLE_TESTS ON CACHE BOOL "" FORCE)     # Really disable tests
-    set(CURL_DISABLE_LDAP ON CACHE BOOL "" FORCE)
-    set(CURL_DISABLE_LDAPS ON CACHE BOOL "" FORCE)
-    set(ENABLE_MANUAL OFF CACHE BOOL "" FORCE)         # Don't build manual
-    set(ENABLE_DOCS OFF CACHE BOOL "" FORCE)           # Don't build docs
+    set(BUILD_CURL_EXE OFF CACHE BOOL "" FORCE)      # You don't need curl.exe
+    set(BUILD_TESTING OFF CACHE BOOL "" FORCE)       # Skip tests (avoids PERL)
     ## yaml-cpp
     FetchContent_Declare(
       yaml-cpp
