@@ -37,6 +37,14 @@ else()
     # Packages
     include(FetchContent)
     set(BUILD_SHARED_LIBS OFF)
+    if(WIN32)
+      set(CURL_USE_SCHANNEL ON CACHE BOOL "" FORCE)
+    elseif(APPLE)
+      set(CURL_USE_SECTRANSP ON CACHE BOOL "" FORCE)
+    endif()
+
+    set(BUILD_CURL_EXE OFF CACHE BOOL "" FORCE)
+    set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
     
     ## yaml-cpp
     FetchContent_Declare(
