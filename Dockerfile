@@ -14,5 +14,5 @@ RUN apk add --no-cache libstdc++
 COPY --from=build --chmod=755 /src/build/PresenceForPlex /app/
 
 ENV HOME=/app XDG_CONFIG_DIR=/config XDG_RUNTIME_DIR=/app/run
-VOLUME /config/presence-for-plex
+VOLUME /config
 CMD ["/app/PresenceForPlex"]
