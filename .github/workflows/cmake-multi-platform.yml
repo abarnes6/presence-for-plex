@@ -49,6 +49,69 @@ jobs:
                 -DCMAKE_CXX_COMPILER="${{ matrix.cpp_compiler }}" \
                 -DCMAKE_BUILD_TYPE="${{ matrix.build_type }}"
 
+      - name: Install dependencies (Ubuntu)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libcurl4-openssl-dev \
+            libyaml-cpp-dev \
+            nlohmann-json3-dev \
+            libgtest-dev \
+            pkg-config
+
+      - name: Install dependencies (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          brew install curl yaml-cpp nlohmann-json googletest pkg-config
+
+      - name: Install dependencies (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          # Install vcpkg if not present
+          if (-not (Test-Path "C:\vcpkg")) {
+            git clone https://github.com/Microsoft/vcpkg.git C:\vcpkg
+            & C:\vcpkg\bootstrap-vcpkg.bat
+          }
+          & C:\vcpkg\vcpkg.exe install curl[ssl] yaml-cpp nlohmann-json gtest --triplet x64-windows
+
       - name: Build
         shell: bash
         run: cmake --build "${{ steps.strings.outputs.build-output-dir }}" --config "${{ matrix.build_type }}"
+
+      - name: Test
+        if: matrix.build_type == 'Release'
+        shell: bash
+        run: |
+          cd "${{ steps.strings.outputs.build-output-dir }}"
+          ctest --output-on-failure --build-config "${{ matrix.build_type }}"
+
+      - name: Upload test results
+        if: always() && matrix.build_type == 'Release'
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.os }}-${{ matrix.label }}
+          path: |
+            ${{ steps.strings.outputs.build-output-dir }}/Testing/
+          retention-days: 30
+
+      - name: Package
+        if: matrix.build_type == 'Release'
+        shell: bash
+        run: |
+          cd "${{ steps.strings.outputs.build-output-dir }}"
+          cmake --build . --target package
+
+      - name: Upload packages
+        if: matrix.build_type == 'Release'
+        uses: actions/upload-artifact@v4
+        with:
+          name: packages-${{ matrix.os }}-${{ matrix.label }}
+          path: |
+            ${{ steps.strings.outputs.build-output-dir }}/*.exe
+            ${{ steps.strings.outputs.build-output-dir }}/*.dmg
+            ${{ steps.strings.outputs.build-output-dir }}/*.tar.gz
+            ${{ steps.strings.outputs.build-output-dir }}/*.deb
+            ${{ steps.strings.outputs.build-output-dir }}/*.rpm
+          retention-days: 90
