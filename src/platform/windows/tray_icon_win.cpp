@@ -10,7 +10,7 @@ namespace presence_for_plex::platform::windows {
 
 WindowsTrayIcon::WindowsTrayIcon() {
     // Register TaskbarCreated message for explorer restart handling
-    s_taskbar_created_message = RegisterWindowMessage(L"TaskbarCreated");
+    s_taskbar_created_message = RegisterWindowMessageW(L"TaskbarCreated");
     PLEX_LOG_DEBUG(component_name_, "WindowsTrayIcon constructed");
 }
 
@@ -359,8 +359,8 @@ TrayResult<> WindowsTrayIcon::show_notification(
         .hWnd = window_handle_,
         .uID = TrayConstants::TRAY_ICON_ID,
         .uFlags = NIF_INFO,
-        .uTimeout = static_cast<UINT>(timeout.count() * 1000),
-        .dwInfoFlags = is_error ? NIIF_ERROR : NIIF_INFO | NIIF_LARGE_ICON
+        .uTimeout = static_cast<UINT>(timeout.count()) * 1000,
+        .dwInfoFlags = static_cast<DWORD>(is_error ? NIIF_ERROR : (NIIF_INFO | NIIF_LARGE_ICON))
     };
 
     safe_copy(nid.szInfoTitle, wtitle);
@@ -374,6 +374,35 @@ TrayResult<> WindowsTrayIcon::show_notification(
     }
 
     PLEX_LOG_DEBUG(component_name_, std::format("Notification shown: {}", title));
+    return {};
+}
+
+std::expected<void, UiError> WindowsTrayIcon::show_balloon_notification(
+    const std::string& title,
+    const std::string& message,
+    bool is_error,
+    std::chrono::seconds timeout) {
+
+    auto result = show_notification(title, message, is_error, timeout);
+    if (!result) {
+        return std::unexpected(result.error().error);
+    }
+    return {};
+}
+
+std::expected<void, UiError> WindowsTrayIcon::show_update_notification(
+    const std::string& title,
+    const std::string& message,
+    const std::string& download_url) {
+
+    // For now, just show a regular notification
+    // In a full implementation, you'd store the download_url for handling clicks
+    auto result = show_notification(title,
+                                   std::format("{}\n\nDownload: {}", message, download_url),
+                                   false);
+    if (!result) {
+        return std::unexpected(result.error().error);
+    }
     return {};
 }
 

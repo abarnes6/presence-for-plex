@@ -179,6 +179,20 @@ public:
         std::chrono::seconds timeout = std::chrono::seconds(5)
     );
 
+    // Alias methods for compatibility
+    [[nodiscard]] std::expected<void, UiError> show_balloon_notification(
+        const std::string& title,
+        const std::string& message,
+        bool is_error = false,
+        std::chrono::seconds timeout = std::chrono::seconds(5)
+    );
+
+    [[nodiscard]] std::expected<void, UiError> show_update_notification(
+        const std::string& title,
+        const std::string& message,
+        const std::string& download_url
+    );
+
 protected:
     void on_click() override;
     void on_double_click() override;
