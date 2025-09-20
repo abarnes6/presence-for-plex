@@ -43,6 +43,11 @@ presence_for_plex::utils::LogLevel parse_log_level(const std::string& level_str)
 }
 
 int main(int argc, char *argv[]) {
+    // Suppress unused parameter warnings when not using Qt
+#ifndef USE_QT_UI
+    (void)argc;
+    (void)argv;
+#endif
 #ifdef USE_QT_UI
     // Create QApplication early for Qt-based operations
     QApplication qt_app(argc, argv);
