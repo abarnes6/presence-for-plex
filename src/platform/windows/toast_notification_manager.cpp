@@ -5,6 +5,10 @@
 #include <winrt/Windows.Foundation.Collections.h>
 #include <format>
 #include <sstream>
+#include <ShlObj.h>
+#include <propkey.h>
+#include <propvarutil.h>
+#include <filesystem>
 
 using namespace winrt;
 using namespace Windows::Foundation;
@@ -14,6 +18,66 @@ using namespace Windows::UI::Notifications;
 namespace presence_for_plex {
 namespace platform {
 namespace windows {
+
+// Helper function to ensure app is registered for toast notifications
+static bool EnsureAppRegistration(const std::wstring& app_id, const std::wstring& display_name) {
+    HRESULT hr = CoInitialize(nullptr);
+    bool com_initialized = SUCCEEDED(hr);
+
+    // Get the path to the current executable
+    wchar_t exe_path[MAX_PATH];
+    GetModuleFileNameW(nullptr, exe_path, MAX_PATH);
+
+    // Get the Start Menu path
+    wchar_t start_menu_path[MAX_PATH];
+    if (FAILED(SHGetFolderPathW(nullptr, CSIDL_PROGRAMS, nullptr, 0, start_menu_path))) {
+        if (com_initialized) CoUninitialize();
+        return false;
+    }
+
+    // Create shortcut path
+    std::filesystem::path shortcut_path = std::filesystem::path(start_menu_path) / (display_name + L".lnk");
+
+    // Create or update the shortcut
+    IShellLinkW* shell_link = nullptr;
+    hr = CoCreateInstance(CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER, IID_IShellLinkW, (void**)&shell_link);
+    if (FAILED(hr)) {
+        if (com_initialized) CoUninitialize();
+        return false;
+    }
+
+    // Set shortcut properties
+    shell_link->SetPath(exe_path);
+    shell_link->SetWorkingDirectory(std::filesystem::path(exe_path).parent_path().c_str());
+    shell_link->SetDescription(display_name.c_str());
+
+    // Set the AppUserModelID
+    IPropertyStore* property_store = nullptr;
+    hr = shell_link->QueryInterface(IID_IPropertyStore, (void**)&property_store);
+    if (SUCCEEDED(hr)) {
+        PROPVARIANT app_id_prop;
+        hr = InitPropVariantFromString(app_id.c_str(), &app_id_prop);
+        if (SUCCEEDED(hr)) {
+            hr = property_store->SetValue(PKEY_AppUserModel_ID, app_id_prop);
+            PropVariantClear(&app_id_prop);
+            property_store->Commit();
+        }
+        property_store->Release();
+    }
+
+    // Save the shortcut
+    IPersistFile* persist_file = nullptr;
+    hr = shell_link->QueryInterface(IID_IPersistFile, (void**)&persist_file);
+    if (SUCCEEDED(hr)) {
+        hr = persist_file->Save(shortcut_path.c_str(), TRUE);
+        persist_file->Release();
+    }
+
+    shell_link->Release();
+    if (com_initialized) CoUninitialize();
+
+    return SUCCEEDED(hr);
+}
 
 WindowsToastNotificationManager::WindowsToastNotificationManager()
     : m_component_name("WindowsToastNotificationManager")
@@ -36,15 +100,52 @@ std::expected<void, UiError> WindowsToastNotificationManager::initialize() {
 
     PLEX_LOG_INFO(m_component_name, "Initializing Windows toast notification manager");
 
+    // First, ensure the app is registered with Windows
+    std::wstring wide_app_id(m_app_id.begin(), m_app_id.end());
+    std::wstring display_name = L"Presence For Plex";
+
+    if (EnsureAppRegistration(wide_app_id, display_name)) {
+        PLEX_LOG_INFO(m_component_name, "App registration ensured");
+    } else {
+        PLEX_LOG_WARNING(m_component_name, "Failed to ensure app registration, notifications may not work");
+    }
+
     try {
         winrt::init_apartment(winrt::apartment_type::single_threaded);
         m_com_initialized = true;
 
-        m_notifier = ToastNotificationManager::CreateToastNotifier(winrt::to_hstring(m_app_id));
+        // Try with app ID first since we registered it
+        try {
+            m_notifier = ToastNotificationManager::CreateToastNotifier(winrt::to_hstring(m_app_id));
+            PLEX_LOG_INFO(m_component_name, "Created toast notifier with app ID");
+        }
+        catch (const winrt::hresult_error& e) {
+            PLEX_LOG_WARNING(m_component_name,
+                std::format("Failed to create notifier with app ID (0x{:08X}), trying without app ID",
+                    static_cast<uint32_t>(e.code())));
+
+            // Fall back to creating without app ID
+            try {
+                m_notifier = ToastNotificationManager::CreateToastNotifier();
+                PLEX_LOG_INFO(m_component_name, "Created toast notifier without app ID");
+            }
+            catch (const winrt::hresult_error& e2) {
+                PLEX_LOG_ERROR(m_component_name,
+                    std::format("Failed to create notifier without app ID: 0x{:08X}",
+                        static_cast<uint32_t>(e2.code())));
+                return std::unexpected(UiError::InitializationFailed);
+            }
+        }
 
         m_initialized = true;
         PLEX_LOG_INFO(m_component_name, "Windows toast notification manager initialized successfully");
         return {};
+    }
+    catch (const winrt::hresult_error& e) {
+        PLEX_LOG_ERROR(m_component_name,
+            std::format("WinRT error during initialization: 0x{:08X}",
+                static_cast<uint32_t>(e.code())));
+        return std::unexpected(UiError::InitializationFailed);
     }
     catch (const std::exception& e) {
         PLEX_LOG_ERROR(m_component_name, std::format("Failed to initialize: {}", e.what()));
