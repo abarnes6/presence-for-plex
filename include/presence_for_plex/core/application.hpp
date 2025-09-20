@@ -1,6 +1,5 @@
 #pragma once
 
-#include "presence_for_plex/utils/expected.hpp"
 #include "presence_for_plex/core/models.hpp"
 #include "presence_for_plex/services/media_service.hpp"
 #include "presence_for_plex/services/presence_service.hpp"
@@ -34,24 +33,6 @@ enum class ApplicationState {
     Error
 };
 
-// Event system interface
-template<typename EventType>
-class EventBus {
-public:
-    using EventHandler = std::function<void(const EventType&)>;
-    using SubscriptionId = std::uint64_t;
-
-    virtual ~EventBus() = default;
-
-    virtual SubscriptionId subscribe(EventHandler handler) = 0;
-    virtual void unsubscribe(SubscriptionId id) = 0;
-    virtual void publish(const EventType& event) = 0;
-    virtual void clear() = 0;
-
-    template<typename T>
-    static std::unique_ptr<EventBus<T>> create();
-};
-
 // Configuration service interface
 class ConfigurationService {
 public:
@@ -81,35 +62,10 @@ public:
     virtual void set_plex_username(const std::string& username) = 0;
 
     // Server management methods
-    virtual void add_plex_server(const std::string& name, const std::string& client_id,
-                               const std::string& local_uri, const std::string& public_uri,
-                               const std::string& access_token, bool owned) = 0;
-    virtual void clear_plex_servers() = 0;
-    virtual void set_plex_servers(const std::vector<core::ServerId>& server_ids) = 0;
     virtual const std::unordered_map<std::string, std::unique_ptr<PlexServer>>& get_plex_servers() const = 0;
 
     // Factory method
     static std::unique_ptr<ConfigurationService> create(const std::filesystem::path& config_path);
-};
-
-// Lifecycle interface for managing component startup/shutdown
-class LifecycleManager {
-public:
-    virtual ~LifecycleManager() = default;
-
-    enum class Phase {
-        Initialize,
-        Start,
-        Stop,
-        Shutdown
-    };
-
-    using LifecycleCallback = std::function<std::expected<void, std::error_code>()>;
-
-    virtual void register_callback(Phase phase, int priority, LifecycleCallback callback) = 0;
-    virtual std::expected<void, std::error_code> execute_phase(Phase phase) = 0;
-
-    static std::unique_ptr<LifecycleManager> create();
 };
 
 // Main application interface
@@ -138,52 +94,9 @@ public:
     virtual platform::UiService& get_ui_service() = 0;
     virtual ConfigurationService& get_configuration_service() = 0;
 
-    // Event system access
-    virtual EventBus<MediaStateChangedEvent>& get_media_event_bus() = 0;
-    virtual EventBus<DiscordConnectionEvent>& get_discord_event_bus() = 0;
-    virtual EventBus<PlexConnectionEvent>& get_plex_event_bus() = 0;
-    virtual EventBus<ApplicationStartedEvent>& get_app_event_bus() = 0;
-
     // Utilities
     virtual utils::ThreadPool& get_thread_pool() = 0;
     virtual utils::TaskScheduler& get_task_scheduler() = 0;
-
-protected:
-    // Template method pattern hooks
-    virtual void on_application_started() = 0;
-    virtual void on_application_stopping() = 0;
-    virtual void on_media_state_changed(const MediaStateChangedEvent& event) = 0;
-    virtual void on_discord_connection_changed(const DiscordConnectionEvent& event) = 0;
-    virtual void on_plex_connection_changed(const PlexConnectionEvent& event) = 0;
-    virtual void on_error_occurred(std::error_code error, const std::string& message) = 0;
-};
-
-// Application builder for dependency injection
-class ApplicationBuilder {
-public:
-    ApplicationBuilder() = default;
-
-    // Service injection
-    ApplicationBuilder& with_media_service(std::unique_ptr<services::MediaService> service);
-    ApplicationBuilder& with_presence_service(std::unique_ptr<services::PresenceService> service);
-    ApplicationBuilder& with_ui_service(std::unique_ptr<platform::UiService> service);
-    ApplicationBuilder& with_configuration_service(std::unique_ptr<ConfigurationService> service);
-
-    // Configuration
-    ApplicationBuilder& with_config_path(const std::filesystem::path& path);
-    ApplicationBuilder& with_thread_pool_size(size_t size);
-    ApplicationBuilder& with_log_level(const std::string& level);
-
-    // Factory methods
-    ApplicationBuilder& use_default_services();
-    ApplicationBuilder& use_mock_services(); // For testing
-
-    // Build the application
-    std::expected<std::unique_ptr<Application>, ApplicationError> build();
-
-private:
-    struct Impl;
-    std::unique_ptr<Impl> m_impl;
 };
 
 // Application factory
@@ -199,8 +112,6 @@ public:
     static std::expected<std::unique_ptr<Application>, ApplicationError> create_application_with_config(
         const ApplicationConfig& config
     );
-
-    static std::unique_ptr<ApplicationBuilder> create_builder();
 };
 
 // Dependency injection container interface

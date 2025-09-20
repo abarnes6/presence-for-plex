@@ -30,7 +30,7 @@ std::expected<void, core::PlexError> PlexConnectionManager::add_server(std::uniq
 
     if (!server) {
         PLEX_LOG_ERROR("PlexConnectionManager", "Cannot add null server");
-        return unexpected<core::PlexError>(core::PlexError::InvalidResponse);
+        return std::unexpected<core::PlexError>(core::PlexError::InvalidResponse);
     }
 
     core::ServerId server_id(server->client_identifier.get());
@@ -91,7 +91,7 @@ std::expected<void, core::PlexError> PlexConnectionManager::connect_to_server(co
     auto it = m_servers.find(server_id);
     if (it == m_servers.end()) {
         PLEX_LOG_ERROR("PlexConnectionManager", "Server not found: " + server_id.get());
-        return unexpected<core::PlexError>(core::PlexError::ServerNotFound);
+        return std::unexpected<core::PlexError>(core::PlexError::ServerNotFound);
     }
 
     auto& runtime = *it->second;
@@ -182,21 +182,21 @@ std::expected<void, core::PlexError> PlexConnectionManager::test_connection(cons
 
     auto it = m_servers.find(server_id);
     if (it == m_servers.end()) {
-        return unexpected<core::PlexError>(core::PlexError::ServerNotFound);
+        return std::unexpected<core::PlexError>(core::PlexError::ServerNotFound);
     }
 
     const auto& server = it->second->server;
     std::string preferred_uri = get_preferred_server_uri(server_id);
 
     if (preferred_uri.empty()) {
-        return unexpected<core::PlexError>(core::PlexError::NetworkError);
+        return std::unexpected<core::PlexError>(core::PlexError::NetworkError);
     }
 
     if (test_uri_accessibility(preferred_uri, server->access_token)) {
         return {};
     }
 
-    return unexpected<core::PlexError>(core::PlexError::NetworkError);
+    return std::unexpected<core::PlexError>(core::PlexError::NetworkError);
 }
 
 void PlexConnectionManager::set_sse_event_callback(SSEEventCallback callback) {

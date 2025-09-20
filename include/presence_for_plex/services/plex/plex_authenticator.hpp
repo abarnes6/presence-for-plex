@@ -4,6 +4,7 @@
 #include <string>
 #include <memory>
 #include <map>
+#include <expected>
 
 namespace presence_for_plex {
 namespace core {

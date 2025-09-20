@@ -63,15 +63,6 @@ public:
             m_thread_pool = std::make_unique<utils::ThreadPool>(4);
             m_task_scheduler = std::make_unique<utils::TaskScheduler>();
 
-            // Initialize event buses
-            m_media_event_bus = EventBus<MediaStateChangedEvent>::create<MediaStateChangedEvent>();
-            m_discord_event_bus = EventBus<DiscordConnectionEvent>::create<DiscordConnectionEvent>();
-            m_plex_event_bus = EventBus<PlexConnectionEvent>::create<PlexConnectionEvent>();
-            m_app_event_bus = EventBus<ApplicationStartedEvent>::create<ApplicationStartedEvent>();
-
-            // Initialize lifecycle manager
-            m_lifecycle_manager = LifecycleManager::create();
-
             // Initialize services
             PLEX_LOG_INFO("Application", "Initializing services...");
 
@@ -157,10 +148,6 @@ public:
                 }
             }
 
-            // Publish application started event
-            ApplicationStartedEvent started_event{};
-            m_app_event_bus->publish(started_event);
-
             PLEX_LOG_INFO("Application", "Application started successfully");
             return {};
 
@@ -202,12 +189,6 @@ public:
         if (m_thread_pool) {
             m_thread_pool->shutdown();
         }
-
-        // Clear event buses
-        if (m_media_event_bus) m_media_event_bus->clear();
-        if (m_discord_event_bus) m_discord_event_bus->clear();
-        if (m_plex_event_bus) m_plex_event_bus->clear();
-        if (m_app_event_bus) m_app_event_bus->clear();
 
         m_state = ApplicationState::Stopped;
         PLEX_LOG_INFO("Application", "Application shutdown complete");
@@ -277,35 +258,6 @@ public:
         return *m_config_service;
     }
 
-    // Event system access
-    EventBus<MediaStateChangedEvent>& get_media_event_bus() override {
-        if (!m_media_event_bus) {
-            throw std::runtime_error("MediaEventBus not initialized");
-        }
-        return *m_media_event_bus;
-    }
-
-    EventBus<DiscordConnectionEvent>& get_discord_event_bus() override {
-        if (!m_discord_event_bus) {
-            throw std::runtime_error("DiscordEventBus not initialized");
-        }
-        return *m_discord_event_bus;
-    }
-
-    EventBus<PlexConnectionEvent>& get_plex_event_bus() override {
-        if (!m_plex_event_bus) {
-            throw std::runtime_error("PlexEventBus not initialized");
-        }
-        return *m_plex_event_bus;
-    }
-
-    EventBus<ApplicationStartedEvent>& get_app_event_bus() override {
-        if (!m_app_event_bus) {
-            throw std::runtime_error("AppEventBus not initialized");
-        }
-        return *m_app_event_bus;
-    }
-
     // Utilities
     utils::ThreadPool& get_thread_pool() override {
         if (!m_thread_pool) {
@@ -321,31 +273,6 @@ public:
         return *m_task_scheduler;
     }
 
-protected:
-    void on_application_started() override {
-        PLEX_LOG_DEBUG("Application", "Application started callback");
-    }
-
-    void on_application_stopping() override {
-        PLEX_LOG_DEBUG("Application", "Application stopping callback");
-    }
-
-    void on_media_state_changed(const MediaStateChangedEvent& event) override {
-        PLEX_LOG_DEBUG("Application", "Media state changed callback");
-    }
-
-    void on_discord_connection_changed(const DiscordConnectionEvent& event) override {
-        PLEX_LOG_DEBUG("Application", "Discord connection changed callback");
-    }
-
-    void on_plex_connection_changed(const PlexConnectionEvent& event) override {
-        PLEX_LOG_DEBUG("Application", "Plex connection changed callback");
-    }
-
-    void on_error_occurred(std::error_code error, const std::string& message) override {
-        PLEX_LOG_ERROR("Application", "Error occurred: " + message);
-    }
-
 private:
     // Application state
     std::atomic<ApplicationState> m_state;
@@ -354,7 +281,6 @@ private:
 
     // Core services
     std::unique_ptr<ConfigurationService> m_config_service;
-    std::unique_ptr<LifecycleManager> m_lifecycle_manager;
 
     // Business services
     std::unique_ptr<services::MediaService> m_media_service;
@@ -362,12 +288,6 @@ private:
 
     // Platform services
     std::unique_ptr<platform::UiService> m_ui_service;
-
-    // Event buses
-    std::unique_ptr<EventBus<MediaStateChangedEvent>> m_media_event_bus;
-    std::unique_ptr<EventBus<DiscordConnectionEvent>> m_discord_event_bus;
-    std::unique_ptr<EventBus<PlexConnectionEvent>> m_plex_event_bus;
-    std::unique_ptr<EventBus<ApplicationStartedEvent>> m_app_event_bus;
 
     // Utilities
     std::unique_ptr<utils::ThreadPool> m_thread_pool;
@@ -378,6 +298,7 @@ private:
 std::expected<std::unique_ptr<Application>, ApplicationError> ApplicationFactory::create_default_application(
     const std::filesystem::path& config_path
 ) {
+	(void)config_path;
     PLEX_LOG_INFO("ApplicationFactory", "Creating default application instance");
 
     try {
@@ -392,6 +313,7 @@ std::expected<std::unique_ptr<Application>, ApplicationError> ApplicationFactory
 std::expected<std::unique_ptr<Application>, ApplicationError> ApplicationFactory::create_application_with_config(
     const ApplicationConfig& config
 ) {
+	(void)config;
     PLEX_LOG_INFO("ApplicationFactory", "Creating application with custom config");
 
     try {
@@ -401,12 +323,6 @@ std::expected<std::unique_ptr<Application>, ApplicationError> ApplicationFactory
         PLEX_LOG_ERROR("ApplicationFactory", "Failed to create application with config: " + std::string(e.what()));
         return std::unexpected<ApplicationError>(ApplicationError::InitializationFailed);
     }
-}
-
-std::unique_ptr<ApplicationBuilder> ApplicationFactory::create_builder() {
-    PLEX_LOG_DEBUG("ApplicationFactory", "Creating application builder");
-    // For now, return nullptr as builder is not implemented
-    return nullptr;
 }
 
 } // namespace core

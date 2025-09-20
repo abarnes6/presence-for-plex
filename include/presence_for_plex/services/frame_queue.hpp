@@ -287,7 +287,7 @@ private:
         // Since we use a max-heap, we need to find the minimum priority frame
         std::vector<FrameType> temp_frames;
         FrameType* lowest_frame = nullptr;
-        int lowest_priority = std::numeric_limits<int>::max();
+        int lowest_priority = (std::numeric_limits<int>::max)();
 
         // Find the frame with lowest priority
         while (!m_frames.empty()) {

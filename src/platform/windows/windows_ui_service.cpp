@@ -2,6 +2,7 @@
 
 #include "presence_for_plex/platform/windows/windows_ui_service.hpp"
 #include "presence_for_plex/platform/windows/tray_icon_win.hpp"
+#include <objbase.h>
 
 namespace presence_for_plex {
 namespace platform {

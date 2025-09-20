@@ -6,7 +6,7 @@
 #include <memory>
 #include <string>
 #include <vector>
-#include "presence_for_plex/utils/expected.hpp"
+#include <expected>
 
 namespace presence_for_plex {
 namespace platform {
@@ -226,9 +226,6 @@ public:
 
     // Communication with other instances
     using MessageCallback = std::function<void(const std::string&)>;
-
-    virtual std::expected<void, SystemError> send_message_to_existing_instance(const std::string& message) = 0;
-    virtual std::expected<void, SystemError> set_message_callback(MessageCallback callback) = 0;
 
     // Factory method
     static std::unique_ptr<SingleInstanceManager> create(const std::string& instance_name);

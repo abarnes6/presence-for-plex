@@ -166,3 +166,17 @@ int main() {
         return 1;
     }
 }
+
+#ifdef _WIN32
+// Windows subsystem entry point
+int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
+    // Unused parameters
+    (void)hInstance;
+    (void)hPrevInstance;
+    (void)lpCmdLine;
+    (void)nCmdShow;
+
+    // Call the regular main function
+    return main();
+}
+#endif

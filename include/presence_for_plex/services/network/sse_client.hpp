@@ -2,12 +2,12 @@
 
 #include "presence_for_plex/services/network_service.hpp"
 #include "presence_for_plex/core/models.hpp"
-#include "presence_for_plex/utils/expected.hpp"
 #include <functional>
 #include <memory>
 #include <string>
 #include <atomic>
 #include <thread>
+#include <expected>
 
 namespace presence_for_plex {
 namespace services {

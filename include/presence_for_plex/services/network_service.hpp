@@ -1,6 +1,5 @@
 #pragma once
 
-#include "presence_for_plex/utils/expected.hpp"
 #include <functional>
 #include <memory>
 #include <string>
@@ -8,6 +7,7 @@
 #include <chrono>
 #include <span>
 #include <future>
+#include <expected>
 
 namespace presence_for_plex {
 namespace services {
@@ -17,7 +17,7 @@ enum class HttpMethod {
     GET,
     POST,
     PUT,
-    DELETE,
+    DELETE_,
     PATCH,
     HEAD,
     OPTIONS

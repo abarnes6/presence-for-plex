@@ -467,7 +467,7 @@ void WindowsTrayIcon::on_balloon_clicked() {
         );
     } else if (!m_download_url.empty()) {
         // Fallback: open URL directly
-        open_url(m_download_url);
+        (void)open_url(m_download_url);
     } else {
         // Regular notification click
         on_notification_clicked();

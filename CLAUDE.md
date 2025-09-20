@@ -76,7 +76,7 @@ The application uses YAML for configuration and stores authentication tokens, se
 ## Important Patterns
 
 1. **Dependency Injection**: The codebase uses a custom DI container in `dependency_injection.hpp`
-2. **Error Handling**: Uses `Expected<T, E>` type for error handling instead of exceptions
+2. **Error Handling**: Uses expected type for error handling instead of exceptions
 3. **Async Operations**: Thread pool and async task management via `threading.hpp`
 4. **Event System**: Pub-sub pattern through `EventDispatcher` for decoupled communication
 5. **Service Interfaces**: All services implement interfaces for testability and modularity

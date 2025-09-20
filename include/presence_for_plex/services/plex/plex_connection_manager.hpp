@@ -5,6 +5,8 @@
 #include <functional>
 #include <map>
 #include <thread>
+#include <mutex>
+#include <expected>
 
 namespace presence_for_plex {
 

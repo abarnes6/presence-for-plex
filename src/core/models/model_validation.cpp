@@ -1,5 +1,6 @@
 #include "presence_for_plex/core/models.hpp"
 #include <cmath>
+#include <algorithm>
 
 namespace presence_for_plex {
 namespace core {

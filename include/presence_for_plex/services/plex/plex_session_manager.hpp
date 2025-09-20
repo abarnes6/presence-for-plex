@@ -6,6 +6,7 @@
 #include <mutex>
 #include <functional>
 #include <nlohmann/json.hpp>
+#include <expected>
 
 namespace presence_for_plex {
 namespace services {

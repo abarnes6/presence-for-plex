@@ -1,9 +1,9 @@
 #pragma once
 
 #include "presence_for_plex/core/models.hpp"
-#include "presence_for_plex/utils/expected.hpp"
 #include <functional>
 #include <memory>
+#include <expected>
 
 namespace presence_for_plex {
 namespace services {

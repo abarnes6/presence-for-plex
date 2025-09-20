@@ -42,8 +42,6 @@ configure_file(
 # Source files organization
 set(CORE_SOURCES
     src/core/application/application.cpp
-    src/core/application/event_dispatcher.cpp
-    src/core/application/lifecycle_manager.cpp
     src/core/configuration/config_manager.cpp
     src/core/models/model_validation.cpp
 )

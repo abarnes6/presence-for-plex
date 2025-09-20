@@ -4,9 +4,9 @@
 #include "presence_for_plex/services/rate_limiter.hpp"
 #include "presence_for_plex/services/connection_manager.hpp"
 #include "presence_for_plex/services/frame_queue.hpp"
-#include "presence_for_plex/utils/expected.hpp"
 #include <string>
 #include <vector>
+#include <expected>
 
 namespace presence_for_plex::utils {
 

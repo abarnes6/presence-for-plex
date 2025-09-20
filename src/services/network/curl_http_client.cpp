@@ -32,6 +32,8 @@ static size_t ReadFileCallback(void* contents, size_t size, size_t nmemb, std::i
 // Callback for progress
 static int CurlProgressCallback(void* clientp, curl_off_t dltotal, curl_off_t dlnow,
                            curl_off_t ultotal, curl_off_t ulnow) {
+	(void)ultotal;
+	(void)ulnow;
     auto* callback = static_cast<ProgressCallback*>(clientp);
     if (callback && dltotal > 0) {
         (*callback)(static_cast<size_t>(dlnow), static_cast<size_t>(dltotal));
@@ -95,6 +97,10 @@ static size_t StreamingWriteCallback(void* contents, size_t size, size_t nmemb, 
 // Progress callback for stopping SSE threads
 static int ProgressCallbackForStop(void* clientp, curl_off_t dltotal, curl_off_t dlnow,
                                    curl_off_t ultotal, curl_off_t ulnow) {
+	(void)dltotal;
+	(void)dlnow;
+	(void)ultotal;
+	(void)ulnow;
     auto* stop_flag = static_cast<std::atomic<bool>*>(clientp);
     // Return non-zero to abort the transfer when stop flag is false (m_running = false means stop)
     return (stop_flag && stop_flag->load() == false) ? 1 : 0;
@@ -190,7 +196,7 @@ public:
         response.status_code = static_cast<HttpStatus>(response_code);
         response.body = std::move(response_body);
         response.response_time = duration;
-        response.final_url = final_url ? final_url : request.url;
+        response.final_url = final_url ? std::string(final_url) : request.url;
         response.content_length = content_length > 0 ? static_cast<size_t>(content_length) : response.body.size();
 
         return response;
@@ -250,7 +256,7 @@ public:
         const std::string& url,
         const HttpHeaders& headers) override {
         HttpRequest request;
-        request.method = HttpMethod::DELETE;
+        request.method = HttpMethod::DELETE_;
         request.url = url;
         request.headers = headers;
         return execute(request);
@@ -302,6 +308,7 @@ public:
         const std::string& file_path,
         const std::string& field_name,
         const HttpHeaders& headers) override {
+        (void)headers;
         PLEX_LOG_DEBUG("CurlHttpClient", "Starting file upload from: " + file_path + " to: " + url);
 
         CURL* curl = curl_easy_init();
@@ -495,7 +502,7 @@ private:
                     curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, request.body.length());
                 }
                 break;
-            case HttpMethod::DELETE:
+            case HttpMethod::DELETE_:
                 PLEX_LOG_DEBUG("CurlHttpClient", "Setting up DELETE request");
                 curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "DELETE");
                 break;

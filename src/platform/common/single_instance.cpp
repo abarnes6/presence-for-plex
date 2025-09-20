@@ -127,18 +127,6 @@ public:
         return m_acquired;
     }
 
-    std::expected<void, SystemError> send_message_to_existing_instance(const std::string& message) override {
-        // Basic implementation - not implemented for now
-        PLEX_LOG_DEBUG("SingleInstance", "Message sending not implemented yet");
-        return std::unexpected<SystemError>(SystemError::NotSupported);
-    }
-
-    std::expected<void, SystemError> set_message_callback(MessageCallback callback) override {
-        // Basic implementation - not implemented for now
-        PLEX_LOG_DEBUG("SingleInstance", "Message callback not implemented yet");
-        return std::unexpected<SystemError>(SystemError::NotSupported);
-    }
-
 private:
     std::string m_instance_name;
     bool m_acquired;

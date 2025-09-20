@@ -1,12 +1,10 @@
 #pragma once
 
-#include "presence_for_plex/utils/expected.hpp"
 #include <chrono>
 #include <memory>
 #include <string>
 #include <vector>
 #include <atomic>
-// #include "presence_for_plex/utils/expected.hpp" // C++23 feature, using manual implementation
 #include <variant>
 #include <system_error>
 #include <functional>
@@ -256,32 +254,6 @@ template<typename T>
 using EventCallback = std::function<void(const T&)>;
 
 using ErrorCallback = std::function<void(std::error_code, const std::string&)>;
-
-// Lifecycle events
-struct ApplicationStartedEvent {
-    std::chrono::system_clock::time_point timestamp;
-};
-
-struct ApplicationStoppingEvent {
-    std::chrono::system_clock::time_point timestamp;
-};
-
-struct MediaStateChangedEvent {
-    MediaInfo old_state;
-    MediaInfo new_state;
-    std::chrono::system_clock::time_point timestamp;
-};
-
-struct DiscordConnectionEvent {
-    bool connected;
-    std::chrono::system_clock::time_point timestamp;
-};
-
-struct PlexConnectionEvent {
-    ServerId server_id;
-    bool connected;
-    std::chrono::system_clock::time_point timestamp;
-};
 
 } // namespace core
 } // namespace presence_for_plex

@@ -95,7 +95,7 @@ JikanService::JikanService(std::shared_ptr<HttpClient> http_client)
 std::expected<std::string, core::PlexError> JikanService::fetch_artwork_url(
     const std::string& mal_id,
     core::MediaType type) {
-
+	(void)type;
     PLEX_LOG_DEBUG("Jikan", "fetch_artwork_url() called for MAL ID: " + mal_id);
 
     // MAL ID directly provides artwork through the anime detail endpoint

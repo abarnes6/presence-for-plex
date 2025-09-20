@@ -5,8 +5,6 @@
 #include "presence_for_plex/utils/logger.hpp"
 #include <nlohmann/json.hpp>
 
-using namespace presence_for_plex::utils; // For expected/unexpected
-
 namespace presence_for_plex {
 namespace services {
 
@@ -35,7 +33,7 @@ std::expected<bool, core::PlexError> SessionValidator::validate_session_user(
 
     auto username_result = fetch_session_username(server_uri, access_token, session_key);
     if (!username_result.has_value()) {
-        return unexpected<core::PlexError>(username_result.error());
+        return std::unexpected<core::PlexError>(username_result.error());
     }
 
     bool is_valid = username_result.value() == target_username;
@@ -68,7 +66,7 @@ std::expected<std::string, core::PlexError> SessionValidator::fetch_session_user
     auto response = m_http_client->get(url, headers);
     if (!response || !response->is_success()) {
         PLEX_LOG_ERROR("SessionValidator", "Failed to fetch session information");
-        return unexpected<core::PlexError>(core::PlexError::NetworkError);
+        return std::unexpected<core::PlexError>(core::PlexError::NetworkError);
     }
 
     try {
@@ -76,18 +74,18 @@ std::expected<std::string, core::PlexError> SessionValidator::fetch_session_user
 
         if (!json_response.contains("MediaContainer")) {
             PLEX_LOG_ERROR("SessionValidator", "Invalid session response format");
-            return unexpected<core::PlexError>(core::PlexError::InvalidResponse);
+            return std::unexpected<core::PlexError>(core::PlexError::InvalidResponse);
         }
 
         if (json_response["MediaContainer"].contains("size") &&
             json_response["MediaContainer"]["size"].get<int>() == 0) {
             PLEX_LOG_DEBUG("SessionValidator", "No active sessions found");
-            return unexpected<core::PlexError>(core::PlexError::InvalidResponse);
+            return std::unexpected<core::PlexError>(core::PlexError::InvalidResponse);
         }
 
         if (!json_response["MediaContainer"].contains("Metadata")) {
             PLEX_LOG_DEBUG("SessionValidator", "No session metadata found");
-            return unexpected<core::PlexError>(core::PlexError::InvalidResponse);
+            return std::unexpected<core::PlexError>(core::PlexError::InvalidResponse);
         }
 
         // Find the matching session by sessionKey
@@ -109,11 +107,11 @@ std::expected<std::string, core::PlexError> SessionValidator::fetch_session_user
         }
 
         PLEX_LOG_WARNING("SessionValidator", "Session not found or no user info: " + session_key.get());
-        return unexpected<core::PlexError>(core::PlexError::InvalidResponse);
+        return std::unexpected<core::PlexError>(core::PlexError::InvalidResponse);
 
     } catch (const std::exception& e) {
         PLEX_LOG_ERROR("SessionValidator", "Error parsing session data: " + std::string(e.what()));
-        return unexpected<core::PlexError>(core::PlexError::ParseError);
+        return std::unexpected<core::PlexError>(core::PlexError::ParseError);
     }
 }
 
@@ -332,7 +330,7 @@ void PlexSessionManager::update_session_info(
 
         // For TV shows, fetch grandparent metadata if needed
         if (info.type == core::MediaType::TVShow && !info.grandparent_key.empty()) {
-            m_media_fetcher->fetch_grandparent_metadata(
+            (void)m_media_fetcher->fetch_grandparent_metadata(
                 connection_info.preferred_uri,
                 connection_info.access_token,
                 info

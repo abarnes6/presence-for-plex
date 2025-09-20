@@ -5,6 +5,7 @@
 #include <nlohmann/json.hpp>
 
 #ifdef _WIN32
+#define NOMINMAX
 #include <windows.h>
 #include <shellapi.h>
 #else
@@ -219,6 +220,7 @@ void PlexAuthenticator::open_authorization_url(const std::string& pin, const std
 std::expected<core::PlexToken, core::PlexError> PlexAuthenticator::poll_for_pin_authorization(
         const std::string& pin_id,
         const std::string& pin) {
+    (void)pin;
     const int max_attempts = 30;  // Try for about 5 minutes
     const int poll_interval = 10; // seconds
 

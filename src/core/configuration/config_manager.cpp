@@ -157,7 +157,7 @@ public:
     void set_plex_auth_token(const std::string& token) override {
         std::unique_lock lock(m_mutex);
         m_full_config.plex_auth_token = token;
-        save_configuration_internal();
+        (void)save_configuration_internal();
     }
 
     std::string get_plex_client_identifier() const override {
@@ -179,30 +179,12 @@ public:
     void set_plex_username(const std::string& username) override {
         std::unique_lock lock(m_mutex);
         m_full_config.plex_username = username;
-        save_configuration_internal();
+        (void)save_configuration_internal();
     }
 
     std::string get_tmdb_access_token() const {
         std::shared_lock lock(m_mutex);
         return m_full_config.tmdb_access_token;
-    }
-
-    void add_plex_server(const std::string& name, const std::string& client_id,
-                        const std::string& local_uri, const std::string& public_uri,
-                        const std::string& access_token, bool owned) override {
-        // Server saving functionality has been removed
-        // Servers are now always discovered fresh from Plex API
-        PLEX_LOG_DEBUG("ConfigService", "Server saving disabled - servers are discovered fresh on each run");
-    }
-
-    void clear_plex_servers() override {
-        // Server saving functionality has been removed
-        PLEX_LOG_DEBUG("ConfigService", "Server clearing disabled - servers are discovered fresh on each run");
-    }
-
-    void set_plex_servers(const std::vector<core::ServerId>& server_ids) override {
-        // Server saving functionality has been removed
-        PLEX_LOG_DEBUG("ConfigService", "Server saving disabled - servers are discovered fresh on each run");
     }
 
     const std::unordered_map<std::string, std::unique_ptr<PlexServer>>& get_plex_servers() const override {
@@ -251,7 +233,7 @@ private:
         std::unique_lock lock(m_mutex);
         m_full_config.plex_client_identifier = id.to_string();
         PLEX_LOG_INFO("ConfigService", "Generated Plex client identifier: " + m_full_config.plex_client_identifier);
-        save_configuration_internal();
+        (void)save_configuration_internal();
     }
 
     void load_from_yaml(const YAML::Node& node) {

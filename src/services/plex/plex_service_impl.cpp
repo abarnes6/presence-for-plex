@@ -271,6 +271,7 @@ std::expected<void, core::PlexError> PlexServiceImpl::test_connection(const core
 }
 
 void PlexServiceImpl::on_media_state_changed(const core::MediaInfo& old_state, const core::MediaInfo& new_state) {
+	(void)old_state;
     PLEX_LOG_INFO("PlexService", "Media state changed: " + new_state.title);
 }
 
@@ -339,6 +340,7 @@ std::expected<void, core::PlexError> PlexServiceImpl::discover_servers(const std
 }
 
 bool PlexServiceImpl::parse_server_json(const std::string& json_response, const std::string& auth_token) {
+    (void)auth_token;
     PLEX_LOG_INFO("PlexService", "Parsing server JSON response");
 
     try {

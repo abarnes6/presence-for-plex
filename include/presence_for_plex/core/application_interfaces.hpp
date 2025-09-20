@@ -1,7 +1,6 @@
 #pragma once
 
 #include "presence_for_plex/core/models.hpp"
-#include "presence_for_plex/utils/expected.hpp"
 #include <memory>
 #include <atomic>
 
@@ -53,19 +52,6 @@ public:
     virtual ConfigurationService& get_configuration_service() = 0;
     virtual const ConfigurationService& get_configuration_service() const = 0;
     virtual const ApplicationConfig& get_config() const = 0;
-};
-
-// 4. Event bus provider interface
-template<typename... EventTypes>
-class IEventBusProvider {
-public:
-    virtual ~IEventBusProvider() = default;
-
-    template<typename EventType>
-    virtual EventBus<EventType>& get_event_bus() = 0;
-
-    template<typename EventType>
-    virtual const EventBus<EventType>& get_event_bus() const = 0;
 };
 
 // 5. Utility provider interface
