@@ -113,16 +113,22 @@ int main() {
 #ifdef _WIN32
             // Try to use modern notifications, fall back to MessageBox if unavailable
             auto ui_service = presence_for_plex::platform::UiServiceFactory::create_default_factory()->create_service();
-            if (ui_service && ui_service->initialize() && ui_service->supports_notifications()) {
+            auto ui_init_result = ui_service ? ui_service->initialize() : std::unexpected(presence_for_plex::platform::UiError::InitializationFailed);
+            if (ui_service && ui_init_result && ui_service->supports_notifications()) {
                 auto notification_manager = ui_service->create_notification_manager();
-                if (notification_manager && notification_manager->initialize()) {
+                auto nm_init_result = notification_manager ? notification_manager->initialize() : std::unexpected(presence_for_plex::platform::UiError::InitializationFailed);
+                if (notification_manager && nm_init_result) {
                     presence_for_plex::platform::Notification notification(
                         "PresenceForPlex",
                         message,
                         presence_for_plex::platform::NotificationType::Warning
                     );
-                    notification_manager->show_notification(notification);
-                    std::this_thread::sleep_for(std::chrono::seconds(3));
+                    auto show_result = notification_manager->show_notification(notification);
+                    if (show_result) {
+                        std::this_thread::sleep_for(std::chrono::seconds(3));
+                    } else {
+                        MessageBoxA(NULL, message.c_str(), "PresenceForPlex", MB_ICONINFORMATION | MB_OK);
+                    }
                 } else {
                     MessageBoxA(NULL, message.c_str(), "PresenceForPlex", MB_ICONINFORMATION | MB_OK);
                 }
