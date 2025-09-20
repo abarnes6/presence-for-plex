@@ -175,7 +175,7 @@ WindowsToastNotificationManager::show_notification(const Notification& notificat
         setup_notification_handlers(toast, id);
 
         m_notifier.Show(toast);
-        m_active_notifications[id] = toast;
+        m_active_notifications.emplace(id, toast);
 
         PLEX_LOG_INFO(m_component_name,
             std::format("Showed toast notification {}: {}", id, notification.title));
