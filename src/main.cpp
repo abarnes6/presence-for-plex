@@ -210,21 +210,3 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 }
-
-#ifdef _WIN32
-// Windows subsystem entry point
-int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
-    // Unused parameters
-    (void)hInstance;
-    (void)hPrevInstance;
-    (void)lpCmdLine;
-    (void)nCmdShow;
-
-    // Get command line arguments for Qt
-    int argc = __argc;
-    char** argv = __argv;
-
-    // Call the regular main function
-    return main(argc, argv);
-}
-#endif
