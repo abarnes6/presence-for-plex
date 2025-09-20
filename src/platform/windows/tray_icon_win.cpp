@@ -72,7 +72,8 @@ void WindowsTrayIcon::shutdown() {
 
     PLEX_LOG_INFO(component_name_, "Shutting down tray icon");
 
-    hide();
+    // Call internal hide method that doesn't acquire mutex
+    hide_internal();
     running_ = false;
 
     if (window_handle_) {
@@ -318,7 +319,10 @@ void WindowsTrayIcon::show() {
 
 void WindowsTrayIcon::hide() {
     std::lock_guard lock(mutex_);
+    hide_internal();
+}
 
+void WindowsTrayIcon::hide_internal() {
     if (!visible_) {
         return;
     }
@@ -669,7 +673,10 @@ TrayResult<> WindowsTrayIcon::setup_tray_icon() {
 
 void WindowsTrayIcon::recreate_tray_icon() {
     std::lock_guard lock(mutex_);
+    recreate_tray_icon_internal();
+}
 
+void WindowsTrayIcon::recreate_tray_icon_internal() {
     if (!icon_added_ || !initialized_) {
         return;
     }

@@ -2,6 +2,7 @@
 
 #include "presence_for_plex/platform/windows/windows_ui_service.hpp"
 #include "presence_for_plex/platform/windows/tray_icon_win.hpp"
+#include "presence_for_plex/platform/windows/toast_notification_manager.hpp"
 #include <objbase.h>
 
 namespace presence_for_plex {
@@ -74,8 +75,8 @@ std::unique_ptr<NotificationManager> WindowsUiService::create_notification_manag
         return nullptr;
     }
 
-    PLEX_LOG_WARNING(m_component_name, "Windows notification manager not yet implemented");
-    return nullptr; // TODO: Implement WindowsNotificationManager
+    PLEX_LOG_DEBUG(m_component_name, "Creating Windows toast notification manager");
+    return std::make_unique<WindowsToastNotificationManager>();
 }
 
 std::unique_ptr<WindowManager> WindowsUiService::create_window_manager() {
@@ -103,7 +104,7 @@ bool WindowsUiService::supports_system_tray() const {
 }
 
 bool WindowsUiService::supports_notifications() const {
-    return false; // TODO: Return true when NotificationManager is implemented
+    return true;
 }
 
 bool WindowsUiService::supports_window_management() const {

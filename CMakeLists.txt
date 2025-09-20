@@ -75,6 +75,7 @@ if(WIN32)
         src/platform/windows/tray_icon_win.cpp
         src/platform/windows/windows_ui_service.cpp
         src/platform/windows/tray_integration.cpp
+        src/platform/windows/toast_notification_manager.cpp
     )
 endif()
 

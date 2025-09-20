@@ -1,6 +1,7 @@
 #include "presence_for_plex/utils/logger.hpp"
 #include "presence_for_plex/platform/system_service.hpp"
 #include "presence_for_plex/core/application.hpp"
+#include "presence_for_plex/platform/ui_service.hpp"
 
 #include <iostream>
 #include <memory>
@@ -110,7 +111,24 @@ int main() {
             PLEX_LOG_WARNING("Main", message);
 
 #ifdef _WIN32
-            MessageBoxA(NULL, message.c_str(), "PresenceForPlex", MB_ICONINFORMATION | MB_OK);
+            // Try to use modern notifications, fall back to MessageBox if unavailable
+            auto ui_service = presence_for_plex::platform::UiServiceFactory::create_default_factory()->create_service();
+            if (ui_service && ui_service->initialize() && ui_service->supports_notifications()) {
+                auto notification_manager = ui_service->create_notification_manager();
+                if (notification_manager && notification_manager->initialize()) {
+                    presence_for_plex::platform::Notification notification(
+                        "PresenceForPlex",
+                        message,
+                        presence_for_plex::platform::NotificationType::Warning
+                    );
+                    notification_manager->show_notification(notification);
+                    std::this_thread::sleep_for(std::chrono::seconds(3));
+                } else {
+                    MessageBoxA(NULL, message.c_str(), "PresenceForPlex", MB_ICONINFORMATION | MB_OK);
+                }
+            } else {
+                MessageBoxA(NULL, message.c_str(), "PresenceForPlex", MB_ICONINFORMATION | MB_OK);
+            }
 #else
             std::cerr << message << std::endl;
 #endif

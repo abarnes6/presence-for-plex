@@ -229,6 +229,10 @@ private:
     [[nodiscard]] std::wstring to_wide_string(std::string_view str) const;
     [[nodiscard]] bool is_ui_thread() const noexcept;
 
+    // Internal methods that don't acquire mutex (for use within already locked methods)
+    void hide_internal();
+    void recreate_tray_icon_internal();
+
     // Template helper for safe string copy
     template<size_t N>
     void safe_copy(wchar_t (&dest)[N], std::wstring_view src) {

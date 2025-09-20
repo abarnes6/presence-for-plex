@@ -7,6 +7,9 @@
 #include "presence_for_plex/utils/logger.hpp"
 #include "presence_for_plex/utils/threading.hpp"
 #include "presence_for_plex/services/plex/plex_service_impl.hpp"
+ #ifdef _WIN32
+#include "presence_for_plex/platform/windows/tray_integration.hpp"
+#endif
 #include <memory>
 #include <atomic>
 #include <thread>
@@ -74,6 +77,23 @@ public:
                     auto ui_init_result = m_ui_service->initialize();
                     if (ui_init_result) {
                         PLEX_LOG_INFO("Application", "UI service initialized");
+                        
+#ifdef _WIN32
+                        // Initialize tray integration if supported
+                        if (m_ui_service->supports_system_tray()) {
+                            m_tray_integration = std::make_unique<platform::windows::TrayIntegration>(*m_ui_service);
+                            auto tray_init_result = m_tray_integration->initialize();
+                            if (tray_init_result) {
+                                PLEX_LOG_INFO("Application", "Tray integration initialized");
+                                setup_tray_callbacks();
+                            } else {
+                                PLEX_LOG_WARNING("Application", "Failed to initialize tray integration");
+                                m_tray_integration.reset();
+                            }
+                        } else {
+                            PLEX_LOG_INFO("Application", "System tray not supported on this platform");
+                        }
+#endif
                     } else {
                         PLEX_LOG_WARNING("Application", "Failed to initialize UI service");
                     }
@@ -148,6 +168,13 @@ public:
                 }
             }
 
+#ifdef _WIN32
+            // Update tray status
+            if (m_tray_integration) {
+                m_tray_integration->set_status("Status: Running");
+            }
+#endif
+
             PLEX_LOG_INFO("Application", "Application started successfully");
             return {};
 
@@ -162,6 +189,13 @@ public:
         m_state = ApplicationState::Stopping;
         m_running.store(false);
         m_shutdown_requested.store(true);
+
+#ifdef _WIN32
+        // Update tray status
+        if (m_tray_integration) {
+            m_tray_integration->set_status("Status: Stopping...");
+        }
+#endif
     }
 
     void shutdown() override {
@@ -179,6 +213,15 @@ public:
             m_presence_service->shutdown();
             PLEX_LOG_INFO("Application", "Presence service stopped");
         }
+
+#ifdef _WIN32
+        // Shutdown tray integration before UI service
+        if (m_tray_integration) {
+            m_tray_integration->shutdown();
+            m_tray_integration.reset();
+            PLEX_LOG_INFO("Application", "Tray integration stopped");
+        }
+#endif
 
         if (m_ui_service) {
             m_ui_service->shutdown();
@@ -212,15 +255,12 @@ public:
     }
 
     void run_once() override {
-        if (!is_running()) {
-            return;
+#ifdef _WIN32
+        // Process UI events if we have a UI service
+        if (m_ui_service) {
+            m_ui_service->process_events();
         }
-
-        // TaskScheduler processes tasks automatically in its own thread
-
-        // Basic event processing - in a real implementation this would
-        // check for Plex media changes, update Discord presence, etc.
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+#endif
     }
 
     void quit() override {
@@ -274,6 +314,30 @@ public:
     }
 
 private:
+#ifdef _WIN32
+    void setup_tray_callbacks() {
+        if (!m_tray_integration) return;
+        
+        // Set exit callback
+        m_tray_integration->set_exit_callback([this]() {
+            PLEX_LOG_INFO("Application", "Exit requested from tray");
+            quit();
+        });
+        
+        // Set show config callback (placeholder for now)
+        m_tray_integration->set_show_config_callback([this]() {
+            PLEX_LOG_INFO("Application", "Show configuration requested from tray");
+            // TODO: Implement configuration dialog
+        });
+        
+        // Set update check callback (placeholder for now)
+        m_tray_integration->set_update_check_callback([this]() {
+            PLEX_LOG_INFO("Application", "Update check requested from tray");
+            // TODO: Implement update checking
+        });
+    }
+#endif
+
     // Application state
     std::atomic<ApplicationState> m_state;
     std::atomic<bool> m_running;
@@ -288,6 +352,9 @@ private:
 
     // Platform services
     std::unique_ptr<platform::UiService> m_ui_service;
+#if defined(_WIN32)
+    std::unique_ptr<platform::windows::TrayIntegration> m_tray_integration;
+#endif
 
     // Utilities
     std::unique_ptr<utils::ThreadPool> m_thread_pool;
