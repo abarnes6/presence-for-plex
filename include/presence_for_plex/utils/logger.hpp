@@ -76,11 +76,6 @@ class Logger {
   void error(std::string_view component, std::string_view message,
              SourceLocation location = {});
 
-  // Simple formatted logging (without std::format for compatibility)
-  void debug_f(std::string_view component, const std::string& message);
-  void info_f(std::string_view component, const std::string& message);
-  void warning_f(std::string_view component, const std::string& message);
-  void error_f(std::string_view component, const std::string& message);
 
   // Flush all sinks
   void flush();
@@ -151,21 +146,5 @@ class LoggerManager {
   presence_for_plex::utils::LoggerManager::get_instance().error(component, \
                                                                 message)
 
-// Formatted logging macros
-#define PLEX_LOG_DEBUG_FMT(component, format, ...)                   \
-  presence_for_plex::utils::LoggerManager::get_instance().debug_fmt( \
-      component, format, __VA_ARGS__)
-
-#define PLEX_LOG_INFO_FMT(component, format, ...)                   \
-  presence_for_plex::utils::LoggerManager::get_instance().info_fmt( \
-      component, format, __VA_ARGS__)
-
-#define PLEX_LOG_WARNING_FMT(component, format, ...)                   \
-  presence_for_plex::utils::LoggerManager::get_instance().warning_fmt( \
-      component, format, __VA_ARGS__)
-
-#define PLEX_LOG_ERROR_FMT(component, format, ...)                   \
-  presence_for_plex::utils::LoggerManager::get_instance().error_fmt( \
-      component, format, __VA_ARGS__)
 
 }  // namespace presence_for_plex::utils

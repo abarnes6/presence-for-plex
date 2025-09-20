@@ -31,14 +31,6 @@ enum class MediaType {
     Unknown
 };
 
-enum class LinkType {
-    IMDB,
-    MAL,
-    TMDB,
-    TVDB,
-    Unknown
-};
-
 // Error types for better error handling
 enum class PlexError {
     NetworkError,
@@ -210,13 +202,6 @@ struct MediaInfo {
 
     // Validation methods
     bool is_valid() const;
-    bool is_tv_show() const { return type == MediaType::TVShow; }
-    bool is_movie() const { return type == MediaType::Movie; }
-    bool is_music() const { return type == MediaType::Music; }
-
-    // Progress calculation
-    double progress_percentage() const;
-    std::chrono::seconds remaining_time() const;
 };
 
 // Configuration structures

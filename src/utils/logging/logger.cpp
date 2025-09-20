@@ -118,22 +118,6 @@ void Logger::error(std::string_view component, std::string_view message,
     log(LogLevel::Error, component, message, location);
 }
 
-void Logger::debug_f(std::string_view component, const std::string& message) {
-    debug(component, message);
-}
-
-void Logger::info_f(std::string_view component, const std::string& message) {
-    info(component, message);
-}
-
-void Logger::warning_f(std::string_view component, const std::string& message) {
-    warning(component, message);
-}
-
-void Logger::error_f(std::string_view component, const std::string& message) {
-    error(component, message);
-}
-
 // Template method implementations moved to header
 
 void Logger::flush() {

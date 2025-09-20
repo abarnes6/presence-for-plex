@@ -25,11 +25,10 @@ A lightweight application written in C++ that displays your current Plex media a
 
 ### Requirements
 
--   C++17 compatible compiler
+-   C++23 compatible compiler
 -   CMake 3.25+
 -   Ninja
 -   (Windows only) Windows 11 SDK
--   (Windows only) [NSIS3](https://prdownloads.sourceforge.net/nsis/nsis-3.11-setup.exe?download)
 
 ### Build Instructions
 

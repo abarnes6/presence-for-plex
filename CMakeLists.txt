@@ -10,6 +10,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 # Enable modern CMake features
 set(CMAKE_SUPPRESS_REGENERATION true)
+set(CMAKE_BUILD_WITH_INSTALL_RPATH TRUE CACHE BOOL "Build with install RPATH")
 
 # Enable Hot Reload for MSVC compilers if supported
 if(POLICY CMP0141)
@@ -21,16 +22,13 @@ endif()
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules")
 
 # Options
-option(BUILD_TESTING "Build tests" ON)
+option(BUILD_TESTING "Build tests" OFF)
 option(USE_DYNAMIC_LINKS "Use system libraries instead of static linking" OFF)
 option(ENABLE_SANITIZERS "Enable sanitizers in debug builds" OFF)
 
 # Include helper modules
 include(cmake/compiler_flags.cmake)
 include(cmake/dependencies.cmake)
-if(BUILD_TESTING)
-    include(cmake/testing.cmake)
-endif()
 
 # Configure version header
 configure_file(
@@ -83,7 +81,6 @@ endif()
 set(UTILS_SOURCES
     src/utils/logging/logger.cpp
     src/utils/threading/thread_pool.cpp
-    src/utils/config_validator.cpp
     src/utils/crypto/uuid_generator.cpp
 )
 
@@ -156,13 +153,6 @@ endif()
 
 # Compiler-specific settings
 apply_compiler_flags(PresenceForPlex)
-
-
-
-# Testing
-if(BUILD_TESTING)
-    add_subdirectory(tests)
-endif()
 
 # Installation
 install(TARGETS PresenceForPlex

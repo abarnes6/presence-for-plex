@@ -43,21 +43,6 @@ bool MediaInfo::is_valid() const {
     return true;
 }
 
-// Progress calculation
-double MediaInfo::progress_percentage() const {
-    if (duration <= 0) {
-        return 0.0;
-    }
-    return std::clamp((progress / duration) * 100.0, 0.0, 100.0);
-}
-
-std::chrono::seconds MediaInfo::remaining_time() const {
-    if (duration <= progress) {
-        return std::chrono::seconds(0);
-    }
-    return std::chrono::seconds(static_cast<int64_t>(duration - progress));
-}
-
 // DiscordConfig validation
 bool DiscordConfig::is_valid() const {
     // Application ID is required

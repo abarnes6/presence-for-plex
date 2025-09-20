@@ -2,98 +2,90 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Project Overview
-
-Presence For Plex is a C++23 application that displays Plex media activity as Discord Rich Presence. The codebase follows a modular architecture with clear separation between core logic, services, platform-specific code, and utilities.
-
 ## Build Commands
 
-### Configure and Build
+### Building the Project
+```bash
+# Configure with CMake preset (recommended)
+cmake --preset=debug    # For debug build
+cmake --preset=release  # For release build
+
+# Build
+cmake --build build/debug    # Debug build
+cmake --build build/release  # Release build
+
+# Or use ninja directly after configuration
+cd build/release && ninja
+```
+
+### Running the Application
 ```bash
 # Debug build
-cmake --preset=debug ..
-cmake --build debug
+./build/debug/PresenceForPlex
 
 # Release build
-cmake --preset=release ..
-cmake --build release
+./build/release/PresenceForPlex
 ```
 
-### Running Tests
-Currently no tests directory exists. When implementing tests, they should be added to a `tests/` directory and the existing CMake testing infrastructure will handle them.
-
-### Package Creation
+### Creating Packages
 ```bash
-cd build
-cmake --build . --target package
+# Windows NSIS installer
+cmake --build build/release --target package
+
+# Or use cpack preset
+cpack --preset release-windows  # Windows
+cpack --preset release-linux    # Linux
 ```
 
-## Architecture Overview
+## High-Level Architecture
 
-### Directory Structure
-- `include/presence_for_plex/` - All header files organized by module
-- `src/` - Implementation files mirroring the include structure
-  - `core/` - Application lifecycle, configuration, models
-  - `services/` - Plex and Discord integration services
-  - `platform/` - Platform-specific implementations (Windows tray icon, etc.)
-  - `utils/` - Logging, threading, UUID generation, configuration validation
+### Core Application Structure
+The application follows a service-oriented architecture with dependency injection:
 
-### Key Components
+- **Application Layer** (`core/application.hpp`): Main application interface managing lifecycle, state, and service coordination
+- **Service Layer**: Loosely coupled services for different responsibilities:
+  - `MediaService`: Interface for media providers (implemented by PlexService)
+  - `PresenceService`: Interface for presence providers (implemented by DiscordPresenceService)
+  - `ConfigurationService`: Configuration management with change notifications
+  - `UiService`: Platform-specific UI abstraction (Windows tray icon, etc.)
+- **Dependency Injection** (`core/dependency_injection.hpp`): Simple DI container for service registration and resolution
 
-**Core Application Flow:**
-1. `Application` class manages the lifecycle through `LifecycleManager`
-2. `EventDispatcher` handles inter-component communication
-3. `ConfigManager` manages YAML configuration files
+### Key Service Implementations
 
-**Service Layer:**
-- `PlexService` - Authenticates with Plex, manages sessions, fetches media metadata
-- `DiscordPresenceService` - Manages Discord IPC connection and presence updates with robust connection management, rate limiting, and reconnection features
-- `HttpClient` - CURL-based HTTP client with SSL support
-- `SSEClient` - Server-sent events client for real-time Plex updates
+**Plex Integration** (`services/plex/`):
+- `PlexAuthenticator`: OAuth authentication flow
+- `PlexConnectionManager`: Server discovery and connection management
+- `PlexSessionManager`: Active media session tracking via SSE
+- `PlexCacheManager`: Caching layer for metadata
+- `PlexMediaFetcher`: Media metadata retrieval
 
-**Platform Layer:**
-- Windows: System tray integration via `TrayIconWin` and `WindowsUIService`
-- Cross-platform single instance enforcement via `SingleInstance`
+**Discord Integration** (`services/discord/`):
+- `discord_ipc.cpp`: Low-level IPC communication with Discord
+- `discord_presence_service.cpp`: High-level presence management
+- `rate_limiter.cpp`: Rate limiting for Discord API calls
+- `connection_manager.cpp`: Connection resilience and retry logic
+
+### Platform Abstraction
+Platform-specific code is isolated in `platform/` with factory patterns:
+- Windows: System tray integration, Windows-specific UI
+- Cross-platform: Single instance enforcement, system service abstractions
+
+### Threading Model
+- `ThreadPool` and `TaskScheduler` in `utils/threading.hpp` for async operations
+- Services use thread pools for non-blocking operations
+- Main application runs an event loop with `run()` method
+
+### Configuration
+- YAML-based configuration stored in platform-specific locations
+- Configuration service provides validation and change notifications
+- Plex authentication tokens and server lists persisted between sessions
 
 ## Dependencies
 
-The project uses FetchContent to manage dependencies statically by default:
-- `nlohmann/json` - JSON parsing
-- `yaml-cpp` - Configuration files
-- `curl` - HTTP requests with platform-specific SSL backends
-- `googletest` - Testing framework (when BUILD_TESTING=ON)
+The project uses FetchContent for dependency management with static linking by default:
+- **curl**: HTTP client for Plex API
+- **yaml-cpp**: Configuration file parsing
+- **nlohmann/json**: JSON parsing for API responses
+- **googletest**: Unit testing framework (when BUILD_TESTING=ON)
 
-Use `USE_DYNAMIC_LINKS=ON` to use system libraries instead.
-
-## Configuration
-
-User configuration is stored in:
-- Windows: `%APPDATA%\Presence For Plex\`
-- macOS/Linux: `~/.config/presence-for-plex/`
-
-The application uses YAML for configuration and stores authentication tokens, server preferences, and user settings.
-
-## Important Patterns
-
-1. **Dependency Injection**: The codebase uses a custom DI container in `dependency_injection.hpp`
-2. **Error Handling**: Uses expected type for error handling instead of exceptions
-3. **Async Operations**: Thread pool and async task management via `threading.hpp`
-4. **Event System**: Pub-sub pattern through `EventDispatcher` for decoupled communication
-5. **Service Interfaces**: All services implement interfaces for testability and modularity
-
-## Platform-Specific Notes
-
-### Windows
-- Requires Windows 11 SDK for tray icon features
-- Uses Schannel for SSL
-- NSIS for installer creation
-- Runs as a Windows subsystem application (no console window)
-
-### macOS
-- Uses SecureTransport for SSL
-- Requires Cocoa, Foundation, IOKit, and Security frameworks
-
-### Linux
-- Uses OpenSSL for SSL
-- Optional X11 support for window management
-- GTK3 and libnotify support disabled by default to avoid pkg-config dependency
+Platform-specific SSL/TLS backends are automatically selected (Schannel on Windows, SecureTransport on macOS, OpenSSL on Linux).
