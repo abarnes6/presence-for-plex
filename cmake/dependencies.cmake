@@ -109,27 +109,8 @@ else()
     endif()
 endif()
 
-# Platform-specific dependencies
-if(WIN32)
-    # Windows-specific libraries are linked in the main CMakeLists.txt
-elseif(APPLE)
-    # macOS frameworks are linked in the main CMakeLists.txt
-else()
-    # Linux-specific dependencies (simplified, no pkg-config required)
-
-    # Optional: X11 for window management
-    find_package(X11 QUIET)
-    if(X11_FOUND)
-        add_compile_definitions(HAVE_X11)
-        message(STATUS "Found X11: ${X11_LIBRARIES}")
-    else()
-        message(STATUS "X11 not found - window management features disabled")
-    endif()
-
-    # For now, skip GTK and libnotify to avoid pkg-config dependency
-    # These can be added later when needed with modern CMake find modules
-    message(STATUS "GTK3 and libnotify support disabled (avoid pkg-config dependency)")
-endif()
+# Always dynamically link Qt6 (if available)
+find_package(Qt6 QUIET COMPONENTS Core Widgets Network)
 
 # Create interface targets for easier linking
 if(NOT USE_DYNAMIC_LINKS)
@@ -144,10 +125,14 @@ if(NOT USE_DYNAMIC_LINKS)
         add_library(nlohmann_json::nlohmann_json ALIAS nlohmann_json)
     endif()
 endif()
+    
+set_target_properties(yaml-cpp PROPERTIES AUTOMOC OFF AUTOUIC OFF AUTORCC OFF)
+set_target_properties(curlu PROPERTIES AUTOMOC OFF AUTOUIC OFF AUTORCC OFF)
+set_target_properties(libcurl_static PROPERTIES AUTOMOC OFF AUTOUIC OFF AUTORCC OFF)
 
 # Summary of found dependencies
 message(STATUS "Dependencies summary:")
-message(STATUS "  CURL: ${CURL_FOUND}")
+message(STATUS "  CURL: Available")
 message(STATUS "  yaml-cpp: Available")
 message(STATUS "  nlohmann/json: Available")
 
@@ -161,7 +146,12 @@ elseif(APPLE)
     message(STATUS "  Platform: macOS")
 else()
     message(STATUS "  Platform: Linux")
-    message(STATUS "    X11: ${X11_FOUND}")
-    message(STATUS "    GTK3: Disabled (avoiding pkg-config)")
-    message(STATUS "    libnotify: Disabled (avoiding pkg-config)")
+endif()
+
+if(NOT Qt6_FOUND)
+    message(STATUS "  Qt6 not found. UI features will be disabled.")
+    set(USE_QT_UI FALSE)
+else()
+    message(STATUS "  Qt6 found. UI features enabled.")
+    set(USE_QT_UI TRUE)
 endif()
