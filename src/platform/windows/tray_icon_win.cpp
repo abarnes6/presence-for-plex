@@ -1,712 +1,690 @@
 #ifdef _WIN32
 
 #include "presence_for_plex/platform/windows/tray_icon_win.hpp"
-#include <codecvt>
-#include <locale>
+#include <VersionHelpers.h>
+#include <format>
+#include <print>
+#include <ranges>
 
-namespace presence_for_plex {
-namespace platform {
-namespace windows {
+namespace presence_for_plex::platform::windows {
 
-// Static member initialization
-WindowsTrayIcon* WindowsTrayIcon::s_instance = nullptr;
-
-WindowsTrayIcon::WindowsTrayIcon()
-    : m_component_name("WindowsTrayIcon")
-{
-    s_instance = this;
-    PLEX_LOG_DEBUG(m_component_name, "WindowsTrayIcon constructed");
+WindowsTrayIcon::WindowsTrayIcon() {
+    // Register TaskbarCreated message for explorer restart handling
+    s_taskbar_created_message = RegisterWindowMessage(L"TaskbarCreated");
+    PLEX_LOG_DEBUG(component_name_, "WindowsTrayIcon constructed");
 }
 
 WindowsTrayIcon::~WindowsTrayIcon() {
-    PLEX_LOG_DEBUG(m_component_name, "WindowsTrayIcon destructor called");
+    PLEX_LOG_DEBUG(component_name_, "WindowsTrayIcon destructor called");
     shutdown();
-    s_instance = nullptr;
 }
 
 std::expected<void, UiError> WindowsTrayIcon::initialize() {
-    std::lock_guard<std::mutex> lock(m_mutex);
+    std::lock_guard lock(mutex_);
 
-    if (m_initialized) {
-        PLEX_LOG_DEBUG(m_component_name, "Already initialized, skipping");
+    if (initialized_) {
+        PLEX_LOG_DEBUG(component_name_, "Already initialized");
         return {};
     }
 
-    PLEX_LOG_INFO(m_component_name, "Initializing Windows tray icon");
+    PLEX_LOG_INFO(component_name_, "Initializing Windows 11 tray icon");
 
-    m_running = true;
-    m_ui_thread = std::thread(&WindowsTrayIcon::ui_thread_function, this);
+    // Set DPI awareness for Windows 11
+    SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
 
-    // Wait for window to be created
-    for (int i = 0; i < 100 && m_window_handle == nullptr; i++) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    }
+    // Initialize common controls for modern visuals
+    INITCOMMONCONTROLSEX icc{
+        .dwSize = sizeof(INITCOMMONCONTROLSEX),
+        .dwICC = ICC_STANDARD_CLASSES
+    };
+    InitCommonControlsEx(&icc);
 
-    if (m_window_handle == nullptr) {
-        PLEX_LOG_ERROR(m_component_name, "Failed to create window within timeout");
+    running_ = true;
+
+    // Start UI thread with jthread
+    ui_thread_ = std::jthread([this] { ui_thread_function(); });
+
+    // Wait for window creation with proper synchronization
+    std::unique_lock init_lock(init_mutex_);
+    if (!init_cv_.wait_for(init_lock, std::chrono::seconds(5),
+                           [this] { return window_created_ || !running_; })) {
+        PLEX_LOG_ERROR(component_name_, "Window creation timed out");
+        running_ = false;
         return std::unexpected(UiError::InitializationFailed);
     }
 
-    m_initialized = true;
-    PLEX_LOG_INFO(m_component_name, "Windows tray icon initialized successfully");
+    if (!window_handle_) {
+        PLEX_LOG_ERROR(component_name_, "Window creation failed");
+        return std::unexpected(UiError::InitializationFailed);
+    }
+
+    initialized_ = true;
+    PLEX_LOG_INFO(component_name_, "Windows 11 tray icon initialized successfully");
     return {};
 }
 
 void WindowsTrayIcon::shutdown() {
-    std::lock_guard<std::mutex> lock(m_mutex);
+    std::lock_guard lock(mutex_);
 
-    if (!m_initialized) {
+    if (!initialized_) {
         return;
     }
 
-    PLEX_LOG_INFO(m_component_name, "Shutting down Windows tray icon");
+    PLEX_LOG_INFO(component_name_, "Shutting down tray icon");
 
     hide();
+    running_ = false;
 
-    m_running = false;
-
-    if (m_window_handle) {
-        PostMessage(m_window_handle, WM_CLOSE, 0, 0);
+    if (window_handle_) {
+        PostMessage(window_handle_, WM_CLOSE, 0, 0);
     }
 
-    if (m_ui_thread.joinable()) {
-        m_ui_thread.join();
+    // jthread will auto-join in destructor, but we can request stop
+    if (ui_thread_.joinable()) {
+        ui_thread_.request_stop();
     }
 
-    m_initialized = false;
-    PLEX_LOG_INFO(m_component_name, "Windows tray icon shut down");
+    initialized_ = false;
+    PLEX_LOG_INFO(component_name_, "Tray icon shut down");
 }
 
 bool WindowsTrayIcon::is_initialized() const {
-    return m_initialized;
+    return initialized_;
 }
 
 std::expected<void, UiError> WindowsTrayIcon::set_icon(const std::string& icon_path) {
-    std::lock_guard<std::mutex> lock(m_mutex);
+    std::lock_guard lock(mutex_);
 
-    if (!m_initialized) {
+    if (!initialized_) {
         return std::unexpected(UiError::InitializationFailed);
     }
 
     auto icon_result = load_icon_from_path(icon_path);
     if (!icon_result) {
-        return std::unexpected(icon_result.error());
+        PLEX_LOG_ERROR(component_name_,
+                      std::format("Failed to load icon: {}", icon_result.error().message));
+        return std::unexpected(icon_result.error().error);
     }
 
-    if (m_current_icon && m_current_icon != LoadIcon(nullptr, IDI_APPLICATION)) {
-        DestroyIcon(m_current_icon);
-    }
+    current_icon_ = std::move(icon_result.value());
+    notify_icon_data_.hIcon = current_icon_.get();
 
-    m_current_icon = icon_result.value();
-    m_notify_icon_data.hIcon = m_current_icon;
-
-    if (m_visible) {
-        if (!Shell_NotifyIconW(NIM_MODIFY, &m_notify_icon_data)) {
-            DWORD error = GetLastError();
-            std::string msg = "Failed to update tray icon, error: " + std::to_string(error);
-            PLEX_LOG_ERROR(m_component_name, msg);
+    if (visible_) {
+        if (!Shell_NotifyIconW(NIM_MODIFY, &notify_icon_data_)) {
+            auto error = GetLastError();
+            PLEX_LOG_ERROR(component_name_,
+                          std::format("Failed to update tray icon, error: {}", error));
             return std::unexpected(UiError::OperationFailed);
         }
     }
 
-    std::string msg = "Icon set from path: " + icon_path;
-    PLEX_LOG_DEBUG(m_component_name, msg);
+    PLEX_LOG_DEBUG(component_name_, std::format("Icon set from path: {}", icon_path));
     return {};
 }
 
 std::expected<void, UiError> WindowsTrayIcon::set_icon_from_resource(int resource_id) {
-    std::lock_guard<std::mutex> lock(m_mutex);
+    std::lock_guard lock(mutex_);
 
-    if (!m_initialized) {
+    if (!initialized_) {
         return std::unexpected(UiError::InitializationFailed);
     }
 
     auto icon_result = load_icon_from_resource(resource_id);
     if (!icon_result) {
-        return std::unexpected(icon_result.error());
+        return std::unexpected(icon_result.error().error);
     }
 
-    if (m_current_icon && m_current_icon != LoadIcon(nullptr, IDI_APPLICATION)) {
-        DestroyIcon(m_current_icon);
-    }
+    current_icon_ = std::move(icon_result.value());
+    notify_icon_data_.hIcon = current_icon_.get();
 
-    m_current_icon = icon_result.value();
-    m_notify_icon_data.hIcon = m_current_icon;
-
-    if (m_visible) {
-        if (!Shell_NotifyIconW(NIM_MODIFY, &m_notify_icon_data)) {
-            DWORD error = GetLastError();
-            std::string msg = "Failed to update tray icon, error: " + std::to_string(error);
-            PLEX_LOG_ERROR(m_component_name, msg);
+    if (visible_) {
+        if (!Shell_NotifyIconW(NIM_MODIFY, &notify_icon_data_)) {
+            auto error = GetLastError();
+            PLEX_LOG_ERROR(component_name_,
+                          std::format("Failed to update tray icon, error: {}", error));
             return std::unexpected(UiError::OperationFailed);
         }
     }
 
-    std::string msg = "Icon set from resource: " + std::to_string(resource_id);
-    PLEX_LOG_DEBUG(m_component_name, msg);
+    PLEX_LOG_DEBUG(component_name_, std::format("Icon set from resource: {}", resource_id));
     return {};
 }
 
 std::expected<void, UiError> WindowsTrayIcon::set_tooltip(const std::string& tooltip) {
-    std::lock_guard<std::mutex> lock(m_mutex);
+    std::lock_guard lock(mutex_);
 
-    if (!m_initialized) {
+    if (!initialized_) {
         return std::unexpected(UiError::InitializationFailed);
     }
 
-    std::wstring wtooltip = utf8_to_wstring(tooltip);
-    wcsncpy_s(m_notify_icon_data.szTip, _countof(m_notify_icon_data.szTip),
-              wtooltip.c_str(), _TRUNCATE);
+    auto wide_tooltip = to_wide_string(tooltip);
+    safe_copy(notify_icon_data_.szTip, wide_tooltip);
 
-    if (m_visible) {
-        if (!Shell_NotifyIconW(NIM_MODIFY, &m_notify_icon_data)) {
-            DWORD error = GetLastError();
-            std::string msg = "Failed to update tooltip, error: " + std::to_string(error);
-            PLEX_LOG_ERROR(m_component_name, msg);
+    if (visible_) {
+        if (!Shell_NotifyIconW(NIM_MODIFY, &notify_icon_data_)) {
+            auto error = GetLastError();
+            PLEX_LOG_ERROR(component_name_,
+                          std::format("Failed to update tooltip, error: {}", error));
             return std::unexpected(UiError::OperationFailed);
         }
     }
 
-    std::string msg = "Tooltip set: " + tooltip;
-    PLEX_LOG_DEBUG(m_component_name, msg);
+    PLEX_LOG_DEBUG(component_name_, std::format("Tooltip set: {}", tooltip));
     return {};
 }
 
 std::expected<void, UiError> WindowsTrayIcon::set_menu(const std::vector<MenuItem>& items) {
-    std::lock_guard<std::mutex> lock(m_mutex);
+    std::lock_guard lock(mutex_);
 
-    if (!m_initialized) {
+    if (!initialized_) {
         return std::unexpected(UiError::InitializationFailed);
     }
 
-    m_menu_items = items;
-    m_command_id_to_menu_id.clear();
-    m_menu_id_to_command_id.clear();
-    m_next_command_id = MENU_ITEM_BASE_ID;
+    menu_items_ = items;
+    command_to_menu_id_.clear();
+    menu_id_to_command_.clear();
+    next_command_id_ = TrayConstants::MENU_ITEM_BASE_ID;
 
-    build_context_menu();
+    rebuild_context_menu();
 
-    std::string msg = "Menu set with " + std::to_string(items.size()) + " items";
-    PLEX_LOG_DEBUG(m_component_name, msg);
+    PLEX_LOG_DEBUG(component_name_, std::format("Menu set with {} items", items.size()));
     return {};
 }
 
-std::expected<void, UiError> WindowsTrayIcon::update_menu_item(const std::string& id, const MenuItem& item) {
-    std::lock_guard<std::mutex> lock(m_mutex);
+std::expected<void, UiError> WindowsTrayIcon::update_menu_item(
+    const std::string& id, const MenuItem& item) {
+    std::lock_guard lock(mutex_);
 
-    if (!m_initialized) {
+    if (!initialized_) {
         return std::unexpected(UiError::InitializationFailed);
     }
 
-    // Find and update the menu item
-    for (auto& menu_item : m_menu_items) {
-        if (menu_item.id == id) {
-            menu_item = item;
-            menu_item.id = id; // Preserve the ID
-            break;
-        }
+    // Find and update the menu item using ranges
+    auto it = std::ranges::find_if(menu_items_,
+        [&id](const auto& mi) { return mi.id == id; });
+
+    if (it != menu_items_.end()) {
+        *it = item;
+        it->id = id; // Preserve the ID
+        rebuild_context_menu();
+        PLEX_LOG_DEBUG(component_name_, std::format("Menu item updated: {}", id));
     }
 
-    build_context_menu();
-
-    std::string msg = "Menu item updated: " + id;
-    PLEX_LOG_DEBUG(m_component_name, msg);
     return {};
 }
 
-std::expected<void, UiError> WindowsTrayIcon::enable_menu_item(const std::string& id, bool enabled) {
-    std::lock_guard<std::mutex> lock(m_mutex);
+std::expected<void, UiError> WindowsTrayIcon::enable_menu_item(
+    const std::string& id, bool enabled) {
+    std::lock_guard lock(mutex_);
 
-    if (!m_initialized) {
+    if (!initialized_) {
         return std::unexpected(UiError::InitializationFailed);
     }
 
-    auto it = m_menu_id_to_command_id.find(id);
-    if (it == m_menu_id_to_command_id.end()) {
+    auto cmd_it = menu_id_to_command_.find(id);
+    if (cmd_it == menu_id_to_command_.end()) {
         return std::unexpected(UiError::ResourceNotFound);
     }
 
-    UINT flags = enabled ? MF_ENABLED : MF_DISABLED | MF_GRAYED;
-    if (!EnableMenuItem(m_context_menu, it->second, flags)) {
+    UINT flags = enabled ? MF_ENABLED : (MF_DISABLED | MF_GRAYED);
+    if (!EnableMenuItem(context_menu_.get(), cmd_it->second, flags)) {
         return std::unexpected(UiError::OperationFailed);
     }
 
-    // Update the stored menu item
-    for (auto& menu_item : m_menu_items) {
-        if (menu_item.id == id) {
-            menu_item.enabled = enabled;
-            break;
-        }
+    // Update stored menu item
+    auto item_it = std::ranges::find_if(menu_items_,
+        [&id](const auto& mi) { return mi.id == id; });
+    if (item_it != menu_items_.end()) {
+        item_it->enabled = enabled;
     }
 
-    std::string msg = "Menu item " + id + (enabled ? " enabled" : " disabled");
-    PLEX_LOG_DEBUG(m_component_name, msg);
+    PLEX_LOG_DEBUG(component_name_,
+                  std::format("Menu item {} {}", id, enabled ? "enabled" : "disabled"));
     return {};
 }
 
-std::expected<void, UiError> WindowsTrayIcon::check_menu_item(const std::string& id, bool checked) {
-    std::lock_guard<std::mutex> lock(m_mutex);
+std::expected<void, UiError> WindowsTrayIcon::check_menu_item(
+    const std::string& id, bool checked) {
+    std::lock_guard lock(mutex_);
 
-    if (!m_initialized) {
+    if (!initialized_) {
         return std::unexpected(UiError::InitializationFailed);
     }
 
-    auto it = m_menu_id_to_command_id.find(id);
-    if (it == m_menu_id_to_command_id.end()) {
+    auto cmd_it = menu_id_to_command_.find(id);
+    if (cmd_it == menu_id_to_command_.end()) {
         return std::unexpected(UiError::ResourceNotFound);
     }
 
     UINT flags = checked ? MF_CHECKED : MF_UNCHECKED;
-    if (!CheckMenuItem(m_context_menu, it->second, flags)) {
+    if (!CheckMenuItem(context_menu_.get(), cmd_it->second, flags)) {
         return std::unexpected(UiError::OperationFailed);
     }
 
-    // Update the stored menu item
-    for (auto& menu_item : m_menu_items) {
-        if (menu_item.id == id) {
-            menu_item.checked = checked;
-            break;
-        }
+    // Update stored menu item
+    auto item_it = std::ranges::find_if(menu_items_,
+        [&id](const auto& mi) { return mi.id == id; });
+    if (item_it != menu_items_.end()) {
+        item_it->checked = checked;
     }
 
-    std::string msg = "Menu item " + id + (checked ? " checked" : " unchecked");
-    PLEX_LOG_DEBUG(m_component_name, msg);
+    PLEX_LOG_DEBUG(component_name_,
+                  std::format("Menu item {} {}", id, checked ? "checked" : "unchecked"));
     return {};
 }
 
 void WindowsTrayIcon::set_click_callback(ClickCallback callback) {
-    std::lock_guard<std::mutex> lock(m_mutex);
-    m_click_callback = std::move(callback);
+    std::lock_guard lock(mutex_);
+    click_callback_ = std::move(callback);
 }
 
 void WindowsTrayIcon::set_double_click_callback(ClickCallback callback) {
-    std::lock_guard<std::mutex> lock(m_mutex);
-    m_double_click_callback = std::move(callback);
+    std::lock_guard lock(mutex_);
+    double_click_callback_ = std::move(callback);
 }
 
 void WindowsTrayIcon::set_menu_callback(MenuCallback callback) {
-    std::lock_guard<std::mutex> lock(m_mutex);
-    m_menu_callback = std::move(callback);
-}
-
-void WindowsTrayIcon::set_notification_click_callback(NotificationClickCallback callback) {
-    std::lock_guard<std::mutex> lock(m_mutex);
-    m_notification_click_callback = std::move(callback);
-}
-
-void WindowsTrayIcon::set_update_click_callback(UpdateClickCallback callback) {
-    std::lock_guard<std::mutex> lock(m_mutex);
-    m_update_click_callback = std::move(callback);
+    std::lock_guard lock(mutex_);
+    menu_callback_ = std::move(callback);
 }
 
 void WindowsTrayIcon::show() {
-    std::lock_guard<std::mutex> lock(m_mutex);
+    std::lock_guard lock(mutex_);
 
-    if (!m_initialized || m_visible) {
+    if (!initialized_ || visible_) {
         return;
     }
 
-    if (!Shell_NotifyIconW(NIM_ADD, &m_notify_icon_data)) {
-        DWORD error = GetLastError();
-        std::string msg = "Failed to show tray icon, error: " + std::to_string(error);
-        PLEX_LOG_ERROR(m_component_name, msg);
+    if (!Shell_NotifyIconW(NIM_ADD, &notify_icon_data_)) {
+        auto error = GetLastError();
+        PLEX_LOG_ERROR(component_name_,
+                      std::format("Failed to show tray icon, error: {}", error));
         return;
     }
 
-    m_visible = true;
-    PLEX_LOG_INFO(m_component_name, "Tray icon shown");
+    // Set version for enhanced Windows 11 features
+    NOTIFYICONDATAW version_data{
+        .cbSize = sizeof(NOTIFYICONDATAW),
+        .hWnd = window_handle_,
+        .uID = TrayConstants::TRAY_ICON_ID,
+        .uVersion = NOTIFYICON_VERSION_4
+    };
+    Shell_NotifyIconW(NIM_SETVERSION, &version_data);
+
+    visible_ = true;
+    icon_added_ = true;
+    PLEX_LOG_INFO(component_name_, "Tray icon shown with Windows 11 enhancements");
 }
 
 void WindowsTrayIcon::hide() {
-    std::lock_guard<std::mutex> lock(m_mutex);
+    std::lock_guard lock(mutex_);
 
-    if (!m_visible) {
+    if (!visible_) {
         return;
     }
 
-    if (!Shell_NotifyIconW(NIM_DELETE, &m_notify_icon_data)) {
-        DWORD error = GetLastError();
-        std::string msg = "Failed to hide tray icon, error: " + std::to_string(error);
-        PLEX_LOG_ERROR(m_component_name, msg);
+    if (!Shell_NotifyIconW(NIM_DELETE, &notify_icon_data_)) {
+        auto error = GetLastError();
+        PLEX_LOG_ERROR(component_name_,
+                      std::format("Failed to hide tray icon, error: {}", error));
     }
 
-    m_visible = false;
-    PLEX_LOG_INFO(m_component_name, "Tray icon hidden");
+    visible_ = false;
+    icon_added_ = false;
+    PLEX_LOG_INFO(component_name_, "Tray icon hidden");
 }
 
 bool WindowsTrayIcon::is_visible() const {
-    return m_visible;
+    return visible_;
 }
 
-std::expected<void, UiError> WindowsTrayIcon::show_balloon_notification(
-    const std::string& title,
-    const std::string& message,
-    bool is_error,
+TrayResult<> WindowsTrayIcon::show_notification(
+    std::string_view title, std::string_view message, bool is_error,
     std::chrono::seconds timeout) {
 
-    std::lock_guard<std::mutex> lock(m_mutex);
+    std::lock_guard lock(mutex_);
 
-    if (!m_initialized || !m_visible) {
-        return std::unexpected(UiError::InitializationFailed);
+    if (!initialized_ || !visible_) {
+        return std::unexpected(TrayErrorInfo{
+            UiError::InitializationFailed,
+            "Tray icon not initialized or visible"
+        });
     }
 
-    // Convert title and message to wide strings
-    std::wstring wtitle = utf8_to_wstring(title);
-    std::wstring wmessage = utf8_to_wstring(message);
+    auto wtitle = to_wide_string(std::string(title));
+    auto wmessage = to_wide_string(std::string(message));
 
-    if (wtitle.empty() || wmessage.empty()) {
-        return std::unexpected(UiError::OperationFailed);
-    }
+    NOTIFYICONDATAW nid{
+        .cbSize = sizeof(NOTIFYICONDATAW),
+        .hWnd = window_handle_,
+        .uID = TrayConstants::TRAY_ICON_ID,
+        .uFlags = NIF_INFO,
+        .uTimeout = static_cast<UINT>(timeout.count() * 1000),
+        .dwInfoFlags = is_error ? NIIF_ERROR : NIIF_INFO | NIIF_LARGE_ICON
+    };
 
-    // Create notification data
-    NOTIFYICONDATAW nid = {};
-    nid.cbSize = sizeof(NOTIFYICONDATAW);
-    nid.hWnd = m_window_handle;
-    nid.uID = TRAY_ICON_ID;
-    nid.uFlags = NIF_INFO;
-    nid.dwInfoFlags = is_error ? NIIF_ERROR : NIIF_INFO;
-    nid.uTimeout = static_cast<UINT>(timeout.count() * 1000); // Convert to milliseconds
-
-    // Truncate strings to Windows limits
-    wcsncpy_s(nid.szInfoTitle, _countof(nid.szInfoTitle), wtitle.c_str(), _TRUNCATE);
-    wcsncpy_s(nid.szInfo, _countof(nid.szInfo), wmessage.c_str(), _TRUNCATE);
+    safe_copy(nid.szInfoTitle, wtitle);
+    safe_copy(nid.szInfo, wmessage);
 
     if (!Shell_NotifyIconW(NIM_MODIFY, &nid)) {
-        DWORD error = GetLastError();
-        std::string msg = "Failed to show balloon notification, error: " + std::to_string(error);
-        PLEX_LOG_ERROR(m_component_name, msg);
-
-        // Fallback to MessageBox in a separate thread
-        std::thread([wtitle, wmessage, is_error]() {
-            UINT type = MB_OK | (is_error ? MB_ICONERROR : MB_ICONINFORMATION);
-            MessageBoxW(nullptr, wmessage.c_str(), wtitle.c_str(), type);
-        }).detach();
-
-        return std::unexpected(UiError::OperationFailed);
+        return std::unexpected(TrayErrorInfo{
+            UiError::OperationFailed,
+            std::format("Failed to show notification: {}", GetLastError())
+        });
     }
 
-    std::string msg = "Balloon notification shown: " + title;
-    PLEX_LOG_DEBUG(m_component_name, msg);
+    PLEX_LOG_DEBUG(component_name_, std::format("Notification shown: {}", title));
     return {};
 }
 
-std::expected<void, UiError> WindowsTrayIcon::show_update_notification(
-    const std::string& title,
-    const std::string& message,
-    const std::string& download_url) {
-
-    std::lock_guard<std::mutex> lock(m_mutex);
-
-    // Store download URL for later use
-    m_download_url = download_url;
-
-    std::string msg = "Storing download URL: " + download_url;
-    PLEX_LOG_DEBUG(m_component_name, msg);
-
-    // Show notification using the regular method
-    auto result = show_balloon_notification(title, message, false);
-    return result;
-}
-
 void WindowsTrayIcon::on_click() {
-    if (m_click_callback) {
-        m_click_callback();
+    if (click_callback_) {
+        click_callback_();
     }
 }
 
 void WindowsTrayIcon::on_double_click() {
-    if (m_double_click_callback) {
-        m_double_click_callback();
+    if (double_click_callback_) {
+        double_click_callback_();
     }
 }
 
 void WindowsTrayIcon::on_menu_item_selected(const std::string& item_id) {
-    if (m_menu_callback) {
-        m_menu_callback(item_id);
+    if (menu_callback_) {
+        menu_callback_(item_id);
     }
 
     // Also call the item's action if it has one
-    for (const auto& item : m_menu_items) {
-        if (item.id == item_id && item.action) {
-            try {
-                item.action();
-            } catch (const std::exception& e) {
-                std::string msg = "Exception in menu item action for " + item_id + ": " + e.what();
-                PLEX_LOG_ERROR(m_component_name, msg);
-            }
-            break;
+    auto it = std::ranges::find_if(menu_items_,
+        [&item_id](const auto& item) { return item.id == item_id; });
+
+    if (it != menu_items_.end() && it->action) {
+        try {
+            it->action();
+        } catch (const std::exception& e) {
+            PLEX_LOG_ERROR(component_name_,
+                          std::format("Exception in menu action for {}: {}", item_id, e.what()));
         }
     }
 }
 
-void WindowsTrayIcon::on_notification_clicked() {
-    if (m_notification_click_callback) {
-        execute_with_timeout(
-            [this]() {
-                if (m_notification_click_callback) {
-                    m_notification_click_callback();
-                }
-            },
-            std::chrono::seconds(5),
-            "Notification click callback"
-        );
-    }
-}
+LRESULT CALLBACK WindowsTrayIcon::window_proc(
+    HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {
 
-void WindowsTrayIcon::on_balloon_clicked() {
-    if (!m_download_url.empty() && m_update_click_callback) {
-        std::string url = m_download_url; // Copy for thread safety
-        execute_with_timeout(
-            [this, url]() {
-                if (m_update_click_callback) {
-                    m_update_click_callback(url);
-                }
-            },
-            std::chrono::seconds(5),
-            "Update click callback"
-        );
-    } else if (!m_download_url.empty()) {
-        // Fallback: open URL directly
-        (void)open_url(m_download_url);
+    WindowsTrayIcon* instance = nullptr;
+
+    if (message == WM_CREATE) {
+        auto* cs = reinterpret_cast<CREATESTRUCT*>(lParam);
+        instance = static_cast<WindowsTrayIcon*>(cs->lpCreateParams);
+        SetWindowLongPtr(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(instance));
     } else {
-        // Regular notification click
-        on_notification_clicked();
+        instance = reinterpret_cast<WindowsTrayIcon*>(
+            GetWindowLongPtr(hwnd, GWLP_USERDATA));
     }
+
+    if (instance) {
+        return instance->handle_message(hwnd, message, wParam, lParam);
+    }
+
+    return DefWindowProc(hwnd, message, wParam, lParam);
 }
 
-std::expected<void, UiError> WindowsTrayIcon::open_url(const std::string& url) {
-    if (url.empty()) {
-        return std::unexpected(UiError::OperationFailed);
+LRESULT WindowsTrayIcon::handle_message(
+    HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+
+    // Handle TaskbarCreated message for explorer restart
+    if (msg == s_taskbar_created_message) {
+        PLEX_LOG_INFO(component_name_, "Explorer restarted, recreating tray icon");
+        recreate_tray_icon();
+        return 0;
     }
 
-    std::string msg = "Opening URL: " + url;
-    PLEX_LOG_INFO(m_component_name, msg);
-
-    std::wstring wurl = utf8_to_wstring(url);
-    if (wurl.empty()) {
-        return std::unexpected(UiError::OperationFailed);
-    }
-
-    INT_PTR result = reinterpret_cast<INT_PTR>(ShellExecuteW(
-        nullptr, L"open", wurl.c_str(), nullptr, nullptr, SW_SHOWNORMAL
-    ));
-
-    if (result <= 32) { // ShellExecute returns <= 32 for errors
-        std::string error_msg = "Failed to open URL, error code: " + std::to_string(result);
-        PLEX_LOG_ERROR(m_component_name, error_msg);
-        return std::unexpected(UiError::OperationFailed);
-    }
-
-    PLEX_LOG_INFO(m_component_name, "URL opened successfully");
-    return {};
-}
-
-template<typename Func>
-bool WindowsTrayIcon::execute_with_timeout(Func func, std::chrono::milliseconds timeout, const std::string& operation_name) {
-    auto future = std::async(std::launch::async, func);
-
-    if (future.wait_for(timeout) == std::future_status::timeout) {
-        std::string msg = "Operation '" + operation_name + "' timed out after " +
-                         std::to_string(timeout.count()) + "ms";
-        PLEX_LOG_WARNING(m_component_name, msg);
-        return false;
-    }
-
-    try {
-        future.get(); // This will rethrow any exception that occurred in the async task
-        return true;
-    } catch (const std::exception& e) {
-        std::string msg = "Exception in operation '" + operation_name + "': " + e.what();
-        PLEX_LOG_ERROR(m_component_name, msg);
-        return false;
-    }
-}
-
-LRESULT CALLBACK WindowsTrayIcon::window_proc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {
-    if (!s_instance) {
-        return DefWindowProc(hwnd, message, wParam, lParam);
-    }
-
-    switch (message) {
+    switch (msg) {
     case WM_CREATE:
-        PLEX_LOG_DEBUG(s_instance->m_component_name, "Window created");
-        break;
+        PLEX_LOG_DEBUG(component_name_, "Window created");
+        return 0;
 
-    case WM_TRAYICON:
-        switch (LOWORD(lParam)) {
-        case WM_LBUTTONUP:
-            PLEX_LOG_DEBUG(s_instance->m_component_name, "Tray icon left clicked");
-            s_instance->on_click();
-            break;
-        case WM_LBUTTONDBLCLK:
-            PLEX_LOG_DEBUG(s_instance->m_component_name, "Tray icon double clicked");
-            s_instance->on_double_click();
-            break;
-        case WM_RBUTTONUP:
-            PLEX_LOG_DEBUG(s_instance->m_component_name, "Tray icon right clicked");
-            if (s_instance->m_context_menu) {
-                POINT cursor_pos;
-                GetCursorPos(&cursor_pos);
-                SetForegroundWindow(hwnd);
+    case TrayConstants::WM_TRAYICON:
+        handle_tray_message(lParam);
+        return 0;
 
-                UINT command = TrackPopupMenu(
-                    s_instance->m_context_menu,
-                    TPM_RETURNCMD | TPM_NONOTIFY,
-                    cursor_pos.x, cursor_pos.y,
-                    0, hwnd, nullptr
-                );
-
-                if (command != 0) {
-                    std::string menu_id = s_instance->get_menu_item_id_by_command_id(command);
-                    if (!menu_id.empty()) {
-                        s_instance->on_menu_item_selected(menu_id);
-                    }
-                }
-            }
-            break;
-        case NIN_BALLOONUSERCLICK:
-            PLEX_LOG_DEBUG(s_instance->m_component_name, "Balloon notification clicked");
-            s_instance->on_balloon_clicked();
-            break;
-        }
-        break;
+    case WM_COMMAND:
+        handle_menu_command(LOWORD(wParam));
+        return 0;
 
     case WM_CLOSE:
     case WM_DESTROY:
-        PLEX_LOG_DEBUG(s_instance->m_component_name, "Window destroyed");
+        PLEX_LOG_DEBUG(component_name_, "Window destroyed");
         PostQuitMessage(0);
-        break;
+        return 0;
 
     default:
-        return DefWindowProc(hwnd, message, wParam, lParam);
+        return DefWindowProc(hwnd, msg, wParam, lParam);
     }
+}
 
-    return 0;
+void WindowsTrayIcon::handle_tray_message(LPARAM lParam) {
+    switch (LOWORD(lParam)) {
+    case WM_LBUTTONUP:
+        PLEX_LOG_DEBUG(component_name_, "Tray icon clicked");
+        on_click();
+        break;
+
+    case WM_LBUTTONDBLCLK:
+        PLEX_LOG_DEBUG(component_name_, "Tray icon double-clicked");
+        on_double_click();
+        break;
+
+    case WM_RBUTTONUP:
+    case WM_CONTEXTMENU:
+        PLEX_LOG_DEBUG(component_name_, "Showing context menu");
+        if (context_menu_) {
+            POINT cursor_pos;
+            GetCursorPos(&cursor_pos);
+            SetForegroundWindow(window_handle_);
+
+            UINT command = TrackPopupMenu(
+                context_menu_.get(),
+                TPM_RETURNCMD | TPM_NONOTIFY | TPM_RIGHTBUTTON,
+                cursor_pos.x, cursor_pos.y,
+                0, window_handle_, nullptr
+            );
+
+            // Ensure menu dismisses properly (Windows 11)
+            PostMessage(window_handle_, WM_NULL, 0, 0);
+
+            if (command != 0) {
+                handle_menu_command(command);
+            }
+        }
+        break;
+
+    case NIN_BALLOONUSERCLICK:
+        PLEX_LOG_DEBUG(component_name_, "Balloon notification clicked");
+        // Handle notification click if needed
+        break;
+    }
+}
+
+void WindowsTrayIcon::handle_menu_command(UINT command_id) {
+    auto it = command_to_menu_id_.find(command_id);
+    if (it != command_to_menu_id_.end()) {
+        on_menu_item_selected(it->second);
+    }
 }
 
 void WindowsTrayIcon::ui_thread_function() {
-    m_ui_thread_id = std::this_thread::get_id();
-    PLEX_LOG_DEBUG(m_component_name, "UI thread started");
+    ui_thread_id_ = std::this_thread::get_id();
+    PLEX_LOG_DEBUG(component_name_, "UI thread started");
 
     auto result = create_window();
     if (!result) {
-        PLEX_LOG_ERROR(m_component_name, "Failed to create window in UI thread");
+        PLEX_LOG_ERROR(component_name_,
+                      std::format("Failed to create window: {}", result.error().message));
+        std::lock_guard lock(init_mutex_);
+        window_created_ = false;
+        init_cv_.notify_one();
         return;
     }
 
+    // Setup tray icon
+    auto tray_result = setup_tray_icon();
+    if (!tray_result) {
+        PLEX_LOG_ERROR(component_name_,
+                      std::format("Failed to setup tray icon: {}", tray_result.error().message));
+    }
+
+    // Notify that window is created
+    {
+        std::lock_guard lock(init_mutex_);
+        window_created_ = true;
+    }
+    init_cv_.notify_one();
+
     // Message loop
     MSG msg;
-    while (m_running && GetMessage(&msg, nullptr, 0, 0)) {
+    while (running_ && GetMessage(&msg, nullptr, 0, 0)) {
         TranslateMessage(&msg);
         DispatchMessage(&msg);
     }
 
-    destroy_window();
-    PLEX_LOG_DEBUG(m_component_name, "UI thread exiting");
+    // Cleanup
+    if (context_menu_) {
+        context_menu_.reset();
+    }
+    if (current_icon_) {
+        current_icon_ = IconHandle{};
+    }
+    if (window_handle_) {
+        DestroyWindow(window_handle_);
+        window_handle_ = nullptr;
+    }
+
+    PLEX_LOG_DEBUG(component_name_, "UI thread exiting");
 }
 
-std::expected<void, UiError> WindowsTrayIcon::create_window() {
-    const wchar_t* class_name = L"PresenceForPlexTrayWin";
+TrayResult<> WindowsTrayIcon::create_window() {
+    const wchar_t* class_name = TrayConstants::WINDOW_CLASS.data();
 
-    WNDCLASSEXW wc = {};
-    wc.cbSize = sizeof(WNDCLASSEXW);
-    wc.lpfnWndProc = window_proc;
-    wc.hInstance = GetModuleHandle(nullptr);
-    wc.lpszClassName = class_name;
-    wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
+    WNDCLASSEXW wc{
+        .cbSize = sizeof(WNDCLASSEXW),
+        .lpfnWndProc = window_proc,
+        .hInstance = GetModuleHandle(nullptr),
+        .hCursor = LoadCursor(nullptr, IDC_ARROW),
+        .hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1),
+        .lpszClassName = class_name
+    };
 
     if (!RegisterClassExW(&wc)) {
-        DWORD error = GetLastError();
+        auto error = GetLastError();
         if (error != ERROR_CLASS_ALREADY_EXISTS) {
-            std::string msg = "Failed to register window class, error: " + std::to_string(error);
-            PLEX_LOG_ERROR(m_component_name, msg);
-            return std::unexpected(UiError::InitializationFailed);
+            return std::unexpected(TrayErrorInfo{
+                UiError::InitializationFailed,
+                std::format("Failed to register window class: {}", error)
+            });
         }
     }
 
-    m_window_handle = CreateWindowExW(
-        0, class_name, L"PresenceForPlex",
+    window_handle_ = CreateWindowExW(
+        0, class_name, TrayConstants::APP_NAME.data(),
         WS_OVERLAPPEDWINDOW,
-        CW_USEDEFAULT, CW_USEDEFAULT,
-        10, 10,
+        CW_USEDEFAULT, CW_USEDEFAULT, 10, 10,
         nullptr, nullptr,
-        GetModuleHandle(nullptr), nullptr
+        GetModuleHandle(nullptr), this
     );
 
-    if (!m_window_handle) {
-        DWORD error = GetLastError();
-        std::string msg = "Failed to create window, error: " + std::to_string(error);
-        PLEX_LOG_ERROR(m_component_name, msg);
-        return std::unexpected(UiError::InitializationFailed);
+    if (!window_handle_) {
+        return std::unexpected(TrayErrorInfo{
+            UiError::InitializationFailed,
+            std::format("Failed to create window: {}", GetLastError())
+        });
     }
 
-    // Keep window hidden
-    ShowWindow(m_window_handle, SW_HIDE);
-    UpdateWindow(m_window_handle);
+    ShowWindow(window_handle_, SW_HIDE);
+    UpdateWindow(window_handle_);
 
-    // Initialize tray icon data
-    ZeroMemory(&m_notify_icon_data, sizeof(m_notify_icon_data));
-    m_notify_icon_data.cbSize = sizeof(NOTIFYICONDATAW);
-    m_notify_icon_data.hWnd = m_window_handle;
-    m_notify_icon_data.uID = TRAY_ICON_ID;
-    m_notify_icon_data.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
-    m_notify_icon_data.uCallbackMessage = WM_TRAYICON;
+    // Get DPI for proper scaling
+    current_dpi_ = GetDpiForWindow(window_handle_);
 
-    // Set default icon and tooltip
-    auto icon_result = load_icon_from_resource(101); // IDI_APPICON
-    if (icon_result) {
-        m_current_icon = icon_result.value();
-        m_notify_icon_data.hIcon = m_current_icon;
-    } else {
-        m_current_icon = LoadIcon(nullptr, IDI_APPLICATION);
-        m_notify_icon_data.hIcon = m_current_icon;
-    }
-
-    wcscpy_s(m_notify_icon_data.szTip, _countof(m_notify_icon_data.szTip), L"Presence For Plex");
-
-    PLEX_LOG_DEBUG(m_component_name, "Window created successfully");
+    PLEX_LOG_DEBUG(component_name_, "Window created successfully");
     return {};
 }
 
-void WindowsTrayIcon::destroy_window() {
-    if (m_context_menu) {
-        DestroyMenu(m_context_menu);
-        m_context_menu = nullptr;
-    }
+TrayResult<> WindowsTrayIcon::setup_tray_icon() {
+    // Initialize tray icon data with Windows 11 features
+    notify_icon_data_ = {
+        .cbSize = sizeof(NOTIFYICONDATAW),
+        .hWnd = window_handle_,
+        .uID = TrayConstants::TRAY_ICON_ID,
+        .uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP | NIF_SHOWTIP | NIF_GUID,
+        .uCallbackMessage = TrayConstants::WM_TRAYICON,
+        .guidItem = TrayConstants::TRAY_ICON_GUID
+    };
 
-    if (m_current_icon && m_current_icon != LoadIcon(nullptr, IDI_APPLICATION)) {
-        DestroyIcon(m_current_icon);
-        m_current_icon = nullptr;
+    // Set default icon with DPI awareness
+    auto icon_result = load_icon_from_resource(101); // IDI_APPICON
+    if (icon_result) {
+        current_icon_ = std::move(icon_result.value());
+    } else {
+        // Fallback to system icon
+        current_icon_.set_system_icon(LoadIcon(nullptr, IDI_APPLICATION));
     }
+    notify_icon_data_.hIcon = current_icon_.get();
 
-    if (m_window_handle) {
-        DestroyWindow(m_window_handle);
-        m_window_handle = nullptr;
-    }
+    // Set default tooltip
+    safe_copy(notify_icon_data_.szTip, TrayConstants::APP_NAME);
 
-    PLEX_LOG_DEBUG(m_component_name, "Window destroyed");
+    PLEX_LOG_DEBUG(component_name_, "Tray icon setup complete");
+    return {};
 }
 
-void WindowsTrayIcon::build_context_menu() {
-    if (m_context_menu) {
-        DestroyMenu(m_context_menu);
-    }
+void WindowsTrayIcon::recreate_tray_icon() {
+    std::lock_guard lock(mutex_);
 
-    m_context_menu = CreatePopupMenu();
-    if (!m_context_menu) {
-        PLEX_LOG_ERROR(m_component_name, "Failed to create context menu");
+    if (!icon_added_ || !initialized_) {
         return;
     }
 
-    UINT current_id = MENU_ITEM_BASE_ID;
-    add_menu_items_to_hmenu(m_context_menu, m_menu_items, current_id);
+    PLEX_LOG_INFO(component_name_, "Recreating tray icon after explorer restart");
+
+    if (Shell_NotifyIconW(NIM_ADD, &notify_icon_data_)) {
+        // Set version for enhanced features
+        NOTIFYICONDATAW version_data{
+            .cbSize = sizeof(NOTIFYICONDATAW),
+            .hWnd = window_handle_,
+            .uID = TrayConstants::TRAY_ICON_ID,
+            .uVersion = NOTIFYICON_VERSION_4
+        };
+        Shell_NotifyIconW(NIM_SETVERSION, &version_data);
+
+        visible_ = true;
+        PLEX_LOG_INFO(component_name_, "Tray icon recreated successfully");
+    } else {
+        auto error = GetLastError();
+        PLEX_LOG_ERROR(component_name_,
+                      std::format("Failed to recreate tray icon, error: {}", error));
+    }
 }
 
-void WindowsTrayIcon::add_menu_items_to_hmenu(HMENU menu, const std::vector<MenuItem>& items, UINT& current_id) {
+void WindowsTrayIcon::rebuild_context_menu() {
+    context_menu_.reset(CreatePopupMenu());
+
+    if (!context_menu_) {
+        PLEX_LOG_ERROR(component_name_, "Failed to create context menu");
+        return;
+    }
+
+    UINT current_id = TrayConstants::MENU_ITEM_BASE_ID;
+    add_menu_items(context_menu_, menu_items_, current_id);
+}
+
+void WindowsTrayIcon::add_menu_items(
+    MenuHandle& menu, std::span<const MenuItem> items, UINT& current_id) {
+
     for (const auto& item : items) {
         switch (item.type) {
         case MenuItemType::Separator:
-            AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+            AppendMenuW(menu.get(), MF_SEPARATOR, 0, nullptr);
             break;
 
         case MenuItemType::Action:
@@ -716,118 +694,110 @@ void WindowsTrayIcon::add_menu_items_to_hmenu(HMENU menu, const std::vector<Menu
             if (!item.enabled) {
                 flags |= MF_DISABLED | MF_GRAYED;
             }
-            if (item.checked && (item.type == MenuItemType::Checkbox || item.type == MenuItemType::Radio)) {
+            if (item.checked && (item.type == MenuItemType::Checkbox ||
+                                 item.type == MenuItemType::Radio)) {
                 flags |= MF_CHECKED;
             }
 
-            std::wstring wlabel = utf8_to_wstring(item.label);
-            AppendMenuW(menu, flags, current_id, wlabel.c_str());
+            auto wlabel = to_wide_string(item.label);
+            AppendMenuW(menu.get(), flags, current_id, wlabel.c_str());
 
-            m_command_id_to_menu_id[current_id] = item.id;
-            m_menu_id_to_command_id[item.id] = current_id;
+            command_to_menu_id_[current_id] = item.id;
+            menu_id_to_command_[item.id] = current_id;
             current_id++;
             break;
         }
 
         case MenuItemType::Submenu: {
-            HMENU submenu = CreatePopupMenu();
-            add_menu_items_to_hmenu(submenu, item.submenu, current_id);
+            MenuHandle submenu(CreatePopupMenu());
+            add_menu_items(submenu, item.submenu, current_id);
 
-            std::wstring wlabel = utf8_to_wstring(item.label);
-            AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(submenu), wlabel.c_str());
+            auto wlabel = to_wide_string(item.label);
+            AppendMenuW(menu.get(), MF_POPUP,
+                       reinterpret_cast<UINT_PTR>(submenu.release()),
+                       wlabel.c_str());
             break;
         }
         }
     }
 }
 
-std::string WindowsTrayIcon::get_menu_item_id_by_command_id(UINT command_id) const {
-    auto it = m_command_id_to_menu_id.find(command_id);
-    return it != m_command_id_to_menu_id.end() ? it->second : "";
-}
-
-std::expected<HICON, UiError> WindowsTrayIcon::load_icon_from_path(const std::string& path) {
-    std::wstring wpath = utf8_to_wstring(path);
+TrayResult<IconHandle> WindowsTrayIcon::load_icon_from_path(std::string_view path) {
+    auto wpath = to_wide_string(std::string(path));
+    int size = get_dpi_scaled_size(GetSystemMetrics(SM_CXSMICON));
 
     HICON icon = static_cast<HICON>(LoadImageW(
         nullptr, wpath.c_str(),
-        IMAGE_ICON, 0, 0,
-        LR_LOADFROMFILE | LR_DEFAULTSIZE
+        IMAGE_ICON, size, size,
+        LR_LOADFROMFILE
     ));
 
     if (!icon) {
-        DWORD error = GetLastError();
-        std::string msg = "Failed to load icon from path: " + path + ", error: " + std::to_string(error);
-        PLEX_LOG_ERROR(m_component_name, msg);
-        return std::unexpected(UiError::ResourceNotFound);
+        // Try without specific size
+        icon = static_cast<HICON>(LoadImageW(
+            nullptr, wpath.c_str(),
+            IMAGE_ICON, 0, 0,
+            LR_LOADFROMFILE | LR_DEFAULTSIZE
+        ));
     }
 
-    return icon;
+    if (!icon) {
+        return std::unexpected(TrayErrorInfo{
+            UiError::ResourceNotFound,
+            std::format("Failed to load icon from path: {}", path)
+        });
+    }
+
+    return IconHandle(icon);
 }
 
-std::expected<HICON, UiError> WindowsTrayIcon::load_icon_from_resource(int resource_id) {
+TrayResult<IconHandle> WindowsTrayIcon::load_icon_from_resource(int resource_id) {
     HMODULE module = GetModuleHandle(nullptr);
-    HICON icon = nullptr;
+    HICON icon = LoadIconW(module, MAKEINTRESOURCEW(resource_id));
 
-    // First try loading by resource ID
-    icon = LoadIconW(module, MAKEINTRESOURCEW(resource_id));
-
-    // If that fails, try loading by name (for backward compatibility)
     if (!icon) {
-        std::string msg = "Failed to load icon by ID " + std::to_string(resource_id) + ", trying by name";
-        PLEX_LOG_INFO(m_component_name, msg);
-
-        std::string resource_name = "IDI_APPICON";
-        std::wstring wresource_name = utf8_to_wstring(resource_name);
-        icon = LoadIconW(module, wresource_name.c_str());
+        // Try loading by name for backward compatibility
+        icon = LoadIconW(module, L"IDI_APPICON");
     }
 
-    // If still no icon, try the default system icon
     if (!icon) {
-        DWORD error = GetLastError();
-        std::string msg = "Failed to load application icon, error: " + std::to_string(error) +
-                         ", using default system icon";
-        PLEX_LOG_WARNING(m_component_name, msg);
-
-        icon = LoadIcon(nullptr, IDI_APPLICATION);
-        if (!icon) {
-            DWORD sys_error = GetLastError();
-            std::string error_msg = "Failed to load even default system icon, error: " + std::to_string(sys_error);
-            PLEX_LOG_ERROR(m_component_name, error_msg);
-            return std::unexpected(UiError::ResourceNotFound);
-        }
-
-        PLEX_LOG_INFO(m_component_name, "Using default system icon");
-    } else {
-        std::string msg = "Application icon loaded successfully from resource " + std::to_string(resource_id);
-        PLEX_LOG_INFO(m_component_name, msg);
+        return std::unexpected(TrayErrorInfo{
+            UiError::ResourceNotFound,
+            std::format("Failed to load icon from resource: {}", resource_id)
+        });
     }
 
-    return icon;
+    return IconHandle(icon);
 }
 
-std::wstring WindowsTrayIcon::utf8_to_wstring(const std::string& utf8_str) const {
-    if (utf8_str.empty()) {
+int WindowsTrayIcon::get_dpi_scaled_size(int base_size) const {
+    if (current_dpi_ != 96) {
+        return MulDiv(base_size, current_dpi_, 96);
+    }
+    return base_size;
+}
+
+std::wstring WindowsTrayIcon::to_wide_string(std::string_view str) const {
+    if (str.empty()) {
         return L"";
     }
 
-    int length = MultiByteToWideChar(CP_UTF8, 0, utf8_str.c_str(), -1, nullptr, 0);
+    int length = MultiByteToWideChar(CP_UTF8, 0, str.data(),
+                                     static_cast<int>(str.size()), nullptr, 0);
     if (length == 0) {
         return L"";
     }
 
-    std::wstring wstr(length - 1, L'\0');
-    MultiByteToWideChar(CP_UTF8, 0, utf8_str.c_str(), -1, &wstr[0], length);
-
-    return wstr;
+    std::wstring result(length, L'\0');
+    MultiByteToWideChar(CP_UTF8, 0, str.data(),
+                        static_cast<int>(str.size()), result.data(), length);
+    return result;
 }
 
-bool WindowsTrayIcon::is_ui_thread() const {
-    return std::this_thread::get_id() == m_ui_thread_id;
+bool WindowsTrayIcon::is_ui_thread() const noexcept {
+    return std::this_thread::get_id() == ui_thread_id_;
 }
 
-} // namespace windows
-} // namespace platform
-} // namespace presence_for_plex
+} // namespace presence_for_plex::platform::windows
 
 #endif // _WIN32
