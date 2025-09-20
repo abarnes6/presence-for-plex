@@ -166,10 +166,13 @@ std::string PlexConnectionManager::get_preferred_server_uri(const core::ServerId
         }
     }
 
-    // Fallback to public URI
+    // Test public URI as fallback
     if (!server->public_uri.empty()) {
-        PLEX_LOG_INFO("PlexConnectionManager", "Using public URI for " + server->name + ": " + server->public_uri);
-        return server->public_uri;
+        PLEX_LOG_DEBUG("PlexConnectionManager", "Testing public URI: " + server->public_uri);
+        if (test_uri_accessibility(server->public_uri, server->access_token)) {
+            PLEX_LOG_INFO("PlexConnectionManager", "Using public URI for " + server->name + ": " + server->public_uri);
+            return server->public_uri;
+        }
     }
 
     PLEX_LOG_WARNING("PlexConnectionManager", "No accessible URI found for server: " + server->name);
@@ -298,35 +301,17 @@ void PlexConnectionManager::setup_server_sse_connection(PlexServerRuntime& runti
         }
     };
 
-    // Choose the best URI based on server type
-    std::string uri_to_use;
-
-    if (!server->owned) {
-        // Shared server - prefer public URI
-        if (!server->public_uri.empty()) {
-            uri_to_use = server->public_uri;
-            PLEX_LOG_INFO("PlexConnectionManager", "Using public URI for shared server: " + server->name);
-        } else if (!server->local_uri.empty()) {
-            uri_to_use = server->local_uri;
-            PLEX_LOG_INFO("PlexConnectionManager", "Using local URI for shared server (no public available): " + server->name);
-        }
-    } else {
-        // Owned server - prefer local URI
-        if (!server->local_uri.empty()) {
-            uri_to_use = server->local_uri;
-            PLEX_LOG_INFO("PlexConnectionManager", "Using local URI for owned server: " + server->name);
-        } else if (!server->public_uri.empty()) {
-            uri_to_use = server->public_uri;
-            PLEX_LOG_INFO("PlexConnectionManager", "Using public URI for owned server (no local available): " + server->name);
-        }
-    }
+    // Get the tested and validated URI (prefers local, tests accessibility)
+    std::string uri_to_use = get_preferred_server_uri(server_id);
 
     if (uri_to_use.empty()) {
-        PLEX_LOG_ERROR("PlexConnectionManager", "No URI available for server: " + server->name);
+        PLEX_LOG_ERROR("PlexConnectionManager", "No accessible URI found for server: " + server->name);
         runtime.sse_running = false;
         runtime.initial_connection_succeeded = false;
         return;
     }
+
+    PLEX_LOG_INFO("PlexConnectionManager", "Using tested URI for SSE connection to " + server->name + ": " + uri_to_use);
 
     // Construct SSE endpoint URL
     std::string sse_url = uri_to_use + "/:/eventsource/notifications?filters=playing";
