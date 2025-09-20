@@ -1,0 +1,24 @@
+<!DOCTYPE RCC>
+<RCC version="1.0">
+    <qresource prefix="/icons">
+        <!-- Main application icon -->
+        <file alias="app_icon">icon.ico</file>
+
+        <!-- System tray icons for different platforms -->
+        <file alias="tray_icon">icon.ico</file>
+
+        <!-- Platform-specific tray icons (to be added) -->
+        <!-- For macOS template icon (black and white) -->
+        <!-- <file alias="tray_icon_template">tray_icon_template.png</file> -->
+
+        <!-- For Linux light/dark themes -->
+        <!-- <file alias="tray_icon_light">tray_icon_light.svg</file> -->
+        <!-- <file alias="tray_icon_dark">tray_icon_dark.svg</file> -->
+
+        <!-- Menu icons (to be added) -->
+        <!-- <file alias="connect">connect.png</file> -->
+        <!-- <file alias="disconnect">disconnect.png</file> -->
+        <!-- <file alias="settings">settings.png</file> -->
+        <!-- <file alias="exit">exit.png</file> -->
+    </qresource>
+</RCC>

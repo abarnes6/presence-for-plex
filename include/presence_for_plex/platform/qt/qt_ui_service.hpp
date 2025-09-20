@@ -1,21 +1,16 @@
 #pragma once
 
-#ifdef _WIN32
-
 #include "presence_for_plex/platform/ui_service.hpp"
-#include "presence_for_plex/utils/logger.hpp"
+#include <QApplication>
 #include <memory>
 
-namespace presence_for_plex {
-namespace platform {
-namespace windows {
+namespace presence_for_plex::platform::qt {
 
-class WindowsUiService : public UiService {
+class QtUiService : public UiService {
 public:
-    WindowsUiService();
-    ~WindowsUiService() override;
+    QtUiService();
+    ~QtUiService() override;
 
-    // UiService interface implementation
     std::expected<void, UiError> initialize() override;
     void shutdown() override;
     bool is_initialized() const override;
@@ -34,21 +29,18 @@ public:
     void run_event_loop() override;
     void quit_event_loop() override;
 
+    QApplication* get_application() { return m_app; }
+
 private:
-    bool m_initialized{false};
-    std::string m_component_name;
+    QApplication* m_app = nullptr;
+    bool m_initialized = false;
+    bool m_owns_app = false;
+    std::string m_component_name = "QtUiService";
 };
 
-class WindowsUiServiceFactory : public UiServiceFactory {
+class QtUiServiceFactory : public UiServiceFactory {
 public:
-    WindowsUiServiceFactory() = default;
-    ~WindowsUiServiceFactory() override = default;
-
     std::unique_ptr<UiService> create_service(PlatformType type = PlatformType::Auto) override;
 };
 
-} // namespace windows
-} // namespace platform
-} // namespace presence_for_plex
-
-#endif // _WIN32
+} // namespace presence_for_plex::platform::qt

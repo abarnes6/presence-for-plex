@@ -10,6 +10,9 @@ namespace presence_for_plex {
 namespace core {
     class ConfigurationService;
 }
+namespace platform {
+    class BrowserLauncher;
+}
 namespace services {
 
 // Forward declarations
@@ -37,7 +40,8 @@ public:
 class PlexAuthenticator : public IPlexAuthenticator {
 public:
     explicit PlexAuthenticator(std::shared_ptr<HttpClient> http_client,
-                              std::shared_ptr<core::ConfigurationService> config_service);
+                              std::shared_ptr<core::ConfigurationService> config_service,
+                              std::shared_ptr<platform::BrowserLauncher> browser_launcher = nullptr);
     ~PlexAuthenticator() override = default;
 
     std::expected<core::PlexToken, core::PlexError> acquire_auth_token() override;
@@ -60,6 +64,7 @@ private:
 
     std::shared_ptr<HttpClient> m_http_client;
     std::shared_ptr<core::ConfigurationService> m_config_service;
+    std::shared_ptr<platform::BrowserLauncher> m_browser_launcher;
     std::atomic<bool> m_shutting_down{false};
 };
 

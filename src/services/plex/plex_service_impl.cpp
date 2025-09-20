@@ -453,7 +453,8 @@ std::unique_ptr<PlexServiceImpl> PlexServiceBuilder::build() {
         if (!m_config_service) {
             throw std::runtime_error("Configuration service is required to create PlexAuthenticator");
         }
-        m_authenticator = std::make_shared<PlexAuthenticator>(m_http_client, m_config_service);
+        // Browser launcher will be created inside PlexAuthenticator if not provided
+        m_authenticator = std::make_shared<PlexAuthenticator>(m_http_client, m_config_service, nullptr);
     }
 
     if (!m_cache_manager) {

@@ -3,6 +3,12 @@
 #include "presence_for_plex/core/application.hpp"
 #include "presence_for_plex/platform/ui_service.hpp"
 
+#ifdef USE_QT_UI
+#include "presence_for_plex/platform/qt/qt_ui_service.hpp"
+#include <QApplication>
+#include <QMessageBox>
+#endif
+
 #include <iostream>
 #include <memory>
 #include <csignal>
@@ -11,10 +17,6 @@
 #include <chrono>
 #include <string>
 #include <filesystem>
-
-#ifdef _WIN32
-#include <windows.h>
-#endif
 
 // Global application instance for signal handling
 std::atomic<bool> g_shutdown_requested{false};
@@ -40,7 +42,20 @@ presence_for_plex::utils::LogLevel parse_log_level(const std::string& level_str)
     return presence_for_plex::utils::LogLevel::Info; // Default fallback
 }
 
-int main() {
+int main(int argc, char *argv[]) {
+#ifdef USE_QT_UI
+    // Create QApplication early for Qt-based operations
+    QApplication qt_app(argc, argv);
+    qt_app.setApplicationName("Presence for Plex");
+    qt_app.setApplicationDisplayName("Presence for Plex");
+    qt_app.setOrganizationName("Andrew Barnes");
+    qt_app.setOrganizationDomain("presence-for-plex.github.io");
+    qt_app.setQuitOnLastWindowClosed(false);
+
+#ifdef Q_OS_LINUX
+    qt_app.setDesktopFileName("presence-for-plex.desktop");
+#endif
+#endif
     // Initialize configuration service first to get log level
     auto config_service = presence_for_plex::core::ConfigurationService::create("");
     auto config_load_result = config_service->load_configuration();
@@ -93,11 +108,9 @@ int main() {
     PLEX_LOG_INFO("Main", "Configuration loaded, log level: " + config.log_level);
 
     // Register signal handlers for graceful shutdown
-#ifndef _WIN32
     std::signal(SIGINT, signal_handler);
     std::signal(SIGTERM, signal_handler);
-#else
-    std::signal(SIGINT, signal_handler);
+#ifdef _WIN32
     std::signal(SIGBREAK, signal_handler);
 #endif
 
@@ -110,31 +123,9 @@ int main() {
             std::string message = "Another instance of PresenceForPlex is already running.";
             PLEX_LOG_WARNING("Main", message);
 
-#ifdef _WIN32
-            // Try to use modern notifications, fall back to MessageBox if unavailable
-            auto ui_service = presence_for_plex::platform::UiServiceFactory::create_default_factory()->create_service();
-            auto ui_init_result = ui_service ? ui_service->initialize() : std::unexpected(presence_for_plex::platform::UiError::InitializationFailed);
-            if (ui_service && ui_init_result && ui_service->supports_notifications()) {
-                auto notification_manager = ui_service->create_notification_manager();
-                auto nm_init_result = notification_manager ? notification_manager->initialize() : std::unexpected(presence_for_plex::platform::UiError::InitializationFailed);
-                if (notification_manager && nm_init_result) {
-                    presence_for_plex::platform::Notification notification(
-                        "PresenceForPlex",
-                        message,
-                        presence_for_plex::platform::NotificationType::Warning
-                    );
-                    auto show_result = notification_manager->show_notification(notification);
-                    if (show_result) {
-                        std::this_thread::sleep_for(std::chrono::seconds(3));
-                    } else {
-                        MessageBoxA(NULL, message.c_str(), "PresenceForPlex", MB_ICONINFORMATION | MB_OK);
-                    }
-                } else {
-                    MessageBoxA(NULL, message.c_str(), "PresenceForPlex", MB_ICONINFORMATION | MB_OK);
-                }
-            } else {
-                MessageBoxA(NULL, message.c_str(), "PresenceForPlex", MB_ICONINFORMATION | MB_OK);
-            }
+#ifdef USE_QT_UI
+            // Use Qt for notifications when available
+            QMessageBox::warning(nullptr, "PresenceForPlex", QString::fromStdString(message));
 #else
             std::cerr << message << std::endl;
 #endif
@@ -177,8 +168,12 @@ int main() {
         std::cout << "PresenceForPlex v0.4.0 is running!" << std::endl;
         std::cout << "Press Ctrl+C to exit." << std::endl;
 
-        // Main event loop - let the application handle its own event processing
+        // Main event loop
         while (!g_shutdown_requested.load() && app->is_running()) {
+#ifdef USE_QT_UI
+            // Process Qt events
+            qt_app.processEvents();
+#endif
             // Run one iteration of the application's event loop
             app->run_once();
             std::this_thread::sleep_for(std::chrono::milliseconds(50)); // Faster response
@@ -220,7 +215,11 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     (void)lpCmdLine;
     (void)nCmdShow;
 
+    // Get command line arguments for Qt
+    int argc = __argc;
+    char** argv = __argv;
+
     // Call the regular main function
-    return main();
+    return main(argc, argv);
 }
 #endif

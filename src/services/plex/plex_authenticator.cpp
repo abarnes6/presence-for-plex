@@ -1,16 +1,9 @@
 #include "presence_for_plex/services/plex/plex_authenticator.hpp"
 #include "presence_for_plex/services/network_service.hpp"
 #include "presence_for_plex/core/application.hpp"
+#include "presence_for_plex/platform/browser_launcher.hpp"
 #include "presence_for_plex/utils/logger.hpp"
 #include <nlohmann/json.hpp>
-
-#ifdef _WIN32
-#define NOMINMAX
-#include <windows.h>
-#include <shellapi.h>
-#else
-#include <cstdlib>
-#endif
 
 namespace presence_for_plex {
 namespace services {
@@ -18,9 +11,16 @@ namespace services {
 using json = nlohmann::json;
 
 PlexAuthenticator::PlexAuthenticator(std::shared_ptr<HttpClient> http_client,
-                                   std::shared_ptr<core::ConfigurationService> config_service)
+                                   std::shared_ptr<core::ConfigurationService> config_service,
+                                   std::shared_ptr<platform::BrowserLauncher> browser_launcher)
     : m_http_client(std::move(http_client))
-    , m_config_service(std::move(config_service)) {
+    , m_config_service(std::move(config_service))
+    , m_browser_launcher(std::move(browser_launcher)) {
+
+    // Create default browser launcher if none provided
+    if (!m_browser_launcher) {
+        m_browser_launcher = platform::create_browser_launcher();
+    }
 }
 
 std::expected<core::PlexToken, core::PlexError> PlexAuthenticator::acquire_auth_token() {
@@ -201,20 +201,22 @@ void PlexAuthenticator::open_authorization_url(const std::string& pin, const std
 
     PLEX_LOG_INFO("PlexAuthenticator", "Opening browser for authentication: " + auth_url);
 
-#ifdef _WIN32
-    MessageBoxA(NULL,
-                "A browser window will open for Plex authentication.\n\n"
-                "Please log in to your Plex account and authorize Presence For Plex.\n\n"
-                "The application will continue setup after successful authentication.",
-                "Plex Authentication Required",
-                MB_ICONINFORMATION | MB_OK);
+    // Use browser launcher to show message and open URL
+    if (m_browser_launcher) {
+        m_browser_launcher->show_message(
+            "Plex Authentication Required",
+            "A browser window will open for Plex authentication.\n\n"
+            "Please log in to your Plex account and authorize Presence For Plex.\n\n"
+            "The application will continue setup after successful authentication."
+        );
 
-    ShellExecuteA(NULL, "open", auth_url.c_str(), NULL, NULL, SW_SHOWNORMAL);
-#else
-    // For non-Windows platforms
-    std::string cmd = "xdg-open \"" + auth_url + "\"";
-    system(cmd.c_str());
-#endif
+        auto result = m_browser_launcher->open_url(auth_url);
+        if (!result) {
+            PLEX_LOG_ERROR("PlexAuthenticator", "Failed to open browser for authentication");
+        }
+    } else {
+        PLEX_LOG_ERROR("PlexAuthenticator", "No browser launcher available");
+    }
 }
 
 std::expected<core::PlexToken, core::PlexError> PlexAuthenticator::poll_for_pin_authorization(

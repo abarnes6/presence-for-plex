@@ -26,6 +26,33 @@ option(BUILD_TESTING "Build tests" OFF)
 option(USE_DYNAMIC_LINKS "Use system libraries instead of static linking" OFF)
 option(ENABLE_SANITIZERS "Enable sanitizers in debug builds" OFF)
 
+# Qt configuration (always enabled for UI)
+set(CMAKE_AUTOMOC ON)
+set(CMAKE_AUTORCC ON)
+set(CMAKE_AUTOUIC ON)
+
+# Find Qt6 (optional for now)
+find_package(Qt6 QUIET COMPONENTS Core Widgets Network)
+if(NOT Qt6_FOUND)
+    message(WARNING "Qt6 not found. UI features will be disabled.")
+    message(WARNING "To enable UI, install Qt6: ")
+    message(WARNING "  Ubuntu/Debian: sudo apt install qt6-base-dev")
+    message(WARNING "  macOS: brew install qt6")
+    message(WARNING "  Windows: Download from https://www.qt.io/download-open-source")
+    set(USE_QT_UI FALSE)
+else()
+    message(STATUS "Qt6 found. UI features enabled.")
+    set(USE_QT_UI TRUE)
+endif()
+
+# Platform-specific Qt settings
+if(APPLE)
+    set(CMAKE_OSX_DEPLOYMENT_TARGET "10.15")
+    set(MACOSX_BUNDLE TRUE)
+elseif(LINUX)
+    set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
+endif()
+
 # Include helper modules
 include(cmake/compiler_flags.cmake)
 include(cmake/dependencies.cmake)
@@ -67,15 +94,17 @@ set(SERVICES_SOURCES
 set(PLATFORM_SOURCES
     src/platform/common/single_instance.cpp
     src/platform/ui_service_factory.cpp
+    src/platform/browser_launcher.cpp
 )
 
-# Platform-specific sources
-if(WIN32)
+# Qt-based UI implementation (if Qt is available)
+if(USE_QT_UI)
     list(APPEND PLATFORM_SOURCES
-        src/platform/windows/tray_icon_win.cpp
-        src/platform/windows/windows_ui_service.cpp
-        src/platform/windows/tray_integration.cpp
-        src/platform/windows/toast_notification_manager.cpp
+        src/platform/qt/qt_ui_service.cpp
+        src/platform/qt/qt_system_tray.cpp
+        src/platform/qt/qt_notification_manager.cpp
+        src/platform/qt/qt_dialog_manager.cpp
+        src/platform/qt/qt_window_manager.cpp
     )
 endif()
 
@@ -97,16 +126,17 @@ set(ALL_SOURCES
     src/main.cpp
 )
 
-# Add resource files for Windows
-if(WIN32)
-    list(APPEND ALL_SOURCES assets/resources.rc)
+# Add Qt resource files if Qt is available
+if(USE_QT_UI)
+    qt6_add_resources(QT_RESOURCES assets/resources.qrc)
+    list(APPEND ALL_SOURCES ${QT_RESOURCES})
 endif()
 
 # Create the main executable
 if(WIN32)
-    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /SUBSYSTEM:WINDOWS")
-    add_compile_definitions(WIN32_LEAN_AND_MEAN)
     add_executable(PresenceForPlex WIN32 ${ALL_SOURCES} ${HEADERS})
+elseif(APPLE)
+    add_executable(PresenceForPlex MACOSX_BUNDLE ${ALL_SOURCES} ${HEADERS})
 else()
     add_executable(PresenceForPlex ${ALL_SOURCES} ${HEADERS})
 endif()
@@ -124,21 +154,23 @@ target_link_libraries(PresenceForPlex PRIVATE
     nlohmann_json::nlohmann_json
 )
 
+# Link Qt libraries if available
+if(USE_QT_UI)
+    target_link_libraries(PresenceForPlex PRIVATE
+        Qt6::Core
+        Qt6::Widgets
+        Qt6::Network
+    )
+    target_compile_definitions(PresenceForPlex PRIVATE USE_QT_UI)
+endif()
+
 # Platform-specific linking
 if(WIN32)
     target_link_libraries(PresenceForPlex PRIVATE
         ws2_32
-        winhttp
         crypt32
         wldap32
         advapi32
-        shell32
-        user32
-        ole32
-        oleaut32
-        uuid
-        windowsapp
-        runtimeobject
     )
 elseif(APPLE)
     target_link_libraries(PresenceForPlex PRIVATE
