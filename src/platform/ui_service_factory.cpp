@@ -8,6 +8,14 @@
 namespace presence_for_plex {
 namespace platform {
 
+// MenuItem constructor implementation
+MenuItem::MenuItem(std::string id, std::string label, std::function<void()> action)
+    : type(MenuItemType::Action), id(std::move(id)), label(std::move(label)), action(std::move(action)) {}
+
+// Notification constructor implementation
+Notification::Notification(std::string title, std::string message, NotificationType type)
+    : type(type), title(std::move(title)), message(std::move(message)) {}
+
 // Static factory method implementation
 std::unique_ptr<UiServiceFactory> UiServiceFactory::create_default_factory() {
 #ifdef _WIN32

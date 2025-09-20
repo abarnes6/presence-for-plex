@@ -137,6 +137,8 @@ if(WIN32)
         ole32
         oleaut32
         uuid
+        windowsapp
+        runtimeobject
     )
 elseif(APPLE)
     target_link_libraries(PresenceForPlex PRIVATE
