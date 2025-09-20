@@ -92,7 +92,7 @@ QtNotificationManager::show_notification(const Notification& notification) {
         QString::fromStdString(notification.title),
         QString::fromStdString(notification.message),
         icon,
-        notification.duration.count() * 1000
+        static_cast<int>(notification.duration.count() * 1000)
     );
 
     PLEX_LOG_DEBUG(m_component_name, "Notification shown: " + notification.title);
@@ -116,7 +116,7 @@ QtNotificationManager::update_notification(const NotificationId& id, const Notif
         QString::fromStdString(notification.title),
         QString::fromStdString(notification.message),
         icon,
-        notification.duration.count() * 1000
+        static_cast<int>(notification.duration.count() * 1000)
     );
 
     PLEX_LOG_DEBUG(m_component_name, "Notification updated: " + id);

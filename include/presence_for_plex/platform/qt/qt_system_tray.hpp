@@ -44,7 +44,7 @@ protected:
 
 private:
     void handle_activation(QSystemTrayIcon::ActivationReason reason);
-    void handle_menu_triggered();
+    void handle_menu_triggered(QAction* action);
     QMenu* create_menu_from_items(const std::vector<MenuItem>& items, QWidget* parent = nullptr);
     QAction* find_action_by_id(const std::string& id);
     QIcon load_icon_for_platform(const std::string& base_path);

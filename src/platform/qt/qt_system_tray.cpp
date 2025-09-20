@@ -175,8 +175,8 @@ std::expected<void, UiError> QtSystemTray::set_menu(const std::vector<MenuItem>&
                 action->setChecked(item.checked);
             }
 
-            QObject::connect(action, &QAction::triggered, [this]() {
-                handle_menu_triggered();
+            QObject::connect(action, &QAction::triggered, [this, action]() {
+                handle_menu_triggered(action);
             });
 
             m_context_menu->addAction(action);
@@ -319,8 +319,7 @@ void QtSystemTray::handle_activation(QSystemTrayIcon::ActivationReason reason) {
     }
 }
 
-void QtSystemTray::handle_menu_triggered() {
-    QAction* action = qobject_cast<QAction*>(QObject::sender());
+void QtSystemTray::handle_menu_triggered(QAction* action) {
     if (action) {
         auto it = m_action_id_map.find(action);
         if (it != m_action_id_map.end()) {
@@ -360,8 +359,8 @@ QMenu* QtSystemTray::create_menu_from_items(const std::vector<MenuItem>& items, 
                 action->setChecked(item.checked);
             }
 
-            QObject::connect(action, &QAction::triggered, [this]() {
-                handle_menu_triggered();
+            QObject::connect(action, &QAction::triggered, [this, action]() {
+                handle_menu_triggered(action);
             });
 
             menu->addAction(action);
