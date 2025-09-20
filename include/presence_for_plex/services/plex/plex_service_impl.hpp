@@ -8,6 +8,7 @@
 #include "presence_for_plex/services/plex/plex_session_manager.hpp"
 #include "presence_for_plex/services/network_service.hpp"
 #include <memory>
+#include <expected>
 
 namespace presence_for_plex {
 namespace core {

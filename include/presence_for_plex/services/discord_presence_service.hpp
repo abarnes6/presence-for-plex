@@ -10,6 +10,7 @@
 #include <atomic>
 #include <mutex>
 #include <thread>
+#include <expected>
 
 namespace presence_for_plex::services {
 

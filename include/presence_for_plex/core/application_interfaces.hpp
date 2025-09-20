@@ -3,6 +3,7 @@
 #include "presence_for_plex/core/models.hpp"
 #include <memory>
 #include <atomic>
+#include <expected>
 
 namespace presence_for_plex {
 namespace core {

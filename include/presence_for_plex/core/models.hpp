@@ -243,7 +243,6 @@ struct ApplicationConfig {
     DiscordConfig discord;
     PlexConfig plex;
     std::string log_level = "info";
-    std::string log_file_path;
     bool start_minimized = false;
 
     bool is_valid() const;

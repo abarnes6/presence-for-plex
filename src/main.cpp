@@ -9,6 +9,7 @@
 #include <thread>
 #include <chrono>
 #include <string>
+#include <filesystem>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -58,11 +59,30 @@ int main() {
         std::make_unique<presence_for_plex::utils::ConsoleSink>(true)
     );
 
-    // Add file sink if log file path is configured
-    if (!config.log_file_path.empty()) {
-        logger->add_sink(
-            std::make_unique<presence_for_plex::utils::FileSink>(config.log_file_path, false)
-        );
+    // Always add file sink to config directory
+    std::filesystem::path log_file_path;
+#ifdef _WIN32
+    // Windows: %APPDATA%/Presence For Plex/presence-for-plex.log
+    if (const char* app_data = std::getenv("APPDATA")) {
+        log_file_path = std::filesystem::path(app_data) / "Presence For Plex" / "presence-for-plex.log";
+    }
+#else
+    // Unix/Linux/macOS: $XDG_CONFIG_HOME/presence-for-plex/presence-for-plex.log or ~/.config/presence-for-plex/presence-for-plex.log
+    if (const char* xdg_config = std::getenv("XDG_CONFIG_HOME")) {
+        log_file_path = std::filesystem::path(xdg_config) / "presence-for-plex" / "presence-for-plex.log";
+    } else if (const char* home = std::getenv("HOME")) {
+        log_file_path = std::filesystem::path(home) / ".config" / "presence-for-plex" / "presence-for-plex.log";
+    }
+#endif
+
+    if (!log_file_path.empty()) {
+        auto file_sink = std::make_unique<presence_for_plex::utils::FileSink>(log_file_path, false);
+        if (file_sink->is_open()) {
+            logger->add_sink(std::move(file_sink));
+            std::cerr << "File logging enabled: " << log_file_path << std::endl;
+        } else {
+            std::cerr << "Failed to open log file: " << log_file_path << std::endl;
+        }
     }
 
     // Set as global logger

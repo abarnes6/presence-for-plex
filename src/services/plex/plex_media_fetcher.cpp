@@ -6,6 +6,7 @@
 #include <sstream>
 #include <iomanip>
 #include <algorithm>
+#include <expected>
 
 namespace presence_for_plex {
 namespace services {

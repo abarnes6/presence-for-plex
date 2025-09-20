@@ -10,6 +10,7 @@
 #include <memory>
 #include <atomic>
 #include <unordered_map>
+#include <expected>
 
 namespace presence_for_plex {
 namespace core {

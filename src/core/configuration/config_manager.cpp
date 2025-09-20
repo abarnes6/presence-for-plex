@@ -122,7 +122,6 @@ public:
         m_full_config.plex_client_identifier = preserved_client_id;
 
         m_full_config.log_level = config.log_level;
-        m_full_config.log_file_path = config.log_file_path;
         m_full_config.start_minimized = config.start_minimized;
 
         // Save and notify
@@ -241,9 +240,6 @@ private:
         if (node["log_level"]) {
             m_full_config.log_level = node["log_level"].as<std::string>();
         }
-        if (node["log_file_path"]) {
-            m_full_config.log_file_path = node["log_file_path"].as<std::string>();
-        }
         if (node["start_minimized"]) {
             m_full_config.start_minimized = node["start_minimized"].as<bool>();
         }
@@ -295,9 +291,6 @@ private:
 
         // General settings
         node["log_level"] = m_full_config.log_level;
-        if (!m_full_config.log_file_path.empty()) {
-            node["log_file_path"] = m_full_config.log_file_path;
-        }
         node["start_minimized"] = m_full_config.start_minimized;
 
         // Discord settings

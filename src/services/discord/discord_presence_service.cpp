@@ -2,6 +2,7 @@
 #include "presence_for_plex/utils/logger.hpp"
 #include <chrono>
 #include <thread>
+#include <expected>
 
 namespace presence_for_plex::services {
 
