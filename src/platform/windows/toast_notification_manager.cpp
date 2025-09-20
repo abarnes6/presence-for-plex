@@ -147,8 +147,9 @@ void WindowsToastNotificationManager::setup_notification_handlers(
     });
 
     toast.Failed([this, id](const auto&, const ToastFailedEventArgs& args) {
+        auto error_code = args.ErrorCode();
         PLEX_LOG_ERROR(m_component_name,
-            std::format("Toast {} failed with error: {}", id, args.ErrorCode()));
+            std::format("Toast {} failed with error: 0x{:08X}", id, static_cast<uint32_t>(error_code)));
     });
 }
 
