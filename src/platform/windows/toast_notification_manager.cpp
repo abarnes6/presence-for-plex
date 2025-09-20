@@ -17,7 +17,7 @@ namespace windows {
 
 WindowsToastNotificationManager::WindowsToastNotificationManager()
     : m_component_name("WindowsToastNotificationManager")
-    , m_app_id(L"PresenceForPlex") {
+    , m_app_id("PresenceForPlex") {
     PLEX_LOG_DEBUG(m_component_name, "WindowsToastNotificationManager constructed");
 }
 
@@ -40,7 +40,7 @@ std::expected<void, UiError> WindowsToastNotificationManager::initialize() {
         winrt::init_apartment(winrt::apartment_type::single_threaded);
         m_com_initialized = true;
 
-        m_notifier = ToastNotificationManager::CreateToastNotifier(m_app_id);
+        m_notifier = ToastNotificationManager::CreateToastNotifier(winrt::to_hstring(m_app_id));
 
         m_initialized = true;
         PLEX_LOG_INFO(m_component_name, "Windows toast notification manager initialized successfully");
