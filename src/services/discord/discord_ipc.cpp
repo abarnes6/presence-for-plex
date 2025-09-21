@@ -183,7 +183,17 @@ bool DiscordIPC::connect_windows() {
         }
 
         PLEX_LOG_INFO("DiscordIPC", "Connected to pipe: " + pipe_name);
-        return perform_handshake();
+        m_connected = true;  // Set connected before handshake
+
+        if (!perform_handshake()) {
+          m_connected = false;
+          CloseHandle(m_pipe);
+          m_pipe = INVALID_HANDLE_VALUE;
+          PLEX_LOG_DEBUG("DiscordIPC", "Handshake failed, trying next pipe");
+          continue;
+        }
+
+        return true;
       }
 
       DWORD error = GetLastError();
@@ -258,7 +268,17 @@ bool DiscordIPC::connect_unix() {
 
       if (::connect(m_socket, reinterpret_cast<struct sockaddr*>(&addr), sizeof(addr)) == 0) {
         PLEX_LOG_INFO("DiscordIPC", "Connected to socket: " + socket_path);
-        return perform_handshake();
+        m_connected = true;  // Set connected before handshake
+
+        if (!perform_handshake()) {
+          m_connected = false;
+          close(m_socket);
+          m_socket = -1;
+          PLEX_LOG_DEBUG("DiscordIPC", "Handshake failed, trying next socket");
+          continue;
+        }
+
+        return true;
       }
 
       PLEX_LOG_DEBUG("DiscordIPC", "Failed to connect to socket: " + socket_path + ": " + std::string(strerror(errno)));
@@ -286,7 +306,17 @@ bool DiscordIPC::connect_unix() {
 
       if (::connect(m_socket, reinterpret_cast<struct sockaddr*>(&addr), sizeof(addr)) == 0) {
         PLEX_LOG_INFO("DiscordIPC", "Connected to special socket: " + path);
-        return perform_handshake();
+        m_connected = true;  // Set connected before handshake
+
+        if (!perform_handshake()) {
+          m_connected = false;
+          close(m_socket);
+          m_socket = -1;
+          PLEX_LOG_DEBUG("DiscordIPC", "Handshake failed for special socket");
+          continue;
+        }
+
+        return true;
       }
 
       PLEX_LOG_DEBUG("DiscordIPC", "Failed to connect to special socket: " + path + ": " + std::string(strerror(errno)));
@@ -414,7 +444,6 @@ bool DiscordIPC::perform_handshake() {
 
       if (response_json.contains("evt") && response_json["evt"] == "READY") {
         PLEX_LOG_INFO("DiscordIPC", "Handshake successful");
-        m_connected = true;
         return true;
       } else {
         PLEX_LOG_ERROR("DiscordIPC", "Handshake failed - not ready");
