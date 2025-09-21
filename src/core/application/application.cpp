@@ -378,14 +378,8 @@ private:
         exit_item.label = "Exit";
         exit_item.action = [this]() {
             PLEX_LOG_INFO("Application", "Exit requested from system tray");
-            // Use thread pool for async quit to avoid blocking UI thread
-            if (m_thread_pool) {
-                m_thread_pool->submit([this]() {
-                    this->quit();
-                });
-            } else {
-                this->quit();
-            }
+            // Call quit directly - the action is already on the Qt thread
+            this->quit();
         };
         menu_items.push_back(exit_item);
 

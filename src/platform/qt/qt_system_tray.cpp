@@ -66,14 +66,29 @@ void QtSystemTray::shutdown() {
 
     PLEX_LOG_INFO(m_component_name, "Shutting down Qt system tray");
 
+    // Disconnect all signals first to prevent any callbacks during cleanup
     if (m_tray_icon) {
+        QObject::disconnect(m_tray_icon.get(), nullptr, nullptr, nullptr);
         m_tray_icon->hide();
-        m_tray_icon.reset();
     }
 
-    m_context_menu.reset();
+    // Disconnect all action signals before clearing
+    for (auto& [id, action] : m_action_map) {
+        if (action) {
+            QObject::disconnect(action, nullptr, nullptr, nullptr);
+        }
+    }
+
+    // Clear the menu and actions before destroying the tray icon
+    if (m_context_menu) {
+        m_context_menu->clear();
+    }
     m_action_map.clear();
     m_action_id_map.clear();
+
+    // Now safely destroy the Qt objects
+    m_context_menu.reset();
+    m_tray_icon.reset();
 
     m_initialized = false;
     PLEX_LOG_INFO(m_component_name, "Qt system tray shut down");
