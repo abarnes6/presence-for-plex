@@ -249,6 +249,10 @@ private:
             auto discord = node["discord"];
             if (discord["client_id"]) {
                 m_full_config.discord_client_id = discord["client_id"].as<uint64_t>();
+                m_full_config.discord.application_id = std::to_string(m_full_config.discord_client_id);
+            } else {
+                // Use default Discord client ID
+                m_full_config.discord.application_id = std::to_string(m_full_config.discord_client_id);
             }
             if (discord["show_buttons"]) {
                 m_full_config.discord.show_buttons = discord["show_buttons"].as<bool>();
@@ -256,6 +260,9 @@ private:
             if (discord["show_progress"]) {
                 m_full_config.discord.show_progress = discord["show_progress"].as<bool>();
             }
+        } else {
+            // No discord config section, use default client ID
+            m_full_config.discord.application_id = std::to_string(m_full_config.discord_client_id);
         }
 
         // Plex settings
