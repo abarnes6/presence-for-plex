@@ -475,6 +475,19 @@ std::unique_ptr<PlexServiceImpl> PlexServiceBuilder::build() {
         m_media_fetcher->add_media_extractor(std::make_unique<MovieExtractor>());
         m_media_fetcher->add_media_extractor(std::make_unique<TVShowExtractor>());
         m_media_fetcher->add_media_extractor(std::make_unique<MusicExtractor>());
+
+        // Add external metadata services if configured
+        if (m_config_service) {
+            auto config = m_config_service->get_current_config();
+            if (!config.tmdb_access_token.empty()) {
+                m_media_fetcher->add_external_service(
+                    std::make_unique<TMDBService>(m_http_client, config.tmdb_access_token));
+            }
+        }
+
+        // Add Jikan service for anime metadata
+        m_media_fetcher->add_external_service(
+            std::make_unique<JikanService>(m_http_client));
     }
 
     if (!m_session_manager) {
