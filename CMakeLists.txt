@@ -65,7 +65,6 @@ set(SERVICES_SOURCES
     src/services/plex/plex_connection_manager.cpp
     src/services/plex/plex_media_fetcher.cpp
     src/services/plex/plex_session_manager.cpp
-    src/services/discord/discord_client.cpp
     src/services/discord/discord_ipc.cpp
     src/services/discord/rate_limiter.cpp
     src/services/discord/connection_manager.cpp

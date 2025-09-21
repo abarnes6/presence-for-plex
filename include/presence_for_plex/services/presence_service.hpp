@@ -20,6 +20,9 @@ struct PresenceData {
     std::string small_image_key;    // Small image asset key
     std::string small_image_text;   // Small image hover text
 
+    // Activity type for Discord (2 = Listening, 3 = Watching, 0 = Playing)
+    int activity_type = 3;
+
     // Timestamps
     std::optional<std::chrono::system_clock::time_point> start_timestamp;
     std::optional<std::chrono::system_clock::time_point> end_timestamp;
