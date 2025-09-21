@@ -118,6 +118,11 @@ if(USE_QT_UI)
     list(APPEND ALL_SOURCES ${QT_RESOURCES})
 endif()
 
+# Add Windows resource file for application icon
+if(WIN32)
+    list(APPEND ALL_SOURCES assets/resources.rc)
+endif()
+
 # Create the main executable
 if(APPLE)
     add_executable(PresenceForPlex MACOSX_BUNDLE ${ALL_SOURCES} ${HEADERS})

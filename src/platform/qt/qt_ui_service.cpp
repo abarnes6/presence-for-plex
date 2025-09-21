@@ -5,6 +5,7 @@
 #include "presence_for_plex/platform/qt/qt_window_manager.hpp"
 #include "presence_for_plex/utils/logger.hpp"
 #include <QCoreApplication>
+#include <QIcon>
 
 namespace presence_for_plex::platform::qt {
 
@@ -36,6 +37,14 @@ std::expected<void, UiError> QtUiService::initialize() {
         m_app->setApplicationDisplayName("Presence for Plex");
         m_app->setOrganizationName("Andrew Barnes");
         m_app->setOrganizationDomain("presence-for-plex.github.io");
+
+        // Set the application icon
+        QIcon appIcon(":/icons/app_icon");
+        if (appIcon.isNull()) {
+            // Fallback to file system path if resource not found
+            appIcon = QIcon("assets/icon.ico");
+        }
+        m_app->setWindowIcon(appIcon);
 
         #ifdef Q_OS_LINUX
         m_app->setDesktopFileName("presence-for-plex.desktop");

@@ -7,6 +7,7 @@
 #include "presence_for_plex/platform/qt/qt_ui_service.hpp"
 #include <QApplication>
 #include <QMessageBox>
+#include <QIcon>
 #endif
 
 #include <iostream>
@@ -56,6 +57,14 @@ int main(int argc, char *argv[]) {
     qt_app.setOrganizationName("Andrew Barnes");
     qt_app.setOrganizationDomain("presence-for-plex.github.io");
     qt_app.setQuitOnLastWindowClosed(false);
+
+    // Set the application icon
+    QIcon appIcon(":/icons/app_icon");
+    if (appIcon.isNull()) {
+        // Fallback to file system path if resource not found
+        appIcon = QIcon("assets/icon.ico");
+    }
+    qt_app.setWindowIcon(appIcon);
 
 #ifdef Q_OS_LINUX
     qt_app.setDesktopFileName("presence-for-plex.desktop");
