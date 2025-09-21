@@ -8,6 +8,8 @@
 #include <QApplication>
 #include <QMessageBox>
 #include <QIcon>
+#include <QTimer>
+#include <QObject>
 #endif
 
 #include <iostream>
@@ -31,6 +33,13 @@ void signal_handler(int signal) {
     if (g_app_instance) {
         g_app_instance->quit();
     }
+
+#ifdef USE_QT_UI
+    // Also quit the Qt application loop
+    if (QApplication::instance()) {
+        QApplication::quit();
+    }
+#endif
 }
 
 // Helper function to convert string log level to LogLevel enum
@@ -182,16 +191,29 @@ int main(int argc, char *argv[]) {
         std::cout << "PresenceForPlex v0.4.0 is running!" << std::endl;
         std::cout << "Press Ctrl+C to exit." << std::endl;
 
-        // Main event loop
-        while (!g_shutdown_requested.load() && app->is_running()) {
 #ifdef USE_QT_UI
-            // Process Qt events
-            qt_app.processEvents();
-#endif
-            // Run one iteration of the application's event loop
+        // Use Qt's event loop with a timer for application updates
+        constexpr int UI_UPDATE_INTERVAL_MS = 16; // ~60 FPS for UI responsiveness
+        QTimer appTimer;
+        QObject::connect(&appTimer, &QTimer::timeout, [&app]() {
+            if (!g_shutdown_requested.load() && app->is_running()) {
+                app->run_once();
+            } else {
+                QApplication::quit();
+            }
+        });
+        appTimer.start(UI_UPDATE_INTERVAL_MS);
+
+        // Run Qt event loop
+        int result = qt_app.exec();
+        PLEX_LOG_INFO("Main", "Qt event loop exited with code: " + std::to_string(result));
+#else
+        // Non-Qt event loop
+        while (!g_shutdown_requested.load() && app->is_running()) {
             app->run_once();
-            std::this_thread::sleep_for(std::chrono::milliseconds(50)); // Faster response
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
         }
+#endif
 
         PLEX_LOG_INFO("Main", "Shutdown requested, stopping application...");
 

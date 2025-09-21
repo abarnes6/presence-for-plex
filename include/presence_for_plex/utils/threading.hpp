@@ -38,9 +38,6 @@ public:
     template<Callable F>
     auto submit(F&& f) -> std::future<std::invoke_result_t<F>>;
 
-    template<CallableWith<> F>
-    auto submit(F&& f) -> std::future<std::invoke_result_t<F>>;
-
     template<typename F, typename... Args>
     requires CallableWith<F, Args...>
     auto submit(F&& f, Args&&... args) -> std::future<std::invoke_result_t<F, Args...>>;
@@ -58,6 +55,37 @@ private:
 
     void worker_thread(std::stop_token stop_token);
 };
+
+// Template implementations for ThreadPool
+template<Callable F>
+auto ThreadPool::submit(F&& f) -> std::future<std::invoke_result_t<F>> {
+    using return_type = std::invoke_result_t<F>;
+
+    auto task = std::make_shared<std::packaged_task<return_type()>>(
+        std::forward<F>(f)
+    );
+
+    std::future<return_type> res = task->get_future();
+    {
+        std::unique_lock<std::mutex> lock(m_queue_mutex);
+
+        if (m_shutdown.load()) {
+            throw std::runtime_error("enqueue on stopped ThreadPool");
+        }
+
+        m_tasks.emplace([task]() { (*task)(); });
+    }
+    m_condition.notify_one();
+    return res;
+}
+
+template<typename F, typename... Args>
+requires CallableWith<F, Args...>
+auto ThreadPool::submit(F&& f, Args&&... args) -> std::future<std::invoke_result_t<F, Args...>> {
+    return submit([f = std::forward<F>(f), ...args = std::forward<Args>(args)]() {
+        return f(args...);
+    });
+}
 
 // Task scheduler for delayed/periodic execution
 class TaskScheduler {

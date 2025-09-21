@@ -26,7 +26,6 @@ public:
     bool supports_dialogs() const override;
 
     void process_events() override;
-    void run_event_loop() override;
     void quit_event_loop() override;
 
     QApplication* get_application() { return m_app; }
@@ -34,7 +33,6 @@ public:
 private:
     QApplication* m_app = nullptr;
     bool m_initialized = false;
-    bool m_owns_app = false;
     std::string m_component_name = "QtUiService";
 };
 

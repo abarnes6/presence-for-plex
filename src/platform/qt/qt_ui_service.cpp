@@ -26,41 +26,12 @@ std::expected<void, UiError> QtUiService::initialize() {
 
     PLEX_LOG_INFO(m_component_name, "Initializing Qt UI service");
 
-    if (!QCoreApplication::instance()) {
-        PLEX_LOG_INFO(m_component_name, "Creating QApplication instance");
-        static int argc = 1;
-        static char app_name[] = "PresenceForPlex";
-        static char* argv[] = { app_name, nullptr };
-
-        m_app = new QApplication(argc, argv);
-        m_app->setApplicationName("Presence for Plex");
-        m_app->setApplicationDisplayName("Presence for Plex");
-        m_app->setOrganizationName("Andrew Barnes");
-        m_app->setOrganizationDomain("presence-for-plex.github.io");
-
-        // Set the application icon
-        QIcon appIcon(":/icons/app_icon");
-        if (appIcon.isNull()) {
-            // Fallback to file system path if resource not found
-            appIcon = QIcon("assets/icon.ico");
-        }
-        m_app->setWindowIcon(appIcon);
-
-        #ifdef Q_OS_LINUX
-        m_app->setDesktopFileName("presence-for-plex.desktop");
-        #endif
-
-        m_owns_app = true;
-    } else {
-        m_app = qobject_cast<QApplication*>(QCoreApplication::instance());
-        if (!m_app) {
-            PLEX_LOG_ERROR(m_component_name, "QCoreApplication exists but is not a QApplication");
-            return std::unexpected(UiError::InitializationFailed);
-        }
-        m_owns_app = false;
+    // Use the existing QApplication instance created in main
+    m_app = qobject_cast<QApplication*>(QCoreApplication::instance());
+    if (!m_app) {
+        PLEX_LOG_ERROR(m_component_name, "QApplication not available - ensure Qt is initialized in main");
+        return std::unexpected(UiError::InitializationFailed);
     }
-
-    m_app->setQuitOnLastWindowClosed(false);
 
     m_initialized = true;
     PLEX_LOG_INFO(m_component_name, "Qt UI service initialized successfully");
@@ -74,10 +45,8 @@ void QtUiService::shutdown() {
 
     PLEX_LOG_INFO(m_component_name, "Shutting down Qt UI service");
 
-    if (m_owns_app && m_app) {
-        delete m_app;
-        m_app = nullptr;
-    }
+    // Don't delete QApplication - it's managed by main
+    m_app = nullptr;
 
     m_initialized = false;
     PLEX_LOG_INFO(m_component_name, "Qt UI service shut down");
@@ -154,17 +123,6 @@ void QtUiService::process_events() {
     }
 
     m_app->processEvents();
-}
-
-void QtUiService::run_event_loop() {
-    if (!m_initialized || !m_app) {
-        PLEX_LOG_ERROR(m_component_name, "UI service not initialized, cannot run event loop");
-        return;
-    }
-
-    PLEX_LOG_INFO(m_component_name, "Starting Qt event loop");
-    m_app->exec();
-    PLEX_LOG_INFO(m_component_name, "Qt event loop exited");
 }
 
 void QtUiService::quit_event_loop() {

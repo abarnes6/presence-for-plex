@@ -12,6 +12,8 @@
 #include <thread>
 #include <chrono>
 #include <filesystem>
+#include <future>
+#include <vector>
 
 namespace presence_for_plex {
 namespace core {
@@ -131,28 +133,32 @@ public:
             // Initialize system tray
             initialize_system_tray();
 
-            // Start media service asynchronously
+            // Start services using thread pool for proper resource management
             if (m_media_service) {
-                std::thread([this]() {
-                    auto media_result = m_media_service->start();
-                    if (!media_result) {
-                        PLEX_LOG_WARNING("Application", "Failed to start media service");
-                    } else {
-                        PLEX_LOG_INFO("Application", "Media service started successfully");
-                    }
-                }).detach();
+                m_service_futures.push_back(
+                    m_thread_pool->submit([this]() {
+                        auto media_result = m_media_service->start();
+                        if (!media_result) {
+                            PLEX_LOG_WARNING("Application", "Failed to start media service");
+                        } else {
+                            PLEX_LOG_INFO("Application", "Media service started successfully");
+                        }
+                    })
+                );
             }
 
-            // Start presence service asynchronously
+            // Start presence service using thread pool
             if (m_presence_service) {
-                std::thread([this]() {
-                    auto presence_result = m_presence_service->initialize();
-                    if (!presence_result) {
-                        PLEX_LOG_WARNING("Application", "Failed to start presence service");
-                    } else {
-                        PLEX_LOG_INFO("Application", "Presence service started successfully");
-                    }
-                }).detach();
+                m_service_futures.push_back(
+                    m_thread_pool->submit([this]() {
+                        auto presence_result = m_presence_service->initialize();
+                        if (!presence_result) {
+                            PLEX_LOG_WARNING("Application", "Failed to start presence service");
+                        } else {
+                            PLEX_LOG_INFO("Application", "Presence service started successfully");
+                        }
+                    })
+                );
             }
 
             PLEX_LOG_INFO("Application", "Application started successfully");
@@ -173,6 +179,18 @@ public:
 
     void shutdown() override {
         PLEX_LOG_INFO("Application", "Shutting down application...");
+
+        // Wait for any pending service initialization to complete
+        for (auto& future : m_service_futures) {
+            if (future.valid()) {
+                try {
+                    future.wait();
+                } catch (const std::exception& e) {
+                    PLEX_LOG_WARNING("Application", "Exception while waiting for service: " + std::string(e.what()));
+                }
+            }
+        }
+        m_service_futures.clear();
 
         // Stop services gracefully
         PLEX_LOG_INFO("Application", "Stopping services...");
@@ -360,11 +378,11 @@ private:
         exit_item.label = "Exit";
         exit_item.action = [this]() {
             PLEX_LOG_INFO("Application", "Exit requested from system tray");
-            // Execute quit asynchronously to avoid blocking the UI thread
+            // Use thread pool for async quit to avoid blocking UI thread
             if (m_thread_pool) {
-                std::thread([this]() {
+                m_thread_pool->submit([this]() {
                     this->quit();
-                }).detach();
+                });
             } else {
                 this->quit();
             }
@@ -396,6 +414,9 @@ private:
     // Utilities
     std::unique_ptr<utils::ThreadPool> m_thread_pool;
     std::unique_ptr<utils::TaskScheduler> m_task_scheduler;
+
+    // Service startup futures for proper async management
+    std::vector<std::future<void>> m_service_futures;
 };
 
 // Factory implementation
