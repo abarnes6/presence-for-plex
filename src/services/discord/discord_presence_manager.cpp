@@ -328,8 +328,9 @@ public:
                 break;
         }
 
-        // Add timestamps for progress
-        if (m_show_progress && media.state == core::PlaybackState::Playing) {
+        // Add timestamps for progress (include for both playing and paused states)
+        if (m_show_progress && (media.state == core::PlaybackState::Playing ||
+                                media.state == core::PlaybackState::Paused)) {
             auto now = std::chrono::system_clock::now();
             data.start_timestamp = now - std::chrono::seconds(static_cast<int64_t>(media.progress));
 
@@ -416,7 +417,8 @@ private:
         }
 
         if (media.season > 0 && media.episode > 0) {
-            data.state = "S" + std::to_string(media.season) + "E" + std::to_string(media.episode);
+            // Format as "S1 • E2 - Episode Title" to match Discord's style
+            data.state = "S" + std::to_string(media.season) + " • E" + std::to_string(media.episode);
             if (!media.title.empty() && media.title != media.grandparent_title) {
                 data.state += " - " + media.title;
             }

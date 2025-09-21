@@ -368,6 +368,10 @@ json DiscordPresenceService::create_discord_activity(const PresenceData& data) c
         return activity; // Empty activity for clearing presence
     }
 
+    // Add required Discord fields for media presence
+    activity["type"] = 3;  // Watching type for media
+    activity["instance"] = true;  // Required for rich presence
+
     if (!data.details.empty()) {
         activity["details"] = data.details;
     }

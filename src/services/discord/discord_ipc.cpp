@@ -103,12 +103,13 @@ bool DiscordIPC::send_presence(const Json& presence_data) {
       return false;
     }
 
+    // Use a simple incrementing nonce like the working implementation
+    static int nonce_counter = 0;
+    nonce_counter++;
+
     const Json payload = {
         {"cmd", "SET_ACTIVITY"},
-        {"nonce",
-         std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(
-                            std::chrono::system_clock::now().time_since_epoch())
-                            .count())},
+        {"nonce", std::to_string(nonce_counter)},
         {"args", {{"pid", get_process_id()}, {"activity", presence_data}}}};
 
     return send_payload(payload);
@@ -119,12 +120,13 @@ bool DiscordIPC::clear_presence() {
       return false;
     }
 
+    // Use a simple incrementing nonce like the working implementation
+    static int nonce_counter = 0;
+    nonce_counter++;
+
     const Json payload = {
         {"cmd", "SET_ACTIVITY"},
-        {"nonce",
-         std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(
-                            std::chrono::system_clock::now().time_since_epoch())
-                            .count())},
+        {"nonce", std::to_string(nonce_counter)},
         {"args", {{"pid", get_process_id()}, {"activity", nullptr}}}};
 
     return send_payload(payload);
