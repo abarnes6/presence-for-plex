@@ -4,7 +4,7 @@
 #include "presence_for_plex/services/rate_limiter.hpp"
 #include "presence_for_plex/services/connection_manager.hpp"
 #include "presence_for_plex/services/frame_queue.hpp"
-#include "presence_for_plex/services/discord_connection_strategy.hpp"
+#include "presence_for_plex/services/discord_ipc.hpp"
 #include <nlohmann/json.hpp>
 #include <memory>
 #include <atomic>

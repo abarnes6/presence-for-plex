@@ -28,10 +28,10 @@ DiscordPresenceService::DiscordPresenceService(Config config)
 
     m_formatter = PresenceFormatter::create_default_formatter();
 
-    // Create connection strategy and manager
-    auto connection_strategy = std::make_unique<DiscordConnectionStrategy>(m_config.client_id);
+    // Create Discord IPC and connection manager
+    auto discord_ipc = std::make_unique<DiscordIPC>(m_config.client_id);
     m_connection_manager = std::make_unique<ConnectionManager>(
-        std::move(connection_strategy), m_config.connection_config);
+        std::move(discord_ipc), m_config.connection_config);
 
     // Set up connection callbacks
     m_connection_manager->set_connection_callback(
@@ -325,14 +325,9 @@ bool DiscordPresenceService::send_presence_frame(const json& frame) {
         return false;
     }
 
-    auto* strategy = m_connection_manager->get_strategy<DiscordConnectionStrategy>();
-    if (!strategy) {
-        PLEX_LOG_WARNING("DiscordPresenceService", "Cannot access Discord IPC strategy");
-        return false;
-    }
-
-    auto* ipc = strategy->get_ipc();
+    auto* ipc = m_connection_manager->get_strategy<DiscordIPC>();
     if (!ipc) {
+        PLEX_LOG_WARNING("DiscordPresenceService", "Cannot access Discord IPC");
         return false;
     }
 

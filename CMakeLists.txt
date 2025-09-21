@@ -58,6 +58,7 @@ set(CORE_SOURCES
 )
 
 set(SERVICES_SOURCES
+    src/services/presence_service.cpp
     src/services/plex/plex_authenticator.cpp
     src/services/plex/plex_service_impl.cpp
     src/services/plex/plex_cache_manager.cpp
@@ -66,10 +67,8 @@ set(SERVICES_SOURCES
     src/services/plex/plex_session_manager.cpp
     src/services/discord/discord_client.cpp
     src/services/discord/discord_ipc.cpp
-    src/services/discord/discord_presence_manager.cpp
     src/services/discord/rate_limiter.cpp
     src/services/discord/connection_manager.cpp
-    src/services/discord/discord_connection_strategy.cpp
     src/services/discord/discord_presence_service.cpp
     src/services/network/http_client.cpp
     src/services/network/curl_http_client.cpp

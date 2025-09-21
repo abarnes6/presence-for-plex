@@ -165,6 +165,10 @@ bool DiscordIPC::send_ping() {
     return true;
   }
 
+bool DiscordIPC::send_health_check() {
+    return send_ping();
+  }
+
 #ifdef _WIN32
 bool DiscordIPC::connect_windows() {
     for (int i = 0; i < 10; ++i) {

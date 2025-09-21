@@ -117,12 +117,6 @@ public:
     ) = 0;
 
     static std::unique_ptr<PresenceServiceFactory> create_default_factory();
-
-    /**
-     * @brief Create factory with robustness features
-     * @return Factory that creates Discord presence services
-     */
-    static std::unique_ptr<PresenceServiceFactory> create_enhanced_factory();
 };
 
 // Rich presence asset manager
@@ -140,9 +134,6 @@ public:
     virtual std::string get_play_icon() const = 0;
     virtual std::string get_pause_icon() const = 0;
     virtual std::string get_stop_icon() const = 0;
-
-    // Factory method
-    static std::unique_ptr<AssetManager> create_default_manager();
 };
 
 } // namespace services
