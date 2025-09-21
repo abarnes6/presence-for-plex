@@ -17,10 +17,6 @@ struct FullConfig : public ApplicationConfig {
     std::string plex_client_identifier;
     std::string plex_username;
 
-    // TMDB API key
-    std::string tmdb_access_token =
-        "eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiIzNmMxOTI3ZjllMTlkMzUxZWFmMjAxNGViN2JmYjNkZiIsIm5iZiI6MTc0NTQzMTA3NC4yMjcsInN1YiI6IjY4MDkyYTIyNmUxYTc2OWU4MWVmMGJhOSIsInNjb3BlcyI6WyJhcGlfcmVhZCJdLCJ2ZXJzaW9uIjoxfQ.Td6eAbW7SgQOMmQpRDwVM-_3KIMybGRqWNK8Yqw1Zzs";
-
     // Plex servers (stored separately from basic config)
     std::unordered_map<std::string, std::unique_ptr<PlexServer>> plex_servers;
 
@@ -123,6 +119,7 @@ public:
 
         m_full_config.log_level = config.log_level;
         m_full_config.start_minimized = config.start_minimized;
+        m_full_config.tmdb_access_token = config.tmdb_access_token;
 
         // Save and notify
         auto result = save_configuration_internal();
@@ -181,10 +178,6 @@ public:
         (void)save_configuration_internal();
     }
 
-    std::string get_tmdb_access_token() const {
-        std::shared_lock lock(m_mutex);
-        return m_full_config.tmdb_access_token;
-    }
 
     const std::unordered_map<std::string, std::unique_ptr<PlexServer>>& get_plex_servers() const override {
         static std::unordered_map<std::string, std::unique_ptr<PlexServer>> empty_servers;
