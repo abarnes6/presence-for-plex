@@ -418,7 +418,8 @@ private:
 
         if (media.season > 0 && media.episode > 0) {
             // Format as "S1 • E2 - Episode Title" to match Discord's style
-            data.state = "S" + std::to_string(media.season) + " • E" + std::to_string(media.episode);
+            // Use unicode bullet point character
+            data.state = "S" + std::to_string(media.season) + " \u2022 E" + std::to_string(media.episode);
             if (!media.title.empty() && media.title != media.grandparent_title) {
                 data.state += " - " + media.title;
             }

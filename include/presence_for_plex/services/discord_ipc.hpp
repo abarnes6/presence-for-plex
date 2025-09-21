@@ -52,6 +52,7 @@ class DiscordIPC {
   bool send_payload(const nlohmann::json& payload);
 
   static uint32_t get_process_id();
+  static inline int m_nonce_counter = 0;  // Shared nonce counter
 };
 
 } // namespace presence_for_plex::services
