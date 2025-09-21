@@ -148,56 +148,8 @@ public:
                 }
             }
 
-            // Create and show system tray if UI service is available
-            if (m_ui_service && m_ui_service->supports_system_tray()) {
-                m_system_tray = m_ui_service->create_system_tray();
-                if (m_system_tray) {
-                    auto tray_init_result = m_system_tray->initialize();
-                    if (tray_init_result) {
-                        // Set the application icon
-                        std::string icon_path = ":/icons/app_icon";
-                        m_system_tray->set_icon(icon_path);
-
-                        // Set tooltip
-                        m_system_tray->set_tooltip("Presence for Plex");
-
-                        // Create tray menu
-                        std::vector<platform::MenuItem> menu_items;
-
-                        // Show status item
-                        platform::MenuItem status_item;
-                        status_item.id = "status";
-                        status_item.label = "Status: Running";
-                        status_item.enabled = false;
-                        menu_items.push_back(status_item);
-
-                        // Separator
-                        platform::MenuItem separator;
-                        separator.type = platform::MenuItemType::Separator;
-                        menu_items.push_back(separator);
-
-                        // Exit item
-                        platform::MenuItem exit_item;
-                        exit_item.id = "exit";
-                        exit_item.label = "Exit";
-                        exit_item.action = [this]() {
-                            PLEX_LOG_INFO("Application", "Exit requested from system tray");
-                            this->quit();
-                        };
-                        menu_items.push_back(exit_item);
-
-                        m_system_tray->set_menu(menu_items);
-
-                        // Show the tray icon
-                        m_system_tray->show();
-                        PLEX_LOG_INFO("Application", "System tray created and shown");
-                    } else {
-                        PLEX_LOG_WARNING("Application", "Failed to initialize system tray");
-                    }
-                } else {
-                    PLEX_LOG_WARNING("Application", "Failed to create system tray");
-                }
-            }
+            // Initialize system tray
+            initialize_system_tray();
 
             PLEX_LOG_INFO("Application", "Application started successfully");
             return {};
@@ -330,6 +282,90 @@ public:
     }
 
 private:
+    void initialize_system_tray() {
+        if (!m_ui_service || !m_ui_service->supports_system_tray()) {
+            PLEX_LOG_DEBUG("Application", "System tray not supported or UI service not available");
+            return;
+        }
+
+        m_system_tray = m_ui_service->create_system_tray();
+        if (!m_system_tray) {
+            PLEX_LOG_WARNING("Application", "Failed to create system tray");
+            return;
+        }
+
+        auto tray_init_result = m_system_tray->initialize();
+        if (!tray_init_result) {
+            PLEX_LOG_WARNING("Application", "Failed to initialize system tray");
+            return;
+        }
+
+        // Set the application icon
+        std::string icon_path = ":/icons/app_icon";
+        auto icon_result = m_system_tray->set_icon(icon_path);
+        if (!icon_result) {
+            PLEX_LOG_WARNING("Application", "Failed to set system tray icon");
+        }
+
+        // Set tooltip
+        auto tooltip_result = m_system_tray->set_tooltip("Presence for Plex");
+        if (!tooltip_result) {
+            PLEX_LOG_WARNING("Application", "Failed to set system tray tooltip");
+        }
+
+        // Setup tray menu
+        setup_tray_menu();
+
+        // Show the tray icon
+        m_system_tray->show();
+        PLEX_LOG_INFO("Application", "System tray created and shown");
+    }
+
+    void setup_tray_menu() {
+        if (!m_system_tray) {
+            return;
+        }
+
+        std::vector<platform::MenuItem> menu_items;
+
+        // Status item
+        platform::MenuItem status_item;
+        status_item.id = "status";
+        status_item.label = "Status: Running";
+        status_item.enabled = false;
+        menu_items.push_back(status_item);
+
+        // Separator
+        platform::MenuItem separator;
+        separator.type = platform::MenuItemType::Separator;
+        menu_items.push_back(separator);
+
+        // Settings item (placeholder for future implementation)
+        platform::MenuItem settings_item;
+        settings_item.id = "settings";
+        settings_item.label = "Settings...";
+        settings_item.enabled = false;  // Disabled for now
+        menu_items.push_back(settings_item);
+
+        // Another separator
+        menu_items.push_back(separator);
+
+        // Exit item
+        platform::MenuItem exit_item;
+        exit_item.id = "exit";
+        exit_item.label = "Exit";
+        exit_item.action = [this]() {
+            PLEX_LOG_INFO("Application", "Exit requested from system tray");
+            this->quit();
+        };
+        menu_items.push_back(exit_item);
+
+        auto menu_result = m_system_tray->set_menu(menu_items);
+        if (!menu_result) {
+            PLEX_LOG_WARNING("Application", "Failed to set system tray menu");
+        }
+    }
+
     // Application state
     std::atomic<ApplicationState> m_state;
     std::atomic<bool> m_running;

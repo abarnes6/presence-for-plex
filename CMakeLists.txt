@@ -67,7 +67,6 @@ set(SERVICES_SOURCES
     src/services/discord/discord_client.cpp
     src/services/discord/discord_ipc.cpp
     src/services/discord/discord_presence_manager.cpp
-    # Discord services with robustness features
     src/services/discord/rate_limiter.cpp
     src/services/discord/connection_manager.cpp
     src/services/discord/discord_connection_strategy.cpp

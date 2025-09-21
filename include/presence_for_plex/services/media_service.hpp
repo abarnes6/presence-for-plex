@@ -57,40 +57,5 @@ protected:
     virtual void on_error_occurred(PlexError error, const std::string& message) = 0;
 };
 
-// Factory interface for creating media services
-class MediaServiceFactory {
-public:
-    virtual ~MediaServiceFactory() = default;
-
-    enum class ServiceType {
-        Plex,
-        Jellyfin,
-        Emby
-    };
-
-    virtual std::unique_ptr<MediaService> create_service(
-        ServiceType type,
-        const core::ApplicationConfig& config
-    ) = 0;
-
-    static std::unique_ptr<MediaServiceFactory> create_default_factory();
-};
-
-// Configuration interface for media services
-class MediaServiceConfig {
-public:
-    virtual ~MediaServiceConfig() = default;
-
-    virtual void set_authentication(const core::PlexToken& token) = 0;
-    virtual void set_timeout(std::chrono::seconds timeout) = 0;
-    virtual void set_auto_discovery(bool enabled) = 0;
-
-    virtual core::PlexToken get_authentication() const = 0;
-    virtual std::chrono::seconds get_timeout() const = 0;
-    virtual bool is_auto_discovery_enabled() const = 0;
-
-    virtual bool is_valid() const = 0;
-};
-
 } // namespace services
 } // namespace presence_for_plex
