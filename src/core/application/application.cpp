@@ -128,28 +128,32 @@ public:
             // Start services
             PLEX_LOG_INFO("Application", "Starting services...");
 
-            // Start media service
-            if (m_media_service) {
-                auto media_result = m_media_service->start();
-                if (!media_result) {
-                    PLEX_LOG_WARNING("Application", "Failed to start media service");
-                } else {
-                    PLEX_LOG_INFO("Application", "Media service started successfully");
-                }
-            }
-
-            // Start presence service
-            if (m_presence_service) {
-                auto presence_result = m_presence_service->initialize();
-                if (!presence_result) {
-                    PLEX_LOG_WARNING("Application", "Failed to start presence service");
-                } else {
-                    PLEX_LOG_INFO("Application", "Presence service started successfully");
-                }
-            }
-
             // Initialize system tray
             initialize_system_tray();
+
+            // Start media service asynchronously
+            if (m_media_service) {
+                std::thread([this]() {
+                    auto media_result = m_media_service->start();
+                    if (!media_result) {
+                        PLEX_LOG_WARNING("Application", "Failed to start media service");
+                    } else {
+                        PLEX_LOG_INFO("Application", "Media service started successfully");
+                    }
+                }).detach();
+            }
+
+            // Start presence service asynchronously
+            if (m_presence_service) {
+                std::thread([this]() {
+                    auto presence_result = m_presence_service->initialize();
+                    if (!presence_result) {
+                        PLEX_LOG_WARNING("Application", "Failed to start presence service");
+                    } else {
+                        PLEX_LOG_INFO("Application", "Presence service started successfully");
+                    }
+                }).detach();
+            }
 
             PLEX_LOG_INFO("Application", "Application started successfully");
             return {};
@@ -217,18 +221,18 @@ public:
         PLEX_LOG_INFO("Application", "Starting main application run loop");
         while (is_running()) {
             run_once();
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            // Reduce sleep time for more responsive UI
+            std::this_thread::sleep_for(std::chrono::milliseconds(16)); // ~60 FPS for UI responsiveness
         }
         PLEX_LOG_INFO("Application", "Main application run loop ended");
     }
 
     void run_once() override {
-#ifdef _WIN32
         // Process UI events if we have a UI service
+        // This needs to be done on all platforms that use Qt UI
         if (m_ui_service) {
             m_ui_service->process_events();
         }
-#endif
     }
 
     void quit() override {
@@ -313,7 +317,7 @@ private:
             PLEX_LOG_WARNING("Application", "Failed to set system tray tooltip");
         }
 
-        // Setup tray menu
+        // Setup tray menu with async callbacks
         setup_tray_menu();
 
         // Show the tray icon
@@ -356,7 +360,14 @@ private:
         exit_item.label = "Exit";
         exit_item.action = [this]() {
             PLEX_LOG_INFO("Application", "Exit requested from system tray");
-            this->quit();
+            // Execute quit asynchronously to avoid blocking the UI thread
+            if (m_thread_pool) {
+                std::thread([this]() {
+                    this->quit();
+                }).detach();
+            } else {
+                this->quit();
+            }
         };
         menu_items.push_back(exit_item);
 
