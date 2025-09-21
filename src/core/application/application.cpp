@@ -100,6 +100,20 @@ public:
                     m_config_service->get_config()
                 );
                 PLEX_LOG_INFO("Application", "Presence service (Discord) initialized");
+
+                // Connect media service to presence service
+                if (m_media_service && m_presence_service) {
+                    m_media_service->set_media_state_callback(
+                        [this](const core::MediaInfo& media_info) {
+                            PLEX_LOG_DEBUG("Application", "Media state changed, updating Discord presence");
+                            auto result = m_presence_service->update_from_media(media_info);
+                            if (!result) {
+                                PLEX_LOG_WARNING("Application", "Failed to update Discord presence");
+                            }
+                        }
+                    );
+                    PLEX_LOG_INFO("Application", "Connected media service to presence service");
+                }
             } else {
                 PLEX_LOG_WARNING("Application", "Failed to create presence service factory");
             }
