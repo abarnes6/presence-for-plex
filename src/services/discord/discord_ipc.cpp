@@ -458,7 +458,37 @@ bool DiscordIPC::perform_handshake() {
 bool DiscordIPC::send_payload(const Json& payload) {
     const std::string payload_str = payload.dump();
     PLEX_LOG_DEBUG("DiscordIPC", "Sending payload: " + payload_str);
-    return write_frame(static_cast<uint32_t>(OpCode::FRAME), payload_str);
+
+    if (!write_frame(static_cast<uint32_t>(OpCode::FRAME), payload_str)) {
+      PLEX_LOG_ERROR("DiscordIPC", "Failed to write frame");
+      return false;
+    }
+
+    // Read and process the response
+    uint32_t response_opcode;
+    std::string response_data;
+    if (!read_frame(response_opcode, response_data)) {
+      PLEX_LOG_WARNING("DiscordIPC", "Failed to read response after sending payload");
+      return false;
+    }
+
+    // Log the response for debugging
+    PLEX_LOG_DEBUG("DiscordIPC", "Response received - Opcode: " + std::to_string(response_opcode) + ", Data: " + response_data);
+
+    // Check for errors in the response
+    if (!response_data.empty()) {
+      try {
+        const auto response_json = Json::parse(response_data);
+        if (response_json.contains("evt") && response_json["evt"] == "ERROR") {
+          PLEX_LOG_ERROR("DiscordIPC", "Discord returned error: " + response_data);
+          return false;
+        }
+      } catch (const std::exception& e) {
+        PLEX_LOG_WARNING("DiscordIPC", "Failed to parse response: " + std::string(e.what()));
+      }
+    }
+
+    return true;
   }
 
 uint32_t DiscordIPC::get_process_id() {
