@@ -4,6 +4,8 @@
 #include <memory>
 #include <atomic>
 #include <expected>
+#include <expected>
+#include <typeindex>
 
 namespace presence_for_plex {
 namespace core {
@@ -84,13 +86,25 @@ public:
     virtual ~IDependencyContainer() = default;
 
     template<typename Interface>
-    virtual void register_service(std::shared_ptr<Interface> service) = 0;
+    void register_service(std::shared_ptr<Interface> service) {
+        register_service_impl(std::type_index(typeid(Interface)), std::move(service));
+    }
 
     template<typename Interface>
-    virtual std::shared_ptr<Interface> resolve() = 0;
+    std::shared_ptr<Interface> resolve() {
+        auto resolved = resolve_impl(std::type_index(typeid(Interface)));
+        return std::static_pointer_cast<Interface>(resolved);
+    }
 
     template<typename Interface>
-    virtual bool is_registered() const = 0;
+    bool is_registered() const {
+        return is_registered_impl(std::type_index(typeid(Interface)));
+    }
+
+protected:
+    virtual void register_service_impl(std::type_index type, std::shared_ptr<void> service) = 0;
+    virtual std::shared_ptr<void> resolve_impl(std::type_index type) = 0;
+    virtual bool is_registered_impl(std::type_index type) const = 0;
 };
 
 // Factory for creating dependency-injected services

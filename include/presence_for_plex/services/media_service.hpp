@@ -1,9 +1,11 @@
 #pragma once
 
 #include "presence_for_plex/core/models.hpp"
+#include <chrono>
 #include <functional>
 #include <memory>
 #include <expected>
+#include <vector>
 
 namespace presence_for_plex {
 namespace services {

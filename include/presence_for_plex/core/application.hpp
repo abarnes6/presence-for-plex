@@ -11,6 +11,10 @@
 #include <atomic>
 #include <unordered_map>
 #include <expected>
+#include <functional>
+#include <optional>
+#include <filesystem>
+#include <string>
 
 namespace presence_for_plex {
 namespace core {

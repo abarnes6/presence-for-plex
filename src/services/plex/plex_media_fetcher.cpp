@@ -39,17 +39,22 @@ std::expected<std::string, core::PlexError> TMDBService::fetch_artwork_url(
 
     HttpHeaders headers = {
         {"Authorization", "Bearer " + m_access_token},
-        {"Content-Type", "application/json;charset=utf-8"}
+        {"Accept", "application/json"}
     };
 
     auto response = m_http_client->get(url, headers);
-    if (!response || !response->is_success()) {
+    if (!response.has_value()) {
+        PLEX_LOG_ERROR("TMDB", "Failed to fetch TMDB images for ID: " + tmdb_id + " - " + response.error().what());
+        return std::unexpected<core::PlexError>(core::PlexError::NetworkError);
+    }
+    
+    if (!response.value().is_success()) {
         PLEX_LOG_ERROR("TMDB", "Failed to fetch TMDB images for ID: " + tmdb_id);
         return std::unexpected<core::PlexError>(core::PlexError::NetworkError);
     }
 
     try {
-        auto json_response = json::parse(response->body);
+        auto json_response = json::parse(response.value().body);
 
         // First try to get a poster
         if (json_response.contains("posters") && !json_response["posters"].empty()) {
@@ -103,13 +108,18 @@ std::expected<std::string, core::PlexError> JikanService::fetch_artwork_url(
     std::string url = std::string(JIKAN_API_URL) + "/" + mal_id;
 
     auto response = m_http_client->get(url, {});
-    if (!response || !response->is_success()) {
+    if (!response.has_value()) {
+        PLEX_LOG_ERROR("Jikan", "Failed to fetch MAL data for ID: " + mal_id + " - " + response.error().what());
+        return std::unexpected<core::PlexError>(core::PlexError::NetworkError);
+    }
+    
+    if (!response.value().is_success()) {
         PLEX_LOG_ERROR("Jikan", "Failed to fetch MAL data for ID: " + mal_id);
         return std::unexpected<core::PlexError>(core::PlexError::NetworkError);
     }
 
     try {
-        auto json_response = json::parse(response->body);
+        auto json_response = json::parse(response.value().body);
         if (json_response.contains("data") && json_response["data"].contains("images")) {
             auto images = json_response["data"]["images"];
             if (images.contains("jpg") && images["jpg"].contains("large_image_url")) {
@@ -169,13 +179,18 @@ std::expected<std::string, core::PlexError> JikanService::search_anime_by_title(
     }
 
     auto response = m_http_client->get(url, {});
-    if (!response || !response->is_success()) {
+    if (!response.has_value()) {
+        PLEX_LOG_ERROR("Jikan", "Failed to search anime: " + title + " - " + response.error().what());
+        return std::unexpected<core::PlexError>(core::PlexError::NetworkError);
+    }
+    
+    if (!response.value().is_success()) {
         PLEX_LOG_ERROR("Jikan", "Failed to search anime: " + title);
         return std::unexpected<core::PlexError>(core::PlexError::NetworkError);
     }
 
     try {
-        auto json_response = json::parse(response->body);
+        auto json_response = json::parse(response.value().body);
         if (json_response.contains("data") && !json_response["data"].empty()) {
             auto first_result = json_response["data"][0];
             if (first_result.contains("mal_id")) {
@@ -328,13 +343,18 @@ std::expected<core::MediaInfo, core::PlexError> PlexMediaFetcher::fetch_media_de
     HttpHeaders headers(headers_map.begin(), headers_map.end());
 
     auto response = m_http_client->get(url, headers);
-    if (!response || !response->is_success()) {
+    if (!response.has_value()) {
+        PLEX_LOG_ERROR("PlexMediaFetcher", "Failed to fetch media details from: " + url + " - " + response.error().what());
+        return std::unexpected<core::PlexError>(core::PlexError::NetworkError);
+    }
+    
+    if (!response.value().is_success()) {
         PLEX_LOG_ERROR("PlexMediaFetcher", "Failed to fetch media details from: " + url);
         return std::unexpected<core::PlexError>(core::PlexError::NetworkError);
     }
 
     try {
-        auto json_response = json::parse(response->body);
+        auto json_response = json::parse(response.value().body);
 
         if (!json_response.contains("MediaContainer") ||
             !json_response["MediaContainer"].contains("Metadata") ||
@@ -413,13 +433,18 @@ std::expected<void, core::PlexError> PlexMediaFetcher::fetch_grandparent_metadat
     HttpHeaders headers(headers_map.begin(), headers_map.end());
 
     auto response = m_http_client->get(url, headers);
-    if (!response || !response->is_success()) {
+    if (!response.has_value()) {
+        PLEX_LOG_ERROR("PlexMediaFetcher", "Failed to fetch grandparent metadata - " + response.error().what());
+        return std::unexpected<core::PlexError>(core::PlexError::NetworkError);
+    }
+    
+    if (!response.value().is_success()) {
         PLEX_LOG_ERROR("PlexMediaFetcher", "Failed to fetch grandparent metadata");
         return std::unexpected<core::PlexError>(core::PlexError::NetworkError);
     }
 
     try {
-        auto json_response = json::parse(response->body);
+        auto json_response = json::parse(response.value().body);
 
         if (!json_response.contains("MediaContainer") ||
             !json_response["MediaContainer"].contains("Metadata") ||

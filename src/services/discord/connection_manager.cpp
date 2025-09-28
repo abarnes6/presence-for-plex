@@ -41,6 +41,11 @@ bool ConnectionManager::start() {
     // Try initial connection
     bool initial_success = attempt_connection();
 
+    // Handle successful initial connection
+    if (initial_success) {
+        handle_connection_success(false);
+    }
+
     // Start management thread
     m_management_thread = std::thread([this] { management_loop(); });
 
@@ -183,11 +188,13 @@ bool ConnectionManager::attempt_connection() {
     }
 }
 
-void ConnectionManager::handle_connection_success() {
+void ConnectionManager::handle_connection_success(bool is_reconnect) {
     {
         std::lock_guard<std::mutex> lock(m_stats_mutex);
         m_stats.last_success = std::chrono::system_clock::now();
-        m_stats.total_reconnections++;
+        if (is_reconnect) {
+            m_stats.total_reconnections++;
+        }
         m_stats.consecutive_failures = 0;
         m_stats.current_delay = std::chrono::seconds{0};
     }
@@ -199,23 +206,33 @@ void ConnectionManager::handle_connection_success() {
 }
 
 void ConnectionManager::handle_connection_failure() {
+    int attempt_number;
+    std::chrono::seconds next_delay;
+    
     {
         std::lock_guard<std::mutex> lock(m_stats_mutex);
         m_stats.last_failure = std::chrono::system_clock::now();
         m_stats.consecutive_failures++;
-        m_stats.current_delay = calculate_next_delay();
+        attempt_number = m_stats.consecutive_failures;
+    }
+
+    // Calculate delay without holding mutex to avoid deadlock
+    next_delay = calculate_next_delay();
+    
+    {
+        std::lock_guard<std::mutex> lock(m_stats_mutex);
+        m_stats.current_delay = next_delay;
     }
 
     m_connected = false;
     notify_connection_state(false);
 
-    auto delay = get_retry_stats().current_delay;
     PLEX_LOG_DEBUG("ConnectionManager",
-        "Connection failed (attempt " + std::to_string(get_retry_stats().consecutive_failures) +
-        "), retrying in " + std::to_string(delay.count()) + "s");
+        "Connection failed (attempt " + std::to_string(attempt_number) +
+        "), retrying in " + std::to_string(next_delay.count()) + "s");
 
     // Wait for the calculated delay
-    auto end_time = std::chrono::steady_clock::now() + delay;
+    auto end_time = std::chrono::steady_clock::now() + next_delay;
     while (m_running && std::chrono::steady_clock::now() < end_time) {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
 

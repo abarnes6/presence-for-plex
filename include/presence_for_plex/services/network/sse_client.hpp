@@ -8,6 +8,8 @@
 #include <atomic>
 #include <thread>
 #include <expected>
+#include <chrono>
+#include <mutex>
 
 namespace presence_for_plex {
 namespace services {

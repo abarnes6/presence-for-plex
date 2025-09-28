@@ -11,6 +11,10 @@
 #include <vector>
 #include <concepts>
 #include <chrono>
+#include <stdexcept>
+#include <type_traits>
+#include <utility>
+#include <stop_token>
 
 namespace presence_for_plex {
 namespace utils {

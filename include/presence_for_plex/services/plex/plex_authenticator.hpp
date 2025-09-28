@@ -5,6 +5,7 @@
 #include <memory>
 #include <map>
 #include <expected>
+#include <atomic>
 
 namespace presence_for_plex {
 namespace core {

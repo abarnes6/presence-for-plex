@@ -6,6 +6,9 @@
 #include <QIcon>
 #include <memory>
 #include <mutex>
+#include <map>
+#include <string>
+#include <vector>
 
 class QAction;
 

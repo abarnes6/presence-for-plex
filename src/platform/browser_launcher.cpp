@@ -2,6 +2,18 @@
 #include "presence_for_plex/utils/logger.hpp"
 #include <iostream>
 #include <cstdlib>
+#include <cerrno>
+
+#ifdef _WIN32
+#include <windows.h>
+#include <shellapi.h>
+#include <codecvt>
+#include <locale>
+#else
+#include <unistd.h>
+#include <spawn.h>
+#include <sys/wait.h>
+#endif
 
 #ifdef USE_QT_UI
 #include <QDesktopServices>
@@ -21,21 +33,65 @@ public:
 
         PLEX_LOG_INFO("NativeBrowserLauncher", "Opening URL: " + url);
 
-        std::string cmd;
 #ifdef _WIN32
-        cmd = "start \"\" \"" + url + "\"";
-#elif defined(__APPLE__)
-        cmd = "open \"" + url + "\"";
-#else
-        // Linux/Unix
-        cmd = "xdg-open \"" + url + "\" 2>/dev/null";
-#endif
-
-        int result = std::system(cmd.c_str());
-        if (result != 0) {
-            PLEX_LOG_ERROR("NativeBrowserLauncher", "Failed to open URL, command returned: " + std::to_string(result));
+        // Windows: Use ShellExecuteW to avoid shell injection
+        std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
+        std::wstring wurl = converter.from_bytes(url);
+        
+        HINSTANCE result = ShellExecuteW(NULL, L"open", wurl.c_str(), NULL, NULL, SW_SHOWNORMAL);
+        if ((INT_PTR)result <= 32) {
+            PLEX_LOG_ERROR("NativeBrowserLauncher", "Failed to open URL via ShellExecuteW, error code: " + std::to_string((INT_PTR)result));
             return std::unexpected(BrowserLaunchError::LaunchFailed);
         }
+#elif defined(__APPLE__)
+        // macOS: Use fork+execlp to avoid shell
+        pid_t pid = fork();
+        if (pid == 0) {
+            // Child process
+            execlp("open", "open", url.c_str(), (char*)NULL);
+            // If execlp returns, it failed
+            _exit(1);
+        } else if (pid > 0) {
+            // Parent process - wait for child
+            int status;
+            pid_t result;
+            do {
+                result = waitpid(pid, &status, 0);
+            } while (result == -1 && errno == EINTR);
+            
+            if (result == -1 || !WIFEXITED(status) || WEXITSTATUS(status) != 0) {
+                PLEX_LOG_ERROR("NativeBrowserLauncher", "Failed to open URL via 'open' command");
+                return std::unexpected(BrowserLaunchError::LaunchFailed);
+            }
+        } else {
+            PLEX_LOG_ERROR("NativeBrowserLauncher", "Failed to fork process for opening URL");
+            return std::unexpected(BrowserLaunchError::LaunchFailed);
+        }
+#else
+        // Linux/Unix: Use fork+execlp with xdg-open to avoid shell
+        pid_t pid = fork();
+        if (pid == 0) {
+            // Child process
+            execlp("xdg-open", "xdg-open", url.c_str(), (char*)NULL);
+            // If execlp returns, it failed
+            _exit(1);
+        } else if (pid > 0) {
+            // Parent process - wait for child
+            int status;
+            pid_t result;
+            do {
+                result = waitpid(pid, &status, 0);
+            } while (result == -1 && errno == EINTR);
+            
+            if (result == -1 || !WIFEXITED(status) || WEXITSTATUS(status) != 0) {
+                PLEX_LOG_ERROR("NativeBrowserLauncher", "Failed to open URL via xdg-open");
+                return std::unexpected(BrowserLaunchError::LaunchFailed);
+            }
+        } else {
+            PLEX_LOG_ERROR("NativeBrowserLauncher", "Failed to fork process for opening URL");
+            return std::unexpected(BrowserLaunchError::LaunchFailed);
+        }
+#endif
 
         return {};
     }

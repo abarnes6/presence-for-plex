@@ -414,8 +414,10 @@ QIcon QtSystemTray::load_icon_for_platform(const std::string& base_path) {
     #ifdef Q_OS_LINUX
     QString theme_suffix = QIcon::themeName().contains("dark") ? "_dark" : "_light";
     QString themed_path = path + theme_suffix;
-    if (QFile::exists(themed_path + ".svg") || QFile::exists(themed_path + ".png")) {
+    if (QFile::exists(themed_path + ".svg")) {
         return QIcon(themed_path + ".svg");
+    } else if (QFile::exists(themed_path + ".png")) {
+        return QIcon(themed_path + ".png");
     }
     #endif
 

@@ -1,9 +1,11 @@
 #pragma once
 
 #include "presence_for_plex/core/models.hpp"
+#include <atomic>
 #include <memory>
 #include <functional>
 #include <map>
+#include <vector>
 #include <thread>
 #include <mutex>
 #include <expected>

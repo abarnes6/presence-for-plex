@@ -8,6 +8,8 @@
 #include <span>
 #include <future>
 #include <expected>
+#include <optional>
+#include <atomic>
 
 namespace presence_for_plex {
 namespace services {

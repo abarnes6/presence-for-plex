@@ -87,11 +87,16 @@ QtDialogManager::show_input_dialog(const std::string& title, const std::string& 
                                          QString::fromStdString(default_value),
                                          &ok);
 
-    if (ok && !text.isEmpty()) {
+    if (ok) {
+        if (!text.isEmpty()) {
+            return text.toStdString();
+        }
+        // User clicked OK but provided empty text - this is still valid input
         return text.toStdString();
     }
 
-    return std::unexpected(UiError::OperationFailed);
+    // User cancelled the dialog (clicked Cancel or closed dialog)
+    return std::unexpected(UiError::Cancelled);
 }
 
 std::expected<std::string, UiError>
@@ -104,11 +109,13 @@ QtDialogManager::show_password_dialog(const std::string& title, const std::strin
                                          QString(),
                                          &ok);
 
-    if (ok && !text.isEmpty()) {
+    if (ok) {
+        // User clicked OK - return whatever they entered (even if empty)
         return text.toStdString();
     }
 
-    return std::unexpected(UiError::OperationFailed);
+    // User cancelled the dialog (clicked Cancel or closed dialog)
+    return std::unexpected(UiError::Cancelled);
 }
 
 std::expected<std::string, UiError>

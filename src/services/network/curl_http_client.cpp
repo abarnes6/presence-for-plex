@@ -4,6 +4,8 @@
 #include <fstream>
 #include <future>
 #include <chrono>
+#include <climits>
+#include <algorithm>
 
 namespace presence_for_plex {
 namespace services {
@@ -19,6 +21,9 @@ static size_t WriteCallback(void* contents, size_t size, size_t nmemb, std::stri
 static size_t WriteFileCallback(void* contents, size_t size, size_t nmemb, std::ofstream* file) {
     size_t total_size = size * nmemb;
     file->write(static_cast<char*>(contents), static_cast<std::streamsize>(total_size));
+    if (file->fail() || file->bad()) {
+        return 0; // Signal error to libcurl
+    }
     return total_size;
 }
 
@@ -39,6 +44,13 @@ static int CurlProgressCallback(void* clientp, curl_off_t dltotal, curl_off_t dl
         (*callback)(static_cast<size_t>(dlnow), static_cast<size_t>(dltotal));
     }
     return 0;
+}
+
+// Helper function to safely convert timeout duration to long
+static long safe_timeout_cast(long long timeout_value) {
+    return static_cast<long>(std::clamp(timeout_value, 
+                                        static_cast<long long>(LONG_MIN), 
+                                        static_cast<long long>(LONG_MAX)));
 }
 
 // Structure to pass both callbacks to curl
@@ -149,7 +161,7 @@ public:
         }
 
         // Set timeouts
-        curl_easy_setopt(curl, CURLOPT_TIMEOUT, request.timeout.count());
+        curl_easy_setopt(curl, CURLOPT_TIMEOUT, safe_timeout_cast(request.timeout.count()));
         curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 10L);
 
         // Set redirects
@@ -285,6 +297,14 @@ public:
         curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteFileCallback);
         curl_easy_setopt(curl, CURLOPT_WRITEDATA, &file);
 
+        // Apply client configuration like in execute()
+        curl_easy_setopt(curl, CURLOPT_TIMEOUT, safe_timeout_cast(m_config.default_timeout.count()));
+        curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 10L);
+        curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, m_config.follow_redirects ? 1L : 0L);
+        curl_easy_setopt(curl, CURLOPT_MAXREDIRS, static_cast<long>(m_config.max_redirects));
+        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, m_config.verify_ssl ? 1L : 0L);
+        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, m_config.verify_ssl ? 2L : 0L);
+
         if (progress) {
             curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, CurlProgressCallback);
             curl_easy_setopt(curl, CURLOPT_XFERINFODATA, &progress);
@@ -292,6 +312,14 @@ public:
         }
 
         CURLcode res = curl_easy_perform(curl);
+        
+        // Check for file write errors
+        if (file.fail() || file.bad()) {
+            PLEX_LOG_ERROR("CurlHttpClient", "File write error during download: " + file_path);
+            curl_easy_cleanup(curl);
+            return std::unexpected<NetworkError>(NetworkError::BadResponse);
+        }
+        
         curl_easy_cleanup(curl);
 
         if (res != CURLE_OK) {
@@ -308,7 +336,6 @@ public:
         const std::string& file_path,
         const std::string& field_name,
         const HttpHeaders& headers) override {
-        (void)headers;
         PLEX_LOG_DEBUG("CurlHttpClient", "Starting file upload from: " + file_path + " to: " + url);
 
         CURL* curl = curl_easy_init();
@@ -324,22 +351,32 @@ public:
             return std::unexpected<NetworkError>(NetworkError::BadResponse);
         }
 
-        // Get file size
-        file.seekg(0, std::ios::end);
-        size_t file_size = static_cast<size_t>(file.tellg());
-        file.seekg(0, std::ios::beg);
-
         std::string response_body;
+        curl_mime* form = nullptr;
+        curl_slist* header_list = nullptr;
 
+        // Apply headers
+        if (!headers.empty()) {
+            for (const auto& [key, value] : headers) {
+                std::string header = key + ": " + value;
+                header_list = curl_slist_append(header_list, header.c_str());
+            }
+            curl_easy_setopt(curl, CURLOPT_HTTPHEADER, header_list);
+        }
+
+        // Apply client configuration like in execute()
         curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-        curl_easy_setopt(curl, CURLOPT_READFUNCTION, ReadFileCallback);
-        curl_easy_setopt(curl, CURLOPT_READDATA, &file);
-        curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE_LARGE, static_cast<curl_off_t>(file_size));
+        curl_easy_setopt(curl, CURLOPT_TIMEOUT, safe_timeout_cast(m_config.default_timeout.count()));
+        curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 10L);
+        curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, m_config.follow_redirects ? 1L : 0L);
+        curl_easy_setopt(curl, CURLOPT_MAXREDIRS, static_cast<long>(m_config.max_redirects));
+        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, m_config.verify_ssl ? 1L : 0L);
+        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, m_config.verify_ssl ? 2L : 0L);
         curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
         curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response_body);
 
-        // Set multipart form
-        curl_mime* form = curl_mime_init(curl);
+        // Set multipart form (let libcurl handle file streaming via mime)
+        form = curl_mime_init(curl);
         curl_mimepart* field = curl_mime_addpart(form);
         curl_mime_name(field, field_name.c_str());
         curl_mime_filedata(field, file_path.c_str());
@@ -350,7 +387,9 @@ public:
         long response_code;
         curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &response_code);
 
-        curl_mime_free(form);
+        // Cleanup resources
+        if (form) curl_mime_free(form);
+        if (header_list) curl_slist_free_all(header_list);
         curl_easy_cleanup(curl);
 
         if (res != CURLE_OK) {

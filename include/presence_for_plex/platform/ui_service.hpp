@@ -16,7 +16,8 @@ enum class UiError {
     NotSupported,
     InitializationFailed,
     ResourceNotFound,
-    OperationFailed
+    OperationFailed,
+    Cancelled
 };
 
 // Menu item types

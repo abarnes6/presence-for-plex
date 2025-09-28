@@ -313,8 +313,9 @@ void DiscordPresenceService::process_pending_frames() {
             record_successful_update();
         } else {
             record_failed_update();
-            // Re-queue with lower priority for retry
-            m_frame_queue->enqueue(std::move(frame->data), frame->priority - 1);
+            // Re-queue with lower priority for retry, preventing underflow
+            size_t retry_priority = frame->priority == 0 ? 0 : frame->priority - 1;
+            m_frame_queue->enqueue(std::move(frame->data), retry_priority);
             break; // Stop processing on failure
         }
     }

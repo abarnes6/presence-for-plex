@@ -9,6 +9,9 @@
 #include "presence_for_plex/services/network_service.hpp"
 #include <memory>
 #include <expected>
+#include <atomic>
+#include <chrono>
+#include <nlohmann/json.hpp>
 
 namespace presence_for_plex {
 namespace core {

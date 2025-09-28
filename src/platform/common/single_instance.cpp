@@ -133,7 +133,6 @@ public:
 #ifdef USE_QT_UI
         if (m_lock_file) {
             m_lock_file->unlock();
-            m_lock_file->removeStaleLockFile();
         }
 #else
 #ifdef _WIN32

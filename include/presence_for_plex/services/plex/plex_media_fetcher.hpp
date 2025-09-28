@@ -6,6 +6,7 @@
 #include <vector>
 #include <nlohmann/json.hpp>
 #include <expected>
+#include <map>
 
 namespace presence_for_plex {
 namespace services {

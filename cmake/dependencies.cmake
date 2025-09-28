@@ -21,7 +21,6 @@ else()
     message(STATUS "Using static libraries via FetchContent")
 
     # Disable building tests and examples for dependencies
-    set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
     set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 
     # Platform-specific SSL/TLS backend selection
@@ -126,9 +125,22 @@ if(NOT USE_DYNAMIC_LINKS)
     endif()
 endif()
     
-set_target_properties(yaml-cpp PROPERTIES AUTOMOC OFF AUTOUIC OFF AUTORCC OFF)
-set_target_properties(curlu PROPERTIES AUTOMOC OFF AUTOUIC OFF AUTORCC OFF)
-set_target_properties(libcurl_static PROPERTIES AUTOMOC OFF AUTOUIC OFF AUTORCC OFF)
+if(NOT USE_DYNAMIC_LINKS)
+    # Create aliases that match the system package names (only if they don't exist)
+    if(NOT TARGET CURL::libcurl)
+        add_library(CURL::libcurl ALIAS libcurl)
+    endif()
+endif()
+
+if(TARGET yaml-cpp)
+    set_target_properties(yaml-cpp PROPERTIES AUTOMOC OFF AUTOUIC OFF AUTORCC OFF)
+endif()
+if(TARGET curlu)
+    set_target_properties(curlu PROPERTIES AUTOMOC OFF AUTOUIC OFF AUTORCC OFF)
+endif()
+if(TARGET libcurl_static)
+    set_target_properties(libcurl_static PROPERTIES AUTOMOC OFF AUTOUIC OFF AUTORCC OFF)
+endif()
 
 # Summary of found dependencies
 message(STATUS "Dependencies summary:")

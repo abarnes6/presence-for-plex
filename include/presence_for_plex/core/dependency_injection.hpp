@@ -3,6 +3,7 @@
 #include <memory>
 #include <typeindex>
 #include <unordered_map>
+#include <type_traits>
 #include <functional>
 #include <stdexcept>
 

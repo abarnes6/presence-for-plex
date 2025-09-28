@@ -40,9 +40,29 @@ std::expected<void, UiError> QtNotificationManager::initialize() {
 
     QObject::connect(m_tray_icon, &QSystemTrayIcon::messageClicked,
                      [this]() {
-                         if (!m_active_notifications.empty()) {
-                             auto id = m_active_notifications.begin()->first;
-                             on_notification_clicked(id);
+                         std::string notification_id;
+                         std::function<void()> on_click_callback;
+                         std::function<void(const std::string&)> click_callback;
+                         
+                         // Copy necessary data while holding the mutex
+                         {
+                             std::lock_guard<std::mutex> guard(m_mutex);
+                             if (!m_active_notifications.empty()) {
+                                 notification_id = m_active_notifications.begin()->first;
+                                 auto it = m_active_notifications.find(notification_id);
+                                 if (it != m_active_notifications.end()) {
+                                     on_click_callback = it->second.on_click;
+                                     click_callback = m_click_callback;
+                                 }
+                             }
+                         }
+                         
+                         // Invoke callbacks outside the mutex scope
+                         if (on_click_callback) {
+                             on_click_callback();
+                         }
+                         if (click_callback) {
+                             click_callback(notification_id);
                          }
                      });
 
@@ -154,6 +174,7 @@ void QtNotificationManager::set_dismiss_callback(NotificationCallback callback) 
 }
 
 void QtNotificationManager::on_notification_clicked(const NotificationId& id) {
+    std::lock_guard<std::mutex> guard(m_mutex);
     auto it = m_active_notifications.find(id);
     if (it != m_active_notifications.end()) {
         if (it->second.on_click) {
@@ -166,6 +187,7 @@ void QtNotificationManager::on_notification_clicked(const NotificationId& id) {
 }
 
 void QtNotificationManager::on_notification_dismissed(const NotificationId& id) {
+    std::lock_guard<std::mutex> guard(m_mutex);
     auto it = m_active_notifications.find(id);
     if (it != m_active_notifications.end()) {
         if (it->second.on_dismiss) {

@@ -88,7 +88,7 @@ int main(int argc, char *argv[]) {
     }
 
     const auto& config = config_service->get_config();
-    auto log_level = presence_for_plex::utils::LogLevel::Debug;
+    auto log_level = parse_log_level(config.log_level);
 
     // Initialize logging with configured level
     auto logger = std::make_unique<presence_for_plex::utils::Logger>(log_level);

@@ -1,13 +1,14 @@
 #pragma once
 
-#include <chrono>
-#include <filesystem>
-#include <functional>
-#include <memory>
-#include <string>
-#include <vector>
-#include <expected>
-
+ #include <chrono>
+ #include <filesystem>
+ #include <functional>
+ #include <memory>
+#include <cstdint>
+ #include <string>
+ #include <vector>
+ #include <expected>
+ 
 namespace presence_for_plex {
 namespace platform {
 

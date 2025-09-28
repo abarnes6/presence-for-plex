@@ -180,7 +180,7 @@ private:
 
     void management_loop();
     bool attempt_connection();
-    void handle_connection_success();
+    void handle_connection_success(bool is_reconnect = true);
     void handle_connection_failure();
     bool perform_health_check();
     void notify_connection_state(bool connected);

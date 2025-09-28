@@ -77,7 +77,8 @@ public:
                     if (ui_init_result) {
                         PLEX_LOG_INFO("Application", "UI service initialized");
                     } else {
-                        PLEX_LOG_WARNING("Application", "Failed to initialize UI service");
+                        PLEX_LOG_WARNING("Application", "Failed to initialize UI service, resetting service");
+                        m_ui_service.reset(); // Reset unusable UI service
                     }
                 } else {
                     PLEX_LOG_WARNING("Application", "Failed to create UI service");

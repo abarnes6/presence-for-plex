@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <deque>
+#include <memory>
 #include <mutex>
 
 namespace presence_for_plex::services {

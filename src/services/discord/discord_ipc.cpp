@@ -370,9 +370,12 @@ bool DiscordIPC::write_frame(uint32_t opcode, const std::string& payload) {
     // Create properly formatted Discord IPC message with endianness handling
     const uint32_t len = static_cast<uint32_t>(payload.size());
     std::vector<char> buf(8 + len);
-    auto* p = reinterpret_cast<uint32_t*>(buf.data());
-    p[0] = htole32(opcode);
-    p[1] = htole32(len);
+    
+    // Safe serialization to avoid unaligned access
+    uint32_t opcode_le = htole32(opcode);
+    uint32_t len_le = htole32(len);
+    std::memcpy(buf.data(), &opcode_le, 4);
+    std::memcpy(buf.data() + 4, &len_le, 4);
     std::memcpy(buf.data() + 8, payload.data(), len);
 
     return write_data(buf.data(), 8 + len);

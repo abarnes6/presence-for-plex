@@ -5,6 +5,8 @@
 #include <chrono>
 #include <optional>
 #include <functional>
+#include <limits>
+#include <vector>
 
 namespace presence_for_plex::services {
 
@@ -284,33 +286,28 @@ private:
             return false;
         }
 
-        // Since we use a max-heap, we need to find the minimum priority frame
         std::vector<FrameType> temp_frames;
-        FrameType* lowest_frame = nullptr;
-        int lowest_priority = (std::numeric_limits<int>::max)();
+        std::optional<FrameType> lowest_frame;
 
-        // Find the frame with lowest priority
         while (!m_frames.empty()) {
             auto frame = m_frames.top();
             m_frames.pop();
 
-            if (frame.priority < lowest_priority) {
+            if (!lowest_frame || frame.priority < lowest_frame->priority) {
                 if (lowest_frame) {
                     temp_frames.push_back(std::move(*lowest_frame));
                 }
-                lowest_priority = frame.priority;
-                lowest_frame = &frame;
+                lowest_frame.emplace(std::move(frame));
             } else {
                 temp_frames.push_back(std::move(frame));
             }
         }
 
-        // Put all frames back except the lowest priority one
         for (auto& frame : temp_frames) {
             m_frames.push(std::move(frame));
         }
 
-        return lowest_frame != nullptr;
+        return lowest_frame.has_value();
     }
 
     void remove_duplicate_frames(const T& new_frame_data) {
