@@ -101,10 +101,13 @@ protected:
     void on_connection_state_changed(bool connected);
     void on_error_occurred(core::DiscordError error, const std::string& message);
 
-private:
-    friend class DiscordPresenceServiceFactory;
-
+public:
     explicit DiscordPresenceService(Config config);
+
+    static std::expected<std::unique_ptr<DiscordPresenceService>, core::ConfigError>
+    create(const core::ApplicationConfig& app_config);
+
+private:
 
     Config m_config;
     std::atomic<bool> m_initialized{false};
@@ -141,22 +144,6 @@ private:
     // Connection event handlers
     void handle_connection_changed(bool connected);
     void handle_health_check_result(bool healthy);
-};
-
-class DiscordPresenceServiceFactory {
-public:
-    static std::expected<std::unique_ptr<PresenceService>, core::ConfigError> create_service(
-        const core::ApplicationConfig& app_config
-    );
-
-    static std::expected<std::unique_ptr<DiscordPresenceService>, core::ConfigError> create_discord_service(
-        DiscordPresenceService::Config config
-    );
-
-private:
-    static std::expected<DiscordPresenceService::Config, core::ConfigError> create_config_from_app_config(
-        const core::ApplicationConfig& app_config
-    );
 };
 
 } // namespace presence_for_plex::services

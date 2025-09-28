@@ -187,15 +187,7 @@ public:
         const core::ApplicationConfig& config
     ) override {
         if (type == ServiceType::Discord) {
-            if (config.discord.client_id.empty()) {
-                return std::unexpected(core::ConfigError::ValidationError);
-            }
-
-            DiscordPresenceService::Config discord_config;
-            discord_config.client_id = config.discord.client_id;
-            discord_config.update_interval = config.discord.update_interval;
-
-            auto service_result = DiscordPresenceServiceFactory::create_discord_service(std::move(discord_config));
+            auto service_result = DiscordPresenceService::create(config);
             if (!service_result) {
                 return std::unexpected(service_result.error());
             }

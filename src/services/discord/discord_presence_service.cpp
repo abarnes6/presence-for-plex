@@ -494,64 +494,35 @@ void DiscordPresenceService::on_error_occurred(core::DiscordError error, const s
     }
 }
 
-// Factory implementations
-std::expected<std::unique_ptr<PresenceService>, core::ConfigError>
-DiscordPresenceServiceFactory::create_service(const core::ApplicationConfig& app_config) {
-    auto config_result = create_config_from_app_config(app_config);
-    if (!config_result) {
-        return std::unexpected(config_result.error());
-    }
-
-    auto service_result = create_discord_service(std::move(*config_result));
-    if (!service_result) {
-        return std::unexpected(service_result.error());
-    }
-
-    return std::move(*service_result);
-}
-
 std::expected<std::unique_ptr<DiscordPresenceService>, core::ConfigError>
-DiscordPresenceServiceFactory::create_discord_service(DiscordPresenceService::Config config) {
+DiscordPresenceService::create(const core::ApplicationConfig& app_config) {
+    if (app_config.discord.client_id.empty()) {
+        return std::unexpected(core::ConfigError::ValidationError);
+    }
+
+    Config config;
+    config.client_id = app_config.discord.client_id;
+    config.update_interval = app_config.discord.update_interval;
+
+    config.rate_limit_config = DiscordRateLimitConfig{};
+    config.connection_config = ConnectionRetryConfig{};
+    config.queue_config = FrameQueueConfig{};
+
+    config.enable_rate_limiting = true;
+    config.enable_frame_queuing = true;
+    config.enable_health_checks = true;
+
     if (!config.is_valid()) {
         return std::unexpected(core::ConfigError::ValidationError);
     }
 
     try {
-        return std::unique_ptr<DiscordPresenceService>(new DiscordPresenceService(std::move(config)));
+        return std::make_unique<DiscordPresenceService>(std::move(config));
     } catch (const std::exception& e) {
-        PLEX_LOG_ERROR("DiscordPresenceServiceFactory",
+        PLEX_LOG_ERROR("DiscordPresenceService",
             "Failed to create service: " + std::string(e.what()));
         return std::unexpected(core::ConfigError::InvalidFormat);
     }
-}
-
-std::expected<DiscordPresenceService::Config, core::ConfigError>
-DiscordPresenceServiceFactory::create_config_from_app_config(const core::ApplicationConfig& app_config) {
-    if (app_config.discord.client_id.empty()) {
-        return std::unexpected(core::ConfigError::ValidationError);
-    }
-
-    DiscordPresenceService::Config config;
-
-    // Discord configuration
-    config.client_id = app_config.discord.client_id;
-    config.update_interval = app_config.discord.update_interval;
-
-    // Rate limiting configuration (use safe defaults)
-    config.rate_limit_config = DiscordRateLimitConfig{};
-
-    // Connection configuration (use conservative defaults)
-    config.connection_config = ConnectionRetryConfig{};
-
-    // Frame queue configuration
-    config.queue_config = FrameQueueConfig{};
-
-    // Enable all features by default
-    config.enable_rate_limiting = true;
-    config.enable_frame_queuing = true;
-    config.enable_health_checks = true;
-
-    return config;
 }
 
 } // namespace presence_for_plex::services
