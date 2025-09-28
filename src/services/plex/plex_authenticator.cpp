@@ -88,12 +88,15 @@ std::expected<std::string, core::PlexError> PlexAuthenticator::fetch_username(co
     }
 }
 
-bool PlexAuthenticator::validate_token(const core::PlexToken& token) {
+std::expected<void, core::PlexError> PlexAuthenticator::validate_token(const core::PlexToken& token) {
     PLEX_LOG_DEBUG("PlexAuthenticator", "validate_token() called");
     auto result = fetch_username(token);
-    bool is_valid = result.has_value();
-    PLEX_LOG_DEBUG("PlexAuthenticator", std::string("Token validation result: ") + (is_valid ? "valid" : "invalid"));
-    return is_valid;
+    if (!result) {
+        PLEX_LOG_DEBUG("PlexAuthenticator", "Token validation failed: " + std::to_string(static_cast<int>(result.error())));
+        return std::unexpected(result.error());
+    }
+    PLEX_LOG_DEBUG("PlexAuthenticator", "Token validation succeeded");
+    return {};
 }
 
 std::expected<core::PlexToken, core::PlexError> PlexAuthenticator::ensure_authenticated() {
@@ -104,9 +107,14 @@ std::expected<core::PlexToken, core::PlexError> PlexAuthenticator::ensure_authen
     PLEX_LOG_DEBUG("PlexAuthenticator", "Loaded stored token from config (length: " + std::to_string(stored_token_value.length()) + ")");
 
     // Check if we have a stored token and if it's valid
-    if (!stored_token.value.empty() && validate_token(stored_token)) {
-        PLEX_LOG_INFO("PlexAuthenticator", "Using stored valid token");
-        return stored_token;
+    if (!stored_token.value.empty()) {
+        auto validation_result = validate_token(stored_token);
+        if (validation_result) {
+            PLEX_LOG_INFO("PlexAuthenticator", "Using stored valid token");
+            return stored_token;
+        } else {
+            PLEX_LOG_DEBUG("PlexAuthenticator", "Stored token validation failed: " + std::to_string(static_cast<int>(validation_result.error())));
+        }
     }
 
     // No valid stored token, need to authenticate

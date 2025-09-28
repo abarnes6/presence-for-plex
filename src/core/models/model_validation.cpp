@@ -6,85 +6,114 @@ namespace presence_for_plex {
 namespace core {
 
 // MediaInfo validation
-bool MediaInfo::is_valid() const {
+std::expected<void, core::ValidationError> MediaInfo::validate() const {
     // Basic validation: must have a title and valid duration
     if (title.empty()) {
-        return false;
+        return std::unexpected(core::ValidationError::EmptyTitle);
     }
 
     // Duration should be non-negative
     if (duration < 0) {
-        return false;
+        return std::unexpected(core::ValidationError::InvalidDuration);
     }
 
     // Progress should be within duration bounds
     if (progress < 0 || (duration > 0 && progress > duration)) {
-        return false;
+        return std::unexpected(core::ValidationError::ProgressOutOfBounds);
     }
 
     // Type-specific validation
     switch (type) {
         case MediaType::TVShow:
             // TV shows need valid season/episode numbers
-            if (season < 0 || episode < 0) {
-                return false;
+            if (season < 0) {
+                return std::unexpected(core::ValidationError::MissingSeasonInfo);
+            }
+            if (episode < 0) {
+                return std::unexpected(core::ValidationError::MissingEpisodeInfo);
             }
             break;
         case MediaType::Music:
             // Music needs artist info
             if (artist.empty()) {
-                return false;
+                return std::unexpected(core::ValidationError::MissingRequiredField);
             }
             break;
         default:
             break;
     }
 
-    return true;
+    return {};
+}
+
+// Legacy compatibility method
+bool MediaInfo::is_valid() const {
+    return validate().has_value();
 }
 
 // DiscordConfig validation
-bool DiscordConfig::is_valid() const {
+std::expected<void, core::ValidationError> DiscordConfig::validate() const {
     // Client ID is required
     if (client_id.empty()) {
-        return false;
+        return std::unexpected(core::ValidationError::EmptyClientId);
     }
 
     // Update interval should be within configured limits
     if (update_interval < ConfigLimits::MIN_UPDATE_INTERVAL ||
         update_interval > ConfigLimits::MAX_UPDATE_INTERVAL) {
-        return false;
+        return std::unexpected(core::ValidationError::InvalidUpdateInterval);
     }
 
-    return true;
+    return {};
+}
+
+// Legacy compatibility method
+bool DiscordConfig::is_valid() const {
+    return validate().has_value();
 }
 
 // PlexConfig validation
-bool PlexConfig::is_valid() const {
+std::expected<void, core::ValidationError> PlexConfig::validate() const {
     // Poll interval should be within configured limits
     if (poll_interval < ConfigLimits::MIN_POLL_INTERVAL ||
         poll_interval > ConfigLimits::MAX_POLL_INTERVAL) {
-        return false;
+        return std::unexpected(core::ValidationError::InvalidPollInterval);
     }
 
     // Timeout should be within configured limits
     if (timeout < ConfigLimits::MIN_TIMEOUT ||
         timeout > ConfigLimits::MAX_TIMEOUT) {
-        return false;
+        return std::unexpected(core::ValidationError::InvalidFormat);
     }
 
-    return true;
+    return {};
+}
+
+// Legacy compatibility method
+bool PlexConfig::is_valid() const {
+    return validate().has_value();
 }
 
 // ApplicationConfig validation
-bool ApplicationConfig::is_valid() const {
+std::expected<void, core::ValidationError> ApplicationConfig::validate() const {
     // Validate sub-configs
-    if (!discord.is_valid() || !plex.is_valid()) {
-        return false;
+    auto discord_result = discord.validate();
+    if (!discord_result) {
+        return discord_result;
+    }
+
+    auto plex_result = plex.validate();
+    if (!plex_result) {
+        return plex_result;
     }
 
     // Log level enum is always valid by design
-    return true;
+    return {};
+}
+
+// Legacy compatibility method
+bool ApplicationConfig::is_valid() const {
+    return validate().has_value();
 }
 
 } // namespace core

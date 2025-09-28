@@ -8,9 +8,32 @@
 #include <variant>
 #include <system_error>
 #include <functional>
+#include <expected>
 
 namespace presence_for_plex {
 namespace core {
+
+// Validation error types
+enum class ValidationError {
+    // MediaInfo errors
+    EmptyTitle,
+    InvalidDuration,
+    ProgressOutOfBounds,
+    MissingEpisodeInfo,
+    MissingSeasonInfo,
+
+    // Config errors
+    InvalidUpdateInterval,
+    InvalidPollInterval,
+    EmptyClientId,
+    InvalidServerUrl,
+    EmptyServerName,
+    EmptyAuthToken,
+
+    // General
+    InvalidFormat,
+    MissingRequiredField
+};
 
 // Configuration validation limits
 namespace ConfigLimits {
@@ -244,7 +267,8 @@ struct MediaInfo {
     ServerId server_id;              // ID of the server hosting this content
 
     // Validation methods
-    bool is_valid() const;
+    bool is_valid() const;  // Legacy method for compatibility
+    std::expected<void, ValidationError> validate() const;
 };
 
 // Configuration structures
@@ -254,7 +278,8 @@ struct DiscordConfig {
     bool show_progress = true;
     std::chrono::seconds update_interval{15};
 
-    bool is_valid() const;
+    bool is_valid() const;  // Legacy method for compatibility
+    std::expected<void, ValidationError> validate() const;
 };
 
 struct PlexConfig {
@@ -264,7 +289,8 @@ struct PlexConfig {
     std::chrono::seconds timeout{30};
     bool auto_discover = true;
 
-    bool is_valid() const;
+    bool is_valid() const;  // Legacy method for compatibility
+    std::expected<void, ValidationError> validate() const;
 };
 
 struct ApplicationConfig {
@@ -276,7 +302,8 @@ struct ApplicationConfig {
     // External service tokens
     std::string tmdb_access_token = "eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiIzNmMxOTI3ZjllMTlkMzUxZWFmMjAxNGViN2JmYjNkZiIsIm5iZiI6MTc0NTQzMTA3NC4yMjcsInN1YiI6IjY4MDkyYTIyNmUxYTc2OWU4MWVmMGJhOSIsInNjb3BlcyI6WyJhcGlfcmVhZCJdLCJ2ZXJzaW9uIjoxfQ.Td6eAbW7SgQOMmQpRDwVM-_3KIMybGRqWNK8Yqw1Zzs";
 
-    bool is_valid() const;
+    bool is_valid() const;  // Legacy method for compatibility
+    std::expected<void, ValidationError> validate() const;
 };
 
 // Event system types

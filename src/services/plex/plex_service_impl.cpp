@@ -4,6 +4,7 @@
 #include "presence_for_plex/core/application.hpp"
 #include "presence_for_plex/utils/logger.hpp"
 #include <nlohmann/json.hpp>
+#include <cassert>
 #include <stdexcept>
 #include <unordered_set>
 #include <thread>
@@ -466,9 +467,7 @@ std::unique_ptr<PlexServiceImpl> PlexServiceBuilder::build() {
     }
 
     if (!m_authenticator) {
-        if (!m_auth_service) {
-            throw std::runtime_error("Authentication service is required to create PlexAuthenticator");
-        }
+        assert(m_auth_service && "Authentication service is required to create PlexAuthenticator");
         // Browser launcher will be created inside PlexAuthenticator if not provided
         m_authenticator = std::make_shared<PlexAuthenticator>(m_http_client, m_auth_service, nullptr);
     }
@@ -478,9 +477,7 @@ std::unique_ptr<PlexServiceImpl> PlexServiceBuilder::build() {
     }
 
     if (!m_connection_manager) {
-        if (!m_auth_service) {
-            throw std::runtime_error("Authentication service is required to create PlexConnectionManager");
-        }
+        assert(m_auth_service && "Authentication service is required to create PlexConnectionManager");
         m_connection_manager = std::make_shared<PlexConnectionManager>(m_http_client, m_auth_service);
     }
 

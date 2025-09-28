@@ -27,7 +27,7 @@ public:
     // Core authentication methods
     virtual std::expected<core::PlexToken, core::PlexError> acquire_auth_token() = 0;
     virtual std::expected<std::string, core::PlexError> fetch_username(const core::PlexToken& token) = 0;
-    virtual bool validate_token(const core::PlexToken& token) = 0;
+    virtual std::expected<void, core::PlexError> validate_token(const core::PlexToken& token) = 0;
     virtual std::expected<core::PlexToken, core::PlexError> ensure_authenticated() = 0;
 
     // Header generation for authenticated requests
@@ -47,7 +47,7 @@ public:
 
     std::expected<core::PlexToken, core::PlexError> acquire_auth_token() override;
     std::expected<std::string, core::PlexError> fetch_username(const core::PlexToken& token) override;
-    bool validate_token(const core::PlexToken& token) override;
+    std::expected<void, core::PlexError> validate_token(const core::PlexToken& token) override;
     std::expected<core::PlexToken, core::PlexError> ensure_authenticated() override;
 
     std::map<std::string, std::string> get_standard_headers(const core::PlexToken& token = {}) const override;

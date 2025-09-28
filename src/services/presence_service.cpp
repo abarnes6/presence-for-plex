@@ -195,18 +195,18 @@ public:
             discord_config.client_id = config.discord.client_id;
             discord_config.update_interval = config.discord.update_interval;
 
-            try {
-                auto service = std::make_unique<DiscordPresenceService>(std::move(discord_config));
-
-                if (auto formatter = service->get_formatter()) {
-                    formatter->set_show_buttons(config.discord.show_buttons);
-                    formatter->set_show_progress(config.discord.show_progress);
-                }
-
-                return service;
-            } catch (const std::exception& e) {
-                return std::unexpected(core::ConfigError::InvalidFormat);
+            auto service_result = DiscordPresenceServiceFactory::create_discord_service(std::move(discord_config));
+            if (!service_result) {
+                return std::unexpected(service_result.error());
             }
+            auto service = std::move(*service_result);
+
+            if (auto formatter = service->get_formatter()) {
+                formatter->set_show_buttons(config.discord.show_buttons);
+                formatter->set_show_progress(config.discord.show_progress);
+            }
+
+            return service;
         }
         return std::unexpected(core::ConfigError::InvalidFormat);
     }

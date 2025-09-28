@@ -1,6 +1,7 @@
 #include "presence_for_plex/services/connection_manager.hpp"
 #include "presence_for_plex/utils/logger.hpp"
 #include <algorithm>
+#include <cassert>
 #include <thread>
 #include <mutex>
 
@@ -17,9 +18,7 @@ ConnectionManager::ConnectionManager(
         m_config = ConnectionRetryConfig{};
     }
 
-    if (!m_strategy) {
-        throw std::invalid_argument("Connection strategy cannot be null");
-    }
+    assert(m_strategy && "Connection strategy cannot be null");
 
     PLEX_LOG_DEBUG("ConnectionManager",
         "Initialized with backoff " + std::to_string(m_config.initial_delay.count()) +

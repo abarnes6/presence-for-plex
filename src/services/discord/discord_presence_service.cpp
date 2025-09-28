@@ -2,6 +2,7 @@
 #include "presence_for_plex/services/presence_service.hpp"
 #include "presence_for_plex/core/events_impl.hpp"
 #include "presence_for_plex/utils/logger.hpp"
+#include <cassert>
 #include <chrono>
 #include <thread>
 #include <expected>
@@ -13,9 +14,7 @@ using json = nlohmann::json;
 DiscordPresenceService::DiscordPresenceService(Config config)
     : m_config(std::move(config)) {
 
-    if (!m_config.is_valid()) {
-        throw std::invalid_argument("Invalid configuration provided to DiscordPresenceService");
-    }
+    assert(m_config.is_valid() && "Configuration should be validated by factory before construction");
 
     // Initialize components
     if (m_config.enable_rate_limiting) {
@@ -518,7 +517,7 @@ DiscordPresenceServiceFactory::create_discord_service(DiscordPresenceService::Co
     }
 
     try {
-        return std::make_unique<DiscordPresenceService>(std::move(config));
+        return std::unique_ptr<DiscordPresenceService>(new DiscordPresenceService(std::move(config)));
     } catch (const std::exception& e) {
         PLEX_LOG_ERROR("DiscordPresenceServiceFactory",
             "Failed to create service: " + std::string(e.what()));

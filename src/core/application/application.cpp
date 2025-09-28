@@ -137,54 +137,74 @@ public:
         shutdown();
     }
 
-    services::MediaService& get_media_service() override {
-        if (!m_media_service) throw std::runtime_error("MediaService not initialized");
-        return *m_media_service;
+    std::expected<std::reference_wrapper<services::MediaService>, ApplicationError> get_media_service() override {
+        if (!m_media_service) {
+            return std::unexpected(ApplicationError::ServiceUnavailable);
+        }
+        return std::ref(*m_media_service);
     }
 
-    services::PresenceService& get_presence_service() override {
-        if (!m_presence_service) throw std::runtime_error("PresenceService not initialized");
-        return *m_presence_service;
+    std::expected<std::reference_wrapper<services::PresenceService>, ApplicationError> get_presence_service() override {
+        if (!m_presence_service) {
+            return std::unexpected(ApplicationError::ServiceUnavailable);
+        }
+        return std::ref(*m_presence_service);
     }
 
-    platform::UiService& get_ui_service() override {
-        if (!m_ui_service) throw std::runtime_error("UiService not initialized");
-        return *m_ui_service;
+    std::expected<std::reference_wrapper<platform::UiService>, ApplicationError> get_ui_service() override {
+        if (!m_ui_service) {
+            return std::unexpected(ApplicationError::ServiceUnavailable);
+        }
+        return std::ref(*m_ui_service);
     }
 
-    ConfigurationService& get_configuration_service() override {
-        if (!m_config_service) throw std::runtime_error("ConfigurationService not initialized");
-        return *m_config_service;
+    std::expected<std::reference_wrapper<ConfigurationService>, ApplicationError> get_configuration_service() override {
+        if (!m_config_service) {
+            return std::unexpected(ApplicationError::ServiceUnavailable);
+        }
+        return std::ref(*m_config_service);
     }
 
-    const ConfigurationService& get_configuration_service() const override {
-        if (!m_config_service) throw std::runtime_error("ConfigurationService not initialized");
-        return *m_config_service;
+    std::expected<std::reference_wrapper<const ConfigurationService>, ApplicationError> get_configuration_service() const override {
+        if (!m_config_service) {
+            return std::unexpected(ApplicationError::ServiceUnavailable);
+        }
+        return std::ref(*m_config_service);
     }
 
-    const ApplicationConfig& get_config() const override {
-        if (!m_config_service) throw std::runtime_error("ConfigurationService not initialized");
-        return m_config_service->get();
+    std::expected<std::reference_wrapper<const ApplicationConfig>, ApplicationError> get_config() const override {
+        if (!m_config_service) {
+            return std::unexpected(ApplicationError::ServiceUnavailable);
+        }
+        return std::ref(m_config_service->get());
     }
 
-    AuthenticationService& get_authentication_service() override {
-        if (!m_auth_service) throw std::runtime_error("AuthenticationService not initialized");
-        return *m_auth_service;
+    std::expected<std::reference_wrapper<AuthenticationService>, ApplicationError> get_authentication_service() override {
+        if (!m_auth_service) {
+            return std::unexpected(ApplicationError::ServiceUnavailable);
+        }
+        return std::ref(*m_auth_service);
     }
 
-    utils::ThreadPool& get_thread_pool() override {
-        if (!m_thread_pool) throw std::runtime_error("ThreadPool not initialized");
-        return *m_thread_pool;
+    std::expected<std::reference_wrapper<utils::ThreadPool>, ApplicationError> get_thread_pool() override {
+        if (!m_thread_pool) {
+            return std::unexpected(ApplicationError::ServiceUnavailable);
+        }
+        return std::ref(*m_thread_pool);
     }
 
-    utils::TaskScheduler& get_task_scheduler() override {
-        if (!m_task_scheduler) throw std::runtime_error("TaskScheduler not initialized");
-        return *m_task_scheduler;
+    std::expected<std::reference_wrapper<utils::TaskScheduler>, ApplicationError> get_task_scheduler() override {
+        if (!m_task_scheduler) {
+            return std::unexpected(ApplicationError::ServiceUnavailable);
+        }
+        return std::ref(*m_task_scheduler);
     }
 
-    EventBus& get_event_bus() override {
-        if (!m_event_bus) throw std::runtime_error("EventBus not initialized");
-        return *m_event_bus;
+    std::expected<std::reference_wrapper<EventBus>, ApplicationError> get_event_bus() override {
+        if (!m_event_bus) {
+            return std::unexpected(ApplicationError::ServiceUnavailable);
+        }
+        return std::ref(*m_event_bus);
     }
 
 private:

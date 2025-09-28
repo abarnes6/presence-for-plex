@@ -87,20 +87,20 @@ public:
     virtual void quit() = 0;
 
     // Service access
-    virtual services::MediaService& get_media_service() = 0;
-    virtual services::PresenceService& get_presence_service() = 0;
-    virtual platform::UiService& get_ui_service() = 0;
-    virtual ConfigurationService& get_configuration_service() = 0;
-    virtual const ConfigurationService& get_configuration_service() const = 0;
-    virtual const ApplicationConfig& get_config() const = 0;
-    virtual AuthenticationService& get_authentication_service() = 0;
+    virtual std::expected<std::reference_wrapper<services::MediaService>, ApplicationError> get_media_service() = 0;
+    virtual std::expected<std::reference_wrapper<services::PresenceService>, ApplicationError> get_presence_service() = 0;
+    virtual std::expected<std::reference_wrapper<platform::UiService>, ApplicationError> get_ui_service() = 0;
+    virtual std::expected<std::reference_wrapper<ConfigurationService>, ApplicationError> get_configuration_service() = 0;
+    virtual std::expected<std::reference_wrapper<const ConfigurationService>, ApplicationError> get_configuration_service() const = 0;
+    virtual std::expected<std::reference_wrapper<const ApplicationConfig>, ApplicationError> get_config() const = 0;
+    virtual std::expected<std::reference_wrapper<AuthenticationService>, ApplicationError> get_authentication_service() = 0;
 
     // Event bus access
-    virtual EventBus& get_event_bus() = 0;
+    virtual std::expected<std::reference_wrapper<EventBus>, ApplicationError> get_event_bus() = 0;
 
     // Utilities
-    virtual utils::ThreadPool& get_thread_pool() = 0;
-    virtual utils::TaskScheduler& get_task_scheduler() = 0;
+    virtual std::expected<std::reference_wrapper<utils::ThreadPool>, ApplicationError> get_thread_pool() = 0;
+    virtual std::expected<std::reference_wrapper<utils::TaskScheduler>, ApplicationError> get_task_scheduler() = 0;
 };
 
 // Application factory

@@ -44,7 +44,6 @@ public:
         }
     };
 
-    explicit DiscordPresenceService(Config config);
     ~DiscordPresenceService() override;
 
     // PresenceService implementation
@@ -103,6 +102,10 @@ protected:
     void on_error_occurred(core::DiscordError error, const std::string& message);
 
 private:
+    friend class DiscordPresenceServiceFactory;
+
+    explicit DiscordPresenceService(Config config);
+
     Config m_config;
     std::atomic<bool> m_initialized{false};
     std::atomic<bool> m_shutting_down{false};

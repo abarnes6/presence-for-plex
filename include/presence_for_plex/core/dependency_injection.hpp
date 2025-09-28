@@ -5,10 +5,19 @@
 #include <unordered_map>
 #include <type_traits>
 #include <functional>
+#include <expected>
 #include <stdexcept>
 
 namespace presence_for_plex {
 namespace core {
+
+// Dependency injection errors
+enum class DependencyError {
+    ServiceNotRegistered,
+    TypeMismatch,
+    CircularDependency,
+    RegistrationFailed
+};
 
 // Simple dependency injection container
 class DependencyContainer {
@@ -24,9 +33,19 @@ public:
     }
 
 
-    // Resolve a service
+    // Resolve a service (throws for backward compatibility)
     template<typename Interface>
     std::shared_ptr<Interface> resolve() {
+        auto result = try_resolve<Interface>();
+        if (!result) {
+            throw std::runtime_error("Service not registered: " + std::string(typeid(Interface).name()));
+        }
+        return *result;
+    }
+
+    // Safe resolve a service
+    template<typename Interface>
+    std::expected<std::shared_ptr<Interface>, DependencyError> try_resolve() {
         auto type_id = std::type_index(typeid(Interface));
 
         // Check for singleton
@@ -35,7 +54,7 @@ public:
             return std::static_pointer_cast<Interface>(service_it->second);
         }
 
-        throw std::runtime_error("Service not registered: " + std::string(typeid(Interface).name()));
+        return std::unexpected(DependencyError::ServiceNotRegistered);
     }
 
 

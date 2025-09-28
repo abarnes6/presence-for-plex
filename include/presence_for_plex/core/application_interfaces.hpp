@@ -41,10 +41,10 @@ class IServiceProvider {
 public:
     virtual ~IServiceProvider() = default;
 
-    virtual services::MediaService& get_media_service() = 0;
-    virtual services::PresenceService& get_presence_service() = 0;
-    virtual const services::MediaService& get_media_service() const = 0;
-    virtual const services::PresenceService& get_presence_service() const = 0;
+    virtual std::expected<std::reference_wrapper<services::MediaService>, ApplicationError> get_media_service() = 0;
+    virtual std::expected<std::reference_wrapper<services::PresenceService>, ApplicationError> get_presence_service() = 0;
+    virtual std::expected<std::reference_wrapper<const services::MediaService>, ApplicationError> get_media_service() const = 0;
+    virtual std::expected<std::reference_wrapper<const services::PresenceService>, ApplicationError> get_presence_service() const = 0;
 };
 
 // 3. Utility provider interface
