@@ -136,10 +136,10 @@ struct PresenceCleared : Event {
 };
 
 struct DiscordConnected : Event {
-    std::string application_id;
+    std::string client_id;
 
-    explicit DiscordConnected(std::string app_id)
-        : application_id(std::move(app_id)) {}
+    explicit DiscordConnected(std::string id)
+        : client_id(std::move(id)) {}
 };
 
 struct DiscordDisconnected : Event {

@@ -86,6 +86,17 @@ public:
      */
     const Config& get_config() const { return m_config; }
 
+    /**
+     * @brief Update configuration dynamically
+     * @param config New configuration to apply
+     */
+    void update_config(const Config& config);
+
+    /**
+     * @brief Get the presence formatter for configuration
+     */
+    PresenceFormatter* get_formatter() override { return m_formatter.get(); }
+
 protected:
     void on_presence_updated(const PresenceData& data);
     void on_connection_state_changed(bool connected);
@@ -131,16 +142,16 @@ private:
 
 class DiscordPresenceServiceFactory {
 public:
-    static std::unique_ptr<PresenceService> create_service(
+    static std::expected<std::unique_ptr<PresenceService>, core::ConfigError> create_service(
         const core::ApplicationConfig& app_config
     );
 
-    static std::unique_ptr<DiscordPresenceService> create_discord_service(
+    static std::expected<std::unique_ptr<DiscordPresenceService>, core::ConfigError> create_discord_service(
         DiscordPresenceService::Config config
     );
 
 private:
-    static DiscordPresenceService::Config create_config_from_app_config(
+    static std::expected<DiscordPresenceService::Config, core::ConfigError> create_config_from_app_config(
         const core::ApplicationConfig& app_config
     );
 };

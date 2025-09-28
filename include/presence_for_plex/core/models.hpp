@@ -12,8 +12,51 @@
 namespace presence_for_plex {
 namespace core {
 
+// Configuration validation limits
+namespace ConfigLimits {
+    constexpr auto MIN_UPDATE_INTERVAL = std::chrono::seconds(1);
+    constexpr auto MAX_UPDATE_INTERVAL = std::chrono::seconds(300);
+    constexpr auto MIN_POLL_INTERVAL = std::chrono::seconds(1);
+    constexpr auto MAX_POLL_INTERVAL = std::chrono::seconds(60);
+    constexpr auto MIN_TIMEOUT = std::chrono::seconds(5);
+    constexpr auto MAX_TIMEOUT = std::chrono::seconds(300);
+}
+
 // Forward declarations
 class HttpClient;
+
+// Log levels for configuration
+enum class LogLevel {
+    Trace,
+    Debug,
+    Info,
+    Warning,
+    Error,
+    Critical
+};
+
+// Helper functions for LogLevel
+inline std::string to_string(LogLevel level) {
+    switch (level) {
+        case LogLevel::Trace: return "trace";
+        case LogLevel::Debug: return "debug";
+        case LogLevel::Info: return "info";
+        case LogLevel::Warning: return "warning";
+        case LogLevel::Error: return "error";
+        case LogLevel::Critical: return "critical";
+        default: return "info";
+    }
+}
+
+inline LogLevel log_level_from_string(const std::string& str) {
+    if (str == "trace") return LogLevel::Trace;
+    if (str == "debug") return LogLevel::Debug;
+    if (str == "info") return LogLevel::Info;
+    if (str == "warning") return LogLevel::Warning;
+    if (str == "error") return LogLevel::Error;
+    if (str == "critical") return LogLevel::Critical;
+    return LogLevel::Info; // Default
+}
 
 enum class PlaybackState {
     Stopped,       // No active session
@@ -206,7 +249,7 @@ struct MediaInfo {
 
 // Configuration structures
 struct DiscordConfig {
-    std::string application_id;
+    std::string client_id = "1359742002618564618";  // Default Discord client ID
     bool show_buttons = true;
     bool show_progress = true;
     std::chrono::seconds update_interval{15};
@@ -227,7 +270,7 @@ struct PlexConfig {
 struct ApplicationConfig {
     DiscordConfig discord;
     PlexConfig plex;
-    std::string log_level = "info";
+    LogLevel log_level = LogLevel::Info;
     bool start_minimized = false;
 
     // External service tokens

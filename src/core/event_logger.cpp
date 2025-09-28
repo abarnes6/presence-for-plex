@@ -129,7 +129,7 @@ void EventLogger::log_presence_updated(const events::PresenceUpdated& event) {
 }
 
 void EventLogger::log_discord_connected(const events::DiscordConnected& event) {
-    PLEX_LOG_INFO("EventLogger", "Discord connected: app_id=" + event.application_id);
+    PLEX_LOG_INFO("EventLogger", "Discord connected: client_id=" + event.client_id);
 }
 
 void EventLogger::log_discord_disconnected(const events::DiscordDisconnected& event) {

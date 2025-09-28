@@ -2,6 +2,7 @@
 #include "presence_for_plex/utils/yaml_config.hpp"
 #include "presence_for_plex/utils/logger.hpp"
 #include <shared_mutex>
+#include <fstream>
 
 namespace presence_for_plex {
 namespace core {
@@ -14,20 +15,23 @@ public:
         : m_config_path(config_path.empty() ? get_default_config_path() : config_path) {
         PLEX_LOG_INFO("ConfigService", "Initializing with path: " + m_config_path.string());
         ensure_config_directory();
+        m_config_exists = std::filesystem::exists(m_config_path);
     }
 
     std::expected<void, ConfigError> load() override {
-        std::unique_lock lock(m_mutex);
         PLEX_LOG_INFO("ConfigService", "Loading configuration");
 
         if (!std::filesystem::exists(m_config_path)) {
             PLEX_LOG_INFO("ConfigService", "Using default configuration");
+            std::unique_lock lock(m_mutex);
             m_config = ApplicationConfig{};
-            return save_internal();
+            lock.unlock();
+            return save();
         }
 
         auto result = utils::YamlConfigHelper::load_from_file(m_config_path);
         if (result) {
+            std::unique_lock lock(m_mutex);
             m_config = *result;
             PLEX_LOG_INFO("ConfigService", "Configuration loaded");
             return {};
@@ -36,26 +40,68 @@ public:
     }
 
     std::expected<void, ConfigError> save() override {
-        std::shared_lock lock(m_mutex);
-        return save_internal();
-    }
-
-    std::expected<void, ConfigError> save_internal() const {
-        PLEX_LOG_DEBUG("ConfigService", "Saving configuration");
-        return utils::YamlConfigHelper::save_to_file(m_config, m_config_path);
-    }
-
-    std::expected<void, ConfigError> reload() override {
-        PLEX_LOG_INFO("ConfigService", "Reloading configuration");
-        ApplicationConfig old_config = m_config;
-        auto result = load();
-        if (result && m_event_bus) {
-            m_event_bus->publish(core::events::ConfigurationUpdated{
-                std::move(old_config), m_config
-            });
+        ApplicationConfig config_copy;
+        {
+            std::shared_lock lock(m_mutex);
+            config_copy = m_config;
         }
+
+        PLEX_LOG_DEBUG("ConfigService", "Saving configuration");
+
+        auto result = utils::YamlConfigHelper::save_to_file(config_copy, m_config_path);
+
+        if (result && !m_config_exists) {
+            m_config_exists = true;
+            add_documentation_comments();
+        }
+
         return result;
     }
+
+    std::expected<void, ConfigError> add_documentation_comments() const {
+        try {
+            std::ifstream in_file(m_config_path);
+            if (!in_file) {
+                return std::unexpected(ConfigError::FileNotFound);
+            }
+
+            std::stringstream content;
+            content << "# Presence for Plex Configuration\n";
+            content << "# This file was automatically generated on first run\n";
+            content << "# Edit values below to customize your experience\n\n";
+            content << "# General Settings\n";
+            content << "# log_level: Options are trace, debug, info, warning, error, critical\n";
+            content << "# start_minimized: Start application in system tray\n\n";
+            content << "# Discord Rich Presence Settings\n";
+            content << "# client_id: Discord application ID for rich presence\n";
+            content << "# show_buttons: Display action buttons in Discord\n";
+            content << "# show_progress: Show media playback progress\n";
+            content << "# update_interval: Seconds between presence updates (1-300)\n\n";
+            content << "# Plex Media Server Settings\n";
+            content << "# auto_discover: Automatically find local Plex servers\n";
+            content << "# poll_interval: Seconds between server status checks (1-60)\n";
+            content << "# timeout: Connection timeout in seconds\n";
+            content << "# server_urls: Manual server URLs (optional)\n\n";
+            content << "# External Services\n";
+            content << "# tmdb.access_token: TMDB API key for enhanced metadata\n\n";
+
+            content << in_file.rdbuf();
+            in_file.close();
+
+            std::ofstream out_file(m_config_path);
+            if (!out_file) {
+                return std::unexpected(ConfigError::PermissionDenied);
+            }
+
+            out_file << content.str();
+            PLEX_LOG_INFO("ConfigService", "Added documentation to configuration file");
+            return {};
+        } catch (const std::exception& e) {
+            PLEX_LOG_WARNING("ConfigService", "Could not add documentation: " + std::string(e.what()));
+            return {};
+        }
+    }
+
 
     const ApplicationConfig& get() const override {
         std::shared_lock lock(m_mutex);
@@ -64,14 +110,22 @@ public:
 
 
     std::expected<void, ConfigError> update(const ApplicationConfig& config) override {
+        PLEX_LOG_INFO("ConfigService", "Updating configuration");
+
+        // Validate configuration first
+        if (!config.is_valid()) {
+            PLEX_LOG_ERROR("ConfigService", "Invalid configuration provided");
+            return std::unexpected(ConfigError::ValidationError);
+        }
+
         ApplicationConfig old_config;
         {
             std::unique_lock lock(m_mutex);
-            PLEX_LOG_INFO("ConfigService", "Updating configuration");
             old_config = m_config;
             m_config = config;
         }
 
+        // Save and publish event outside of lock
         auto result = save();
         if (result && m_event_bus) {
             m_event_bus->publish(core::events::ConfigurationUpdated{
@@ -81,12 +135,6 @@ public:
         return result;
     }
 
-    std::expected<void, ConfigError> validate(const ApplicationConfig& config) const override {
-        PLEX_LOG_DEBUG("ConfigService", "Validating configuration");
-        return config.is_valid() ?
-            std::expected<void, ConfigError>{} :
-            std::unexpected(ConfigError::ValidationError);
-    }
 
     void set_event_bus(std::shared_ptr<EventBus> bus) override {
         PLEX_LOG_DEBUG("ConfigService", "Setting event bus");
@@ -127,6 +175,7 @@ private:
     std::filesystem::path m_config_path;
     ApplicationConfig m_config;
     std::shared_ptr<EventBus> m_event_bus;
+    mutable bool m_config_exists = false;
 };
 
 std::unique_ptr<ConfigurationService> ConfigurationService::create(

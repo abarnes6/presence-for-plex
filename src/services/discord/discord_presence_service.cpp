@@ -151,7 +151,24 @@ std::expected<void, core::DiscordError> DiscordPresenceService::update_from_medi
 }
 
 void DiscordPresenceService::set_event_bus(std::shared_ptr<core::EventBus> bus) {
-    m_event_bus = std::move(bus);
+    m_event_bus = bus;
+
+    if (m_event_bus) {
+        m_event_bus->subscribe<core::events::ConfigurationUpdated>(
+            [this](const core::events::ConfigurationUpdated& event) {
+                if (m_formatter) {
+                    m_formatter->set_show_buttons(event.new_config.discord.show_buttons);
+                    m_formatter->set_show_progress(event.new_config.discord.show_progress);
+                }
+
+                if (event.new_config.discord.update_interval != m_config.update_interval) {
+                    set_update_interval(event.new_config.discord.update_interval);
+                }
+
+                PLEX_LOG_INFO("DiscordPresenceService", "Configuration updated from event");
+            }
+        );
+    }
 }
 
 void DiscordPresenceService::set_update_interval(std::chrono::seconds interval) {
@@ -164,6 +181,35 @@ void DiscordPresenceService::set_update_interval(std::chrono::seconds interval) 
 
 std::chrono::seconds DiscordPresenceService::get_update_interval() const {
     return m_config.update_interval;
+}
+
+void DiscordPresenceService::update_config(const Config& config) {
+    PLEX_LOG_INFO("DiscordPresenceService", "Updating configuration");
+
+    // Update interval can be changed on the fly
+    if (config.update_interval != m_config.update_interval) {
+        m_config.update_interval = config.update_interval;
+        PLEX_LOG_INFO("DiscordPresenceService",
+            "Update interval changed to " + std::to_string(config.update_interval.count()) + "s");
+    }
+
+    // Client ID change requires reconnection
+    if (config.client_id != m_config.client_id) {
+        PLEX_LOG_INFO("DiscordPresenceService",
+            "Client ID changed from " + m_config.client_id + " to " + config.client_id);
+        m_config.client_id = config.client_id;
+
+        // Reconnect with new client ID
+        if (m_connection_manager) {
+            m_connection_manager->stop();
+            auto discord_ipc = std::make_unique<DiscordIPC>(m_config.client_id);
+            m_connection_manager = std::make_unique<ConnectionManager>(
+                std::move(discord_ipc), m_config.connection_config);
+            m_connection_manager->set_connection_callback(
+                [this](bool connected) { handle_connection_changed(connected); });
+            m_connection_manager->start();
+        }
+    }
 }
 
 DiscordPresenceService::ServiceStats DiscordPresenceService::get_service_stats() const {
@@ -450,26 +496,46 @@ void DiscordPresenceService::on_error_occurred(core::DiscordError error, const s
 }
 
 // Factory implementations
-std::unique_ptr<PresenceService> DiscordPresenceServiceFactory::create_service(
-    const core::ApplicationConfig& app_config) {
+std::expected<std::unique_ptr<PresenceService>, core::ConfigError>
+DiscordPresenceServiceFactory::create_service(const core::ApplicationConfig& app_config) {
+    auto config_result = create_config_from_app_config(app_config);
+    if (!config_result) {
+        return std::unexpected(config_result.error());
+    }
 
-    auto config = create_config_from_app_config(app_config);
-    return create_discord_service(std::move(config));
+    auto service_result = create_discord_service(std::move(*config_result));
+    if (!service_result) {
+        return std::unexpected(service_result.error());
+    }
+
+    return std::move(*service_result);
 }
 
-std::unique_ptr<DiscordPresenceService> DiscordPresenceServiceFactory::create_discord_service(
-    DiscordPresenceService::Config config) {
+std::expected<std::unique_ptr<DiscordPresenceService>, core::ConfigError>
+DiscordPresenceServiceFactory::create_discord_service(DiscordPresenceService::Config config) {
+    if (!config.is_valid()) {
+        return std::unexpected(core::ConfigError::ValidationError);
+    }
 
-    return std::make_unique<DiscordPresenceService>(std::move(config));
+    try {
+        return std::make_unique<DiscordPresenceService>(std::move(config));
+    } catch (const std::exception& e) {
+        PLEX_LOG_ERROR("DiscordPresenceServiceFactory",
+            "Failed to create service: " + std::string(e.what()));
+        return std::unexpected(core::ConfigError::InvalidFormat);
+    }
 }
 
-DiscordPresenceService::Config DiscordPresenceServiceFactory::create_config_from_app_config(
-    const core::ApplicationConfig& app_config) {
+std::expected<DiscordPresenceService::Config, core::ConfigError>
+DiscordPresenceServiceFactory::create_config_from_app_config(const core::ApplicationConfig& app_config) {
+    if (app_config.discord.client_id.empty()) {
+        return std::unexpected(core::ConfigError::ValidationError);
+    }
 
     DiscordPresenceService::Config config;
 
     // Discord configuration
-    config.client_id = app_config.discord.application_id;
+    config.client_id = app_config.discord.client_id;
     config.update_interval = app_config.discord.update_interval;
 
     // Rate limiting configuration (use safe defaults)

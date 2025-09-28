@@ -45,13 +45,14 @@ bool MediaInfo::is_valid() const {
 
 // DiscordConfig validation
 bool DiscordConfig::is_valid() const {
-    // Application ID is required
-    if (application_id.empty()) {
+    // Client ID is required
+    if (client_id.empty()) {
         return false;
     }
 
-    // Update interval should be reasonable (1s to 5min)
-    if (update_interval.count() < 1 || update_interval.count() > 300) {
+    // Update interval should be within configured limits
+    if (update_interval < ConfigLimits::MIN_UPDATE_INTERVAL ||
+        update_interval > ConfigLimits::MAX_UPDATE_INTERVAL) {
         return false;
     }
 
@@ -60,13 +61,15 @@ bool DiscordConfig::is_valid() const {
 
 // PlexConfig validation
 bool PlexConfig::is_valid() const {
-    // Poll interval should be reasonable (1s to 1min)
-    if (poll_interval.count() < 1 || poll_interval.count() > 60) {
+    // Poll interval should be within configured limits
+    if (poll_interval < ConfigLimits::MIN_POLL_INTERVAL ||
+        poll_interval > ConfigLimits::MAX_POLL_INTERVAL) {
         return false;
     }
 
-    // Timeout should be reasonable (5s to 5min)
-    if (timeout.count() < 5 || timeout.count() > 300) {
+    // Timeout should be within configured limits
+    if (timeout < ConfigLimits::MIN_TIMEOUT ||
+        timeout > ConfigLimits::MAX_TIMEOUT) {
         return false;
     }
 
@@ -80,13 +83,7 @@ bool ApplicationConfig::is_valid() const {
         return false;
     }
 
-    // Log level should be valid
-    if (log_level != "trace" && log_level != "debug" &&
-        log_level != "info" && log_level != "warning" &&
-        log_level != "error" && log_level != "critical") {
-        return false;
-    }
-
+    // Log level enum is always valid by design
     return true;
 }
 

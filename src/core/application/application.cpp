@@ -157,6 +157,16 @@ public:
         return *m_config_service;
     }
 
+    const ConfigurationService& get_configuration_service() const override {
+        if (!m_config_service) throw std::runtime_error("ConfigurationService not initialized");
+        return *m_config_service;
+    }
+
+    const ApplicationConfig& get_config() const override {
+        if (!m_config_service) throw std::runtime_error("ConfigurationService not initialized");
+        return m_config_service->get();
+    }
+
     AuthenticationService& get_authentication_service() override {
         if (!m_auth_service) throw std::runtime_error("AuthenticationService not initialized");
         return *m_auth_service;
@@ -250,14 +260,17 @@ private:
             return;
         }
 
-        m_presence_service = factory->create_service(
+        auto service_result = factory->create_service(
             services::PresenceServiceFactory::ServiceType::Discord,
             m_config_service->get()
         );
 
-        if (m_presence_service) {
+        if (service_result) {
+            m_presence_service = std::move(*service_result);
             m_presence_service->set_event_bus(m_event_bus);
             PLEX_LOG_INFO("Application", "Discord service initialized");
+        } else {
+            PLEX_LOG_ERROR("Application", "Discord service creation failed");
         }
     }
 
@@ -266,7 +279,8 @@ private:
             return;
         }
 
-        auto subscription_id = m_event_bus->subscribe<events::MediaSessionUpdated>(
+        // Subscribe to media session updates
+        auto media_sub = m_event_bus->subscribe<events::MediaSessionUpdated>(
             [this](const events::MediaSessionUpdated& event) {
                 PLEX_LOG_DEBUG("Application", "Updating Discord presence");
                 if (!m_presence_service->update_from_media(event.current_info)) {
@@ -274,8 +288,20 @@ private:
                 }
             }
         );
+        m_event_subscriptions.push_back(media_sub);
 
-        m_event_subscriptions.push_back(subscription_id);
+        // Subscribe to configuration updates
+        auto config_sub = m_event_bus->subscribe<events::ConfigurationUpdated>(
+            [](const events::ConfigurationUpdated& event) {
+                PLEX_LOG_INFO("Application", "Configuration updated");
+
+                // Services that need runtime config updates can listen to this event
+                // directly via the event bus, rather than coupling the application
+                // to specific service implementations
+            }
+        );
+        m_event_subscriptions.push_back(config_sub);
+
         PLEX_LOG_INFO("Application", "Services connected");
     }
 

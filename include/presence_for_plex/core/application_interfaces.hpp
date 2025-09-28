@@ -47,17 +47,7 @@ public:
     virtual const services::PresenceService& get_presence_service() const = 0;
 };
 
-// 3. Configuration provider interface
-class IConfigurationProvider {
-public:
-    virtual ~IConfigurationProvider() = default;
-
-    virtual ConfigurationService& get_configuration_service() = 0;
-    virtual const ConfigurationService& get_configuration_service() const = 0;
-    virtual const ApplicationConfig& get_config() const = 0;
-};
-
-// 5. Utility provider interface
+// 3. Utility provider interface
 class IUtilityProvider {
 public:
     virtual ~IUtilityProvider() = default;
@@ -70,10 +60,14 @@ public:
 // Clients can depend only on the interfaces they need
 class Application : public IApplicationLifecycle,
                    public IServiceProvider,
-                   public IConfigurationProvider,
                    public IUtilityProvider {
 public:
     virtual ~Application() = default;
+
+    // Configuration access
+    virtual ConfigurationService& get_configuration_service() = 0;
+    virtual const ConfigurationService& get_configuration_service() const = 0;
+    virtual const ApplicationConfig& get_config() const = 0;
 
     // Additional methods that don't fit into the segregated interfaces
     virtual void set_signal_handler(std::function<void(int)> handler) = 0;

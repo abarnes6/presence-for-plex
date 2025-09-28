@@ -43,22 +43,18 @@ enum class ApplicationState {
 };
 #endif
 
-// Configuration service interface - simplified to handle only application settings
+// Configuration service interface - simplified for clarity
 class ConfigurationService {
 public:
     virtual ~ConfigurationService() = default;
 
-    // Core configuration operations
+    // Core operations
     virtual std::expected<void, ConfigError> load() = 0;
     virtual std::expected<void, ConfigError> save() = 0;
-    virtual std::expected<void, ConfigError> reload() = 0;
 
     // Configuration access
     virtual const ApplicationConfig& get() const = 0;
     virtual std::expected<void, ConfigError> update(const ApplicationConfig& config) = 0;
-
-    // Validation
-    virtual std::expected<void, ConfigError> validate(const ApplicationConfig& config) const = 0;
 
     // Event notifications
     virtual void set_event_bus(std::shared_ptr<EventBus> bus) = 0;
@@ -95,6 +91,8 @@ public:
     virtual services::PresenceService& get_presence_service() = 0;
     virtual platform::UiService& get_ui_service() = 0;
     virtual ConfigurationService& get_configuration_service() = 0;
+    virtual const ConfigurationService& get_configuration_service() const = 0;
+    virtual const ApplicationConfig& get_config() const = 0;
     virtual AuthenticationService& get_authentication_service() = 0;
 
     // Event bus access

@@ -18,6 +18,9 @@ using core::MediaInfo;
 using core::DiscordError;
 using core::EventBus;
 
+// Forward declarations
+class PresenceFormatter;
+
 // Rich presence data structure
 struct PresenceData {
     std::string state;              // First line of rich presence
@@ -76,6 +79,9 @@ public:
     virtual void set_update_interval(std::chrono::seconds interval) = 0;
     virtual std::chrono::seconds get_update_interval() const = 0;
 
+    // Get formatter for configuration
+    virtual PresenceFormatter* get_formatter() = 0;
+
 protected:
     std::shared_ptr<EventBus> m_event_bus;
 
@@ -118,7 +124,7 @@ public:
         Teams
     };
 
-    virtual std::unique_ptr<PresenceService> create_service(
+    virtual std::expected<std::unique_ptr<PresenceService>, core::ConfigError> create_service(
         ServiceType type,
         const core::ApplicationConfig& config
     ) = 0;

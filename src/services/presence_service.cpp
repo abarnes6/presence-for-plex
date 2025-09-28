@@ -182,16 +182,33 @@ std::unique_ptr<PresenceFormatter> PresenceFormatter::create_default_formatter()
 
 class DefaultPresenceServiceFactory : public PresenceServiceFactory {
 public:
-    std::unique_ptr<PresenceService> create_service(
+    std::expected<std::unique_ptr<PresenceService>, core::ConfigError> create_service(
         ServiceType type,
         const core::ApplicationConfig& config
     ) override {
         if (type == ServiceType::Discord) {
+            if (config.discord.client_id.empty()) {
+                return std::unexpected(core::ConfigError::ValidationError);
+            }
+
             DiscordPresenceService::Config discord_config;
-            discord_config.client_id = config.discord.application_id;
-            return std::make_unique<DiscordPresenceService>(std::move(discord_config));
+            discord_config.client_id = config.discord.client_id;
+            discord_config.update_interval = config.discord.update_interval;
+
+            try {
+                auto service = std::make_unique<DiscordPresenceService>(std::move(discord_config));
+
+                if (auto formatter = service->get_formatter()) {
+                    formatter->set_show_buttons(config.discord.show_buttons);
+                    formatter->set_show_progress(config.discord.show_progress);
+                }
+
+                return service;
+            } catch (const std::exception& e) {
+                return std::unexpected(core::ConfigError::InvalidFormat);
+            }
         }
-        return nullptr;
+        return std::unexpected(core::ConfigError::InvalidFormat);
     }
 };
 

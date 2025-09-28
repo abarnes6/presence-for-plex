@@ -1,9 +1,17 @@
 #include "presence_for_plex/utils/yaml_config.hpp"
 #include "presence_for_plex/utils/logger.hpp"
 #include <fstream>
+#include <algorithm>
 
 namespace presence_for_plex {
 namespace utils {
+
+namespace {
+    template<typename T>
+    T clamp_to_limits(T value, T min, T max) {
+        return std::clamp(value, min, max);
+    }
+}
 
 std::expected<core::ApplicationConfig, core::ConfigError>
 YamlConfigHelper::load_from_file(const std::filesystem::path& path) {
@@ -49,25 +57,21 @@ YamlConfigHelper::save_to_file(const core::ApplicationConfig& config, const std:
 core::ApplicationConfig YamlConfigHelper::from_yaml(const YAML::Node& node) {
     core::ApplicationConfig config;
 
-    // General settings
     if (node["log_level"]) {
-        config.log_level = node["log_level"].as<std::string>();
+        config.log_level = core::log_level_from_string(node["log_level"].as<std::string>());
     }
     if (node["start_minimized"]) {
         config.start_minimized = node["start_minimized"].as<bool>();
     }
 
-    // Discord settings
     if (node["discord"]) {
         config.discord = parse_discord_config(node["discord"]);
     }
 
-    // Plex settings
     if (node["plex"]) {
         config.plex = parse_plex_config(node["plex"]);
     }
 
-    // TMDB settings
     if (node["tmdb"] && node["tmdb"]["access_token"]) {
         config.tmdb_access_token = node["tmdb"]["access_token"].as<std::string>();
     }
@@ -78,17 +82,12 @@ core::ApplicationConfig YamlConfigHelper::from_yaml(const YAML::Node& node) {
 YAML::Node YamlConfigHelper::to_yaml(const core::ApplicationConfig& config) {
     YAML::Node node;
 
-    // General settings
-    node["log_level"] = config.log_level;
+    node["log_level"] = core::to_string(config.log_level);
     node["start_minimized"] = config.start_minimized;
 
-    // Discord settings
     merge_discord_config(node, config.discord);
-
-    // Plex settings
     merge_plex_config(node, config.plex);
 
-    // TMDB settings (only save if not default)
     if (config.tmdb_access_token != core::ApplicationConfig{}.tmdb_access_token) {
         node["tmdb"]["access_token"] = config.tmdb_access_token;
     }
@@ -97,18 +96,7 @@ YAML::Node YamlConfigHelper::to_yaml(const core::ApplicationConfig& config) {
 }
 
 void YamlConfigHelper::merge_discord_config(YAML::Node& node, const core::DiscordConfig& config) {
-    if (!config.application_id.empty()) {
-        // Parse as number if it's the default Discord client ID
-        if (config.application_id == "1359742002618564618") {
-            node["discord"]["client_id"] = 1359742002618564618ULL;
-        } else {
-            try {
-                node["discord"]["client_id"] = std::stoull(config.application_id);
-            } catch (...) {
-                node["discord"]["application_id"] = config.application_id;
-            }
-        }
-    }
+    node["discord"]["client_id"] = config.client_id;
     node["discord"]["show_buttons"] = config.show_buttons;
     node["discord"]["show_progress"] = config.show_progress;
     node["discord"]["update_interval"] = config.update_interval.count();
@@ -127,14 +115,8 @@ void YamlConfigHelper::merge_plex_config(YAML::Node& node, const core::PlexConfi
 core::DiscordConfig YamlConfigHelper::parse_discord_config(const YAML::Node& node) {
     core::DiscordConfig config;
 
-    // Handle both client_id and application_id fields
     if (node["client_id"]) {
-        config.application_id = std::to_string(node["client_id"].as<uint64_t>());
-    } else if (node["application_id"]) {
-        config.application_id = node["application_id"].as<std::string>();
-    } else {
-        // Use default Discord client ID
-        config.application_id = "1359742002618564618";
+        config.client_id = node["client_id"].as<std::string>();
     }
 
     if (node["show_buttons"]) {
@@ -143,8 +125,13 @@ core::DiscordConfig YamlConfigHelper::parse_discord_config(const YAML::Node& nod
     if (node["show_progress"]) {
         config.show_progress = node["show_progress"].as<bool>();
     }
+
     if (node["update_interval"]) {
-        config.update_interval = std::chrono::seconds(node["update_interval"].as<int>());
+        auto seconds = clamp_to_limits(
+            node["update_interval"].as<int>(),
+            static_cast<int>(core::ConfigLimits::MIN_UPDATE_INTERVAL.count()),
+            static_cast<int>(core::ConfigLimits::MAX_UPDATE_INTERVAL.count()));
+        config.update_interval = std::chrono::seconds(seconds);
     }
 
     return config;
@@ -156,12 +143,23 @@ core::PlexConfig YamlConfigHelper::parse_plex_config(const YAML::Node& node) {
     if (node["auto_discover"]) {
         config.auto_discover = node["auto_discover"].as<bool>();
     }
+
     if (node["poll_interval"]) {
-        config.poll_interval = std::chrono::seconds(node["poll_interval"].as<int>());
+        auto seconds = clamp_to_limits(
+            node["poll_interval"].as<int>(),
+            static_cast<int>(core::ConfigLimits::MIN_POLL_INTERVAL.count()),
+            static_cast<int>(core::ConfigLimits::MAX_POLL_INTERVAL.count()));
+        config.poll_interval = std::chrono::seconds(seconds);
     }
+
     if (node["timeout"]) {
-        config.timeout = std::chrono::seconds(node["timeout"].as<int>());
+        auto seconds = clamp_to_limits(
+            node["timeout"].as<int>(),
+            static_cast<int>(core::ConfigLimits::MIN_TIMEOUT.count()),
+            static_cast<int>(core::ConfigLimits::MAX_TIMEOUT.count()));
+        config.timeout = std::chrono::seconds(seconds);
     }
+
     if (node["server_urls"]) {
         for (const auto& url : node["server_urls"]) {
             config.server_urls.push_back(url.as<std::string>());
