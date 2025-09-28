@@ -13,6 +13,30 @@ namespace services {
 
 using json = nlohmann::json;
 
+// Helper function to convert NetworkError to string
+static std::string network_error_to_string(NetworkError error) {
+    switch (error) {
+        case NetworkError::ConnectionFailed:
+            return "Connection failed";
+        case NetworkError::Timeout:
+            return "Timeout";
+        case NetworkError::DNSResolutionFailed:
+            return "DNS resolution failed";
+        case NetworkError::SSLError:
+            return "SSL error";
+        case NetworkError::InvalidUrl:
+            return "Invalid URL";
+        case NetworkError::TooManyRedirects:
+            return "Too many redirects";
+        case NetworkError::BadResponse:
+            return "Bad response";
+        case NetworkError::Cancelled:
+            return "Cancelled";
+        default:
+            return "Unknown error";
+    }
+}
+
 // TMDBService implementation
 TMDBService::TMDBService(std::shared_ptr<HttpClient> http_client, const std::string& access_token)
     : m_http_client(std::move(http_client))
@@ -44,7 +68,7 @@ std::expected<std::string, core::PlexError> TMDBService::fetch_artwork_url(
 
     auto response = m_http_client->get(url, headers);
     if (!response.has_value()) {
-        PLEX_LOG_ERROR("TMDB", "Failed to fetch TMDB images for ID: " + tmdb_id + " - " + response.error().what());
+        PLEX_LOG_ERROR("TMDB", "Failed to fetch TMDB images for ID: " + tmdb_id + " - " + network_error_to_string(response.error()));
         return std::unexpected<core::PlexError>(core::PlexError::NetworkError);
     }
     
@@ -109,7 +133,7 @@ std::expected<std::string, core::PlexError> JikanService::fetch_artwork_url(
 
     auto response = m_http_client->get(url, {});
     if (!response.has_value()) {
-        PLEX_LOG_ERROR("Jikan", "Failed to fetch MAL data for ID: " + mal_id + " - " + response.error().what());
+        PLEX_LOG_ERROR("Jikan", "Failed to fetch MAL data for ID: " + mal_id + " - " + network_error_to_string(response.error()));
         return std::unexpected<core::PlexError>(core::PlexError::NetworkError);
     }
     
@@ -180,7 +204,7 @@ std::expected<std::string, core::PlexError> JikanService::search_anime_by_title(
 
     auto response = m_http_client->get(url, {});
     if (!response.has_value()) {
-        PLEX_LOG_ERROR("Jikan", "Failed to search anime: " + title + " - " + response.error().what());
+        PLEX_LOG_ERROR("Jikan", "Failed to search anime: " + title + " - " + network_error_to_string(response.error()));
         return std::unexpected<core::PlexError>(core::PlexError::NetworkError);
     }
     
@@ -344,7 +368,7 @@ std::expected<core::MediaInfo, core::PlexError> PlexMediaFetcher::fetch_media_de
 
     auto response = m_http_client->get(url, headers);
     if (!response.has_value()) {
-        PLEX_LOG_ERROR("PlexMediaFetcher", "Failed to fetch media details from: " + url + " - " + response.error().what());
+        PLEX_LOG_ERROR("PlexMediaFetcher", "Failed to fetch media details from: " + url + " - " + network_error_to_string(response.error()));
         return std::unexpected<core::PlexError>(core::PlexError::NetworkError);
     }
     
@@ -434,7 +458,7 @@ std::expected<void, core::PlexError> PlexMediaFetcher::fetch_grandparent_metadat
 
     auto response = m_http_client->get(url, headers);
     if (!response.has_value()) {
-        PLEX_LOG_ERROR("PlexMediaFetcher", "Failed to fetch grandparent metadata - " + response.error().what());
+        PLEX_LOG_ERROR("PlexMediaFetcher", "Failed to fetch grandparent metadata - " + network_error_to_string(response.error()));
         return std::unexpected<core::PlexError>(core::PlexError::NetworkError);
     }
     

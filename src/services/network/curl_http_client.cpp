@@ -27,13 +27,6 @@ static size_t WriteFileCallback(void* contents, size_t size, size_t nmemb, std::
     return total_size;
 }
 
-// Callback for reading from file
-static size_t ReadFileCallback(void* contents, size_t size, size_t nmemb, std::ifstream* file) {
-    size_t total_size = size * nmemb;
-    file->read(static_cast<char*>(contents), static_cast<std::streamsize>(total_size));
-    return static_cast<size_t>(file->gcount());
-}
-
 // Callback for progress
 static int CurlProgressCallback(void* clientp, curl_off_t dltotal, curl_off_t dlnow,
                            curl_off_t ultotal, curl_off_t ulnow) {
