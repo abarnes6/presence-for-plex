@@ -1,6 +1,10 @@
 #pragma once
 
 #include "presence_for_plex/core/models.hpp"
+#include "presence_for_plex/core/event_bus.hpp"
+#include "presence_for_plex/core/events.hpp"
+#include "presence_for_plex/core/authentication_service.hpp"
+#include "presence_for_plex/core/runtime_state.hpp"
 #include "presence_for_plex/services/media_service.hpp"
 #include "presence_for_plex/services/presence_service.hpp"
 #include "presence_for_plex/platform/ui_service.hpp"
@@ -19,7 +23,8 @@
 namespace presence_for_plex {
 namespace core {
 
-// Application error types
+// Application error types - defined in events.hpp if included
+#ifndef PRESENCE_FOR_PLEX_EVENTS_HPP_INCLUDED
 enum class ApplicationError {
     InitializationFailed,
     ServiceUnavailable,
@@ -28,7 +33,6 @@ enum class ApplicationError {
     ShutdownFailed
 };
 
-// Application state
 enum class ApplicationState {
     NotInitialized,
     Initializing,
@@ -37,40 +41,33 @@ enum class ApplicationState {
     Stopped,
     Error
 };
+#endif
 
-// Configuration service interface
+// Configuration service interface - simplified to handle only application settings
 class ConfigurationService {
 public:
     virtual ~ConfigurationService() = default;
 
-    // Configuration management
-    virtual std::expected<void, ConfigError> load_configuration() = 0;
-    virtual std::expected<void, ConfigError> save_configuration() = 0;
-    virtual std::expected<void, ConfigError> reload_configuration() = 0;
+    // Core configuration operations
+    virtual std::expected<void, ConfigError> load() = 0;
+    virtual std::expected<void, ConfigError> save() = 0;
+    virtual std::expected<void, ConfigError> reload() = 0;
 
     // Configuration access
-    virtual const ApplicationConfig& get_config() const = 0;
-    virtual std::expected<void, ConfigError> update_config(const ApplicationConfig& config) = 0;
+    virtual const ApplicationConfig& get() const = 0;
+    virtual std::expected<void, ConfigError> update(const ApplicationConfig& config) = 0;
 
     // Validation
-    virtual std::expected<void, ConfigError> validate_config(const ApplicationConfig& config) const = 0;
+    virtual std::expected<void, ConfigError> validate(const ApplicationConfig& config) const = 0;
 
-    // Change notifications
-    using ConfigChangeCallback = std::function<void(const ApplicationConfig&)>;
-    virtual void set_change_callback(ConfigChangeCallback callback) = 0;
+    // Event notifications
+    virtual void set_event_bus(std::shared_ptr<EventBus> bus) = 0;
 
-    // Plex-specific configuration methods
-    virtual std::string get_plex_auth_token() const = 0;
-    virtual void set_plex_auth_token(const std::string& token) = 0;
-    virtual std::string get_plex_client_identifier() const = 0;
-    virtual std::string get_plex_username() const = 0;
-    virtual void set_plex_username(const std::string& username) = 0;
-
-    // Server management methods
-    virtual const std::unordered_map<std::string, std::unique_ptr<PlexServer>>& get_plex_servers() const = 0;
-
-    // Factory method
-    static std::unique_ptr<ConfigurationService> create(const std::filesystem::path& config_path);
+    // Factory
+    static std::unique_ptr<ConfigurationService> create(
+        const std::filesystem::path& config_path = {},
+        std::shared_ptr<EventBus> event_bus = nullptr
+    );
 };
 
 // Main application interface
@@ -98,6 +95,10 @@ public:
     virtual services::PresenceService& get_presence_service() = 0;
     virtual platform::UiService& get_ui_service() = 0;
     virtual ConfigurationService& get_configuration_service() = 0;
+    virtual AuthenticationService& get_authentication_service() = 0;
+
+    // Event bus access
+    virtual EventBus& get_event_bus() = 0;
 
     // Utilities
     virtual utils::ThreadPool& get_thread_pool() = 0;

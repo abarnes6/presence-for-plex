@@ -1,6 +1,8 @@
 #pragma once
 
 #include "presence_for_plex/core/models.hpp"
+#include "presence_for_plex/core/event_bus.hpp"
+#include "presence_for_plex/core/events.hpp"
 #include <chrono>
 #include <functional>
 #include <memory>
@@ -14,11 +16,7 @@ using core::MediaInfo;
 using core::PlexError;
 using core::PlaybackState;
 using core::ServerId;
-
-// Callback types for media events
-using MediaStateCallback = std::function<void(const MediaInfo&)>;
-using MediaErrorCallback = std::function<void(PlexError, const std::string&)>;
-using MediaConnectionStateCallback = std::function<void(const ServerId&, bool)>;
+using core::EventBus;
 
 // Abstract interface for media services (Plex, Jellyfin, etc.)
 class MediaService {
@@ -34,10 +32,8 @@ public:
     virtual void set_poll_interval(std::chrono::seconds interval) = 0;
     virtual std::chrono::seconds get_poll_interval() const = 0;
 
-    // Event callbacks
-    virtual void set_media_state_callback(MediaStateCallback callback) = 0;
-    virtual void set_error_callback(MediaErrorCallback callback) = 0;
-    virtual void set_connection_callback(MediaConnectionStateCallback callback) = 0;
+    // Event bus integration
+    virtual void set_event_bus(std::shared_ptr<EventBus> bus) = 0;
 
     // Media information access
     virtual std::expected<MediaInfo, PlexError> get_current_media() const = 0;
@@ -53,10 +49,15 @@ public:
     virtual std::expected<void, PlexError> test_connection(const ServerId& server_id) = 0;
 
 protected:
-    // Template method pattern for subclasses
-    virtual void on_media_state_changed(const MediaInfo& old_state, const MediaInfo& new_state) = 0;
-    virtual void on_connection_state_changed(const ServerId& server_id, bool connected) = 0;
-    virtual void on_error_occurred(PlexError error, const std::string& message) = 0;
+    std::shared_ptr<EventBus> m_event_bus;
+
+    // Event publishing helpers
+    void publish_media_started(const MediaInfo& info, const ServerId& server_id);
+    void publish_media_updated(const MediaInfo& old_info, const MediaInfo& new_info);
+    void publish_media_ended(const core::SessionKey& key, const ServerId& server_id);
+    void publish_server_connected(const ServerId& server_id, const std::string& name);
+    void publish_server_disconnected(const ServerId& server_id, const std::string& reason);
+    void publish_media_error(PlexError error, const std::string& message, const std::optional<ServerId>& server_id = std::nullopt);
 };
 
 } // namespace services

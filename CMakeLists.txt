@@ -54,11 +54,16 @@ configure_file(
 set(CORE_SOURCES
     src/core/application/application.cpp
     src/core/configuration/config_manager.cpp
+    src/core/authentication_service.cpp
     src/core/models/model_validation.cpp
+    src/core/event_bus.cpp
+    src/core/event_logger.cpp
 )
 
 set(SERVICES_SOURCES
     src/services/presence_service.cpp
+    src/services/presence_service_base.cpp
+    src/services/media_service.cpp
     src/services/plex/plex_authenticator.cpp
     src/services/plex/plex_service_impl.cpp
     src/services/plex/plex_cache_manager.cpp
@@ -95,6 +100,7 @@ set(UTILS_SOURCES
     src/utils/logging/logger.cpp
     src/utils/threading/thread_pool.cpp
     src/utils/crypto/uuid_generator.cpp
+    src/utils/yaml_config.cpp
 )
 
 # Collect all headers

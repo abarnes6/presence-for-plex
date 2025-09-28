@@ -1,4 +1,5 @@
 #include "presence_for_plex/services/plex/plex_service_impl.hpp"
+#include "presence_for_plex/services/media_service.hpp"
 #include "presence_for_plex/services/network_service.hpp"
 #include "presence_for_plex/core/application.hpp"
 #include "presence_for_plex/utils/logger.hpp"
@@ -21,14 +22,16 @@ PlexServiceImpl::PlexServiceImpl(
     std::shared_ptr<IPlexMediaFetcher> media_fetcher,
     std::shared_ptr<IPlexSessionManager> session_manager,
     std::shared_ptr<HttpClient> http_client,
-    std::shared_ptr<core::ConfigurationService> config_service)
+    std::shared_ptr<core::ConfigurationService> config_service,
+    std::shared_ptr<core::AuthenticationService> auth_service)
     : m_authenticator(std::move(authenticator))
     , m_cache_manager(std::move(cache_manager))
     , m_connection_manager(std::move(connection_manager))
     , m_media_fetcher(std::move(media_fetcher))
     , m_session_manager(std::move(session_manager))
     , m_http_client(std::move(http_client))
-    , m_config_service(std::move(config_service)) {
+    , m_config_service(std::move(config_service))
+    , m_auth_service(std::move(auth_service)) {
 
     PLEX_LOG_INFO("PlexService", "Creating refactored Plex service with injected dependencies");
 
@@ -42,8 +45,11 @@ PlexServiceImpl::PlexServiceImpl(
     // Set up session state callback
     m_session_manager->set_session_state_callback(
         [this](const core::MediaInfo& info) {
-            if (m_state_callback) {
-                m_state_callback(info);
+            if (m_event_bus) {
+                // Track and pass previous state for proper transitions
+                const auto previous_state = m_last_media_state;
+                MediaService::publish_media_updated(previous_state, info);
+                m_last_media_state = info;
             }
         }
     );
@@ -153,6 +159,9 @@ void PlexServiceImpl::stop() {
     // Clear caches
     m_cache_manager->clear_all();
     m_session_manager->clear_all();
+
+    // Clear last media state
+    m_last_media_state = core::MediaInfo{};
 }
 
 bool PlexServiceImpl::is_running() const {
@@ -167,17 +176,10 @@ std::chrono::seconds PlexServiceImpl::get_poll_interval() const {
     return m_poll_interval;
 }
 
-void PlexServiceImpl::set_media_state_callback(MediaStateCallback callback) {
-    m_state_callback = std::move(callback);
+void PlexServiceImpl::set_event_bus(std::shared_ptr<core::EventBus> bus) {
+    m_event_bus = std::move(bus);
 }
 
-void PlexServiceImpl::set_error_callback(MediaErrorCallback callback) {
-    m_error_callback = std::move(callback);
-}
-
-void PlexServiceImpl::set_connection_callback(MediaConnectionStateCallback callback) {
-    m_connection_callback = std::move(callback);
-}
 
 std::expected<core::MediaInfo, core::PlexError> PlexServiceImpl::get_current_media() const {
     PLEX_LOG_DEBUG("PlexService", "get_current_media() called");
@@ -271,24 +273,33 @@ std::expected<void, core::PlexError> PlexServiceImpl::test_connection(const core
 }
 
 void PlexServiceImpl::on_media_state_changed(const core::MediaInfo& old_state, const core::MediaInfo& new_state) {
-	(void)old_state;
     PLEX_LOG_INFO("PlexService", "Media state changed: " + new_state.title);
+
+    if (m_event_bus) {
+        MediaService::publish_media_updated(old_state, new_state);
+        // Keep internal state in sync
+        m_last_media_state = new_state;
+    }
 }
 
 void PlexServiceImpl::on_connection_state_changed(const core::ServerId& server_id, bool connected) {
     PLEX_LOG_INFO("PlexService", "Server " + server_id.get() + " connection state: " +
                   (connected ? "connected" : "disconnected"));
 
-    if (m_connection_callback) {
-        m_connection_callback(server_id, connected);
+    if (m_event_bus) {
+        if (connected) {
+            MediaService::publish_server_connected(server_id, server_id.value);
+        } else {
+            MediaService::publish_server_disconnected(server_id, "Connection lost");
+        }
     }
 }
 
 void PlexServiceImpl::on_error_occurred(core::PlexError error, const std::string& message) {
     PLEX_LOG_ERROR("PlexService", "Error occurred: " + message);
 
-    if (m_error_callback) {
-        m_error_callback(error, message);
+    if (m_event_bus) {
+        MediaService::publish_media_error(error, message);
     }
 }
 
@@ -442,6 +453,11 @@ PlexServiceBuilder& PlexServiceBuilder::with_configuration_service(std::shared_p
     return *this;
 }
 
+PlexServiceBuilder& PlexServiceBuilder::with_authentication_service(std::shared_ptr<core::AuthenticationService> auth) {
+    m_auth_service = std::move(auth);
+    return *this;
+}
+
 std::unique_ptr<PlexServiceImpl> PlexServiceBuilder::build() {
     // Create default implementations if not provided
     if (!m_http_client) {
@@ -450,11 +466,11 @@ std::unique_ptr<PlexServiceImpl> PlexServiceBuilder::build() {
     }
 
     if (!m_authenticator) {
-        if (!m_config_service) {
-            throw std::runtime_error("Configuration service is required to create PlexAuthenticator");
+        if (!m_auth_service) {
+            throw std::runtime_error("Authentication service is required to create PlexAuthenticator");
         }
         // Browser launcher will be created inside PlexAuthenticator if not provided
-        m_authenticator = std::make_shared<PlexAuthenticator>(m_http_client, m_config_service, nullptr);
+        m_authenticator = std::make_shared<PlexAuthenticator>(m_http_client, m_auth_service, nullptr);
     }
 
     if (!m_cache_manager) {
@@ -462,10 +478,10 @@ std::unique_ptr<PlexServiceImpl> PlexServiceBuilder::build() {
     }
 
     if (!m_connection_manager) {
-        if (!m_config_service) {
-            throw std::runtime_error("Configuration service is required to create PlexConnectionManager");
+        if (!m_auth_service) {
+            throw std::runtime_error("Authentication service is required to create PlexConnectionManager");
         }
-        m_connection_manager = std::make_shared<PlexConnectionManager>(m_http_client, m_config_service);
+        m_connection_manager = std::make_shared<PlexConnectionManager>(m_http_client, m_auth_service);
     }
 
     if (!m_media_fetcher) {
@@ -478,7 +494,7 @@ std::unique_ptr<PlexServiceImpl> PlexServiceBuilder::build() {
 
         // Add external metadata services
         if (m_config_service) {
-            auto config = m_config_service->get_config();
+            auto config = m_config_service->get();
             if (!config.tmdb_access_token.empty()) {
                 m_media_fetcher->add_external_service(
                     std::make_unique<TMDBService>(m_http_client, config.tmdb_access_token));
@@ -504,7 +520,8 @@ std::unique_ptr<PlexServiceImpl> PlexServiceBuilder::build() {
         m_media_fetcher,
         m_session_manager,
         m_http_client,
-        m_config_service
+        m_config_service,
+        m_auth_service
     );
 }
 

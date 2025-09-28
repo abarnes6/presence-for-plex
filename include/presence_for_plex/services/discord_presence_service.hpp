@@ -56,9 +56,7 @@ public:
     std::expected<void, core::DiscordError> clear_presence() override;
     std::expected<void, core::DiscordError> update_from_media(const core::MediaInfo& media) override;
 
-    void set_update_callback(PresenceUpdateCallback callback) override;
-    void set_error_callback(PresenceErrorCallback callback) override;
-    void set_connection_callback(PresenceConnectionStateCallback callback) override;
+    void set_event_bus(std::shared_ptr<core::EventBus> bus) override;
 
     void set_update_interval(std::chrono::seconds interval) override;
     std::chrono::seconds get_update_interval() const override;
@@ -89,9 +87,9 @@ public:
     const Config& get_config() const { return m_config; }
 
 protected:
-    void on_presence_updated(const PresenceData& data) override;
-    void on_connection_state_changed(bool connected) override;
-    void on_error_occurred(core::DiscordError error, const std::string& message) override;
+    void on_presence_updated(const PresenceData& data);
+    void on_connection_state_changed(bool connected);
+    void on_error_occurred(core::DiscordError error, const std::string& message);
 
 private:
     Config m_config;
@@ -115,11 +113,6 @@ private:
 
     // Statistics
     mutable ServiceStats m_stats;
-
-    // Callbacks
-    PresenceUpdateCallback m_update_callback;
-    PresenceErrorCallback m_error_callback;
-    PresenceConnectionStateCallback m_connection_callback;
 
     // Internal methods
     void update_loop();

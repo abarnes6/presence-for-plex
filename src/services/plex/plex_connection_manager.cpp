@@ -1,7 +1,7 @@
 #include "presence_for_plex/services/plex/plex_connection_manager.hpp"
 #include "presence_for_plex/services/network/sse_client.hpp"
 #include "presence_for_plex/services/network_service.hpp"
-#include "presence_for_plex/core/application.hpp"
+#include "presence_for_plex/core/authentication_service.hpp"
 #include "presence_for_plex/utils/logger.hpp"
 #include <thread>
 #include <chrono>
@@ -13,9 +13,9 @@ namespace presence_for_plex {
 namespace services {
 
 // PlexConnectionManager implementation
-PlexConnectionManager::PlexConnectionManager(std::shared_ptr<HttpClient> http_client, std::shared_ptr<core::ConfigurationService> config_service)
+PlexConnectionManager::PlexConnectionManager(std::shared_ptr<HttpClient> http_client, std::shared_ptr<core::AuthenticationService> auth_service)
     : m_http_client(std::move(http_client))
-    , m_config_service(std::move(config_service)) {
+    , m_auth_service(std::move(auth_service)) {
 
     PLEX_LOG_INFO("PlexConnectionManager", "Creating connection manager");
 }
@@ -353,7 +353,7 @@ bool PlexConnectionManager::test_uri_accessibility(const std::string& uri, const
     HttpHeaders headers = {
         {"X-Plex-Product", "Presence For Plex"},
         {"X-Plex-Version", "1.0.0"},
-        {"X-Plex-Client-Identifier", m_config_service->get_plex_client_identifier()},
+        {"X-Plex-Client-Identifier", m_auth_service->get_plex_client_identifier()},
         {"X-Plex-Platform", "Linux"},
         {"X-Plex-Device", "PC"},
         {"X-Plex-Token", token.get()}

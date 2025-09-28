@@ -1,6 +1,8 @@
 #pragma once
 
 #include "presence_for_plex/core/models.hpp"
+#include "presence_for_plex/core/event_bus.hpp"
+#include "presence_for_plex/core/events.hpp"
 #include <chrono>
 #include <expected>
 #include <functional>
@@ -14,6 +16,7 @@ namespace services {
 
 using core::MediaInfo;
 using core::DiscordError;
+using core::EventBus;
 
 // Rich presence data structure
 struct PresenceData {
@@ -49,11 +52,6 @@ struct PresenceData {
     bool is_valid() const;
 };
 
-// Callback types for presence events
-using PresenceUpdateCallback = std::function<void(const PresenceData&)>;
-using PresenceErrorCallback = std::function<void(DiscordError, const std::string&)>;
-using PresenceConnectionStateCallback = std::function<void(bool)>;
-
 // Abstract interface for rich presence services (Discord, Slack, etc.)
 class PresenceService {
 public:
@@ -71,20 +69,22 @@ public:
     // Media integration
     virtual std::expected<void, DiscordError> update_from_media(const MediaInfo& media) = 0;
 
-    // Event callbacks
-    virtual void set_update_callback(PresenceUpdateCallback callback) = 0;
-    virtual void set_error_callback(PresenceErrorCallback callback) = 0;
-    virtual void set_connection_callback(PresenceConnectionStateCallback callback) = 0;
+    // Event bus integration
+    virtual void set_event_bus(std::shared_ptr<EventBus> bus) = 0;
 
     // Configuration
     virtual void set_update_interval(std::chrono::seconds interval) = 0;
     virtual std::chrono::seconds get_update_interval() const = 0;
 
 protected:
-    // Template method pattern for subclasses
-    virtual void on_presence_updated(const PresenceData& data) = 0;
-    virtual void on_connection_state_changed(bool connected) = 0;
-    virtual void on_error_occurred(DiscordError error, const std::string& message) = 0;
+    std::shared_ptr<EventBus> m_event_bus;
+
+    // Event publishing helpers
+    void publish_presence_updated(const PresenceData& data);
+    void publish_presence_cleared(const std::string& reason = "");
+    void publish_discord_connected(const std::string& app_id);
+    void publish_discord_disconnected(const std::string& reason, bool will_retry);
+    void publish_discord_error(DiscordError error, const std::string& message);
 };
 
 // Rich presence formatter interface

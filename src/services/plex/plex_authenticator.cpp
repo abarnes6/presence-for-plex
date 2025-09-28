@@ -1,6 +1,6 @@
 #include "presence_for_plex/services/plex/plex_authenticator.hpp"
 #include "presence_for_plex/services/network_service.hpp"
-#include "presence_for_plex/core/application.hpp"
+#include "presence_for_plex/core/authentication_service.hpp"
 #include "presence_for_plex/platform/browser_launcher.hpp"
 #include "presence_for_plex/utils/logger.hpp"
 #include <nlohmann/json.hpp>
@@ -11,10 +11,10 @@ namespace services {
 using json = nlohmann::json;
 
 PlexAuthenticator::PlexAuthenticator(std::shared_ptr<HttpClient> http_client,
-                                   std::shared_ptr<core::ConfigurationService> config_service,
+                                   std::shared_ptr<core::AuthenticationService> auth_service,
                                    std::shared_ptr<platform::BrowserLauncher> browser_launcher)
     : m_http_client(std::move(http_client))
-    , m_config_service(std::move(config_service))
+    , m_auth_service(std::move(auth_service))
     , m_browser_launcher(std::move(browser_launcher)) {
 
     // Create default browser launcher if none provided
@@ -34,7 +34,7 @@ std::expected<core::PlexToken, core::PlexError> PlexAuthenticator::acquire_auth_
     }
 
     auto [pin_id, pin] = pin_result.value();
-    std::string client_id = m_config_service->get_plex_client_identifier();
+    std::string client_id = m_auth_service->get_plex_client_identifier();
 
     // Open browser for user authentication
     open_authorization_url(pin, client_id);
@@ -99,7 +99,7 @@ bool PlexAuthenticator::validate_token(const core::PlexToken& token) {
 std::expected<core::PlexToken, core::PlexError> PlexAuthenticator::ensure_authenticated() {
     PLEX_LOG_DEBUG("PlexAuthenticator", "ensure_authenticated() called");
     // Load stored token from configuration
-    std::string stored_token_value = m_config_service->get_plex_auth_token();
+    std::string stored_token_value = m_auth_service->get_plex_token();
     core::PlexToken stored_token(stored_token_value);
     PLEX_LOG_DEBUG("PlexAuthenticator", "Loaded stored token from config (length: " + std::to_string(stored_token_value.length()) + ")");
 
@@ -115,7 +115,8 @@ std::expected<core::PlexToken, core::PlexError> PlexAuthenticator::ensure_authen
 
     // Save the new token if authentication was successful
     if (new_token.has_value()) {
-        m_config_service->set_plex_auth_token(new_token.value().value);
+        m_auth_service->set_plex_token(new_token.value().value);
+        m_auth_service->save();
     }
 
     return new_token;
@@ -126,7 +127,7 @@ std::map<std::string, std::string> PlexAuthenticator::get_standard_headers(const
     std::map<std::string, std::string> headers;
     headers["X-Plex-Product"] = "Presence For Plex";
     headers["X-Plex-Version"] = "1.0.0";
-    headers["X-Plex-Client-Identifier"] = m_config_service->get_plex_client_identifier();
+    headers["X-Plex-Client-Identifier"] = m_auth_service->get_plex_client_identifier();
     headers["X-Plex-Platform"] = "Linux";
     headers["X-Plex-Platform-Version"] = "1.0";
     headers["X-Plex-Device"] = "PC";

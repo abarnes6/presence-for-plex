@@ -1,4 +1,6 @@
 #include "presence_for_plex/services/discord_presence_service.hpp"
+#include "presence_for_plex/services/presence_service.hpp"
+#include "presence_for_plex/core/events_impl.hpp"
 #include "presence_for_plex/utils/logger.hpp"
 #include <chrono>
 #include <thread>
@@ -148,16 +150,8 @@ std::expected<void, core::DiscordError> DiscordPresenceService::update_from_medi
     return update_presence(presence);
 }
 
-void DiscordPresenceService::set_update_callback(PresenceUpdateCallback callback) {
-    m_update_callback = std::move(callback);
-}
-
-void DiscordPresenceService::set_error_callback(PresenceErrorCallback callback) {
-    m_error_callback = std::move(callback);
-}
-
-void DiscordPresenceService::set_connection_callback(PresenceConnectionStateCallback callback) {
-    m_connection_callback = std::move(callback);
+void DiscordPresenceService::set_event_bus(std::shared_ptr<core::EventBus> bus) {
+    m_event_bus = std::move(bus);
 }
 
 void DiscordPresenceService::set_update_interval(std::chrono::seconds interval) {
@@ -195,45 +189,7 @@ void DiscordPresenceService::force_reconnect() {
     }
 }
 
-void DiscordPresenceService::on_presence_updated(const PresenceData& data) {
-    record_successful_update();
 
-    if (m_update_callback) {
-        try {
-            m_update_callback(data);
-        } catch (const std::exception& e) {
-            PLEX_LOG_ERROR("DiscordPresenceService",
-                "Exception in update callback: " + std::string(e.what()));
-        }
-    }
-}
-
-void DiscordPresenceService::on_connection_state_changed(bool connected) {
-    PLEX_LOG_INFO("DiscordPresenceService",
-        "Connection state changed: " + std::string(connected ? "CONNECTED" : "DISCONNECTED"));
-
-    if (m_connection_callback) {
-        try {
-            m_connection_callback(connected);
-        } catch (const std::exception& e) {
-            PLEX_LOG_ERROR("DiscordPresenceService",
-                "Exception in connection callback: " + std::string(e.what()));
-        }
-    }
-}
-
-void DiscordPresenceService::on_error_occurred(core::DiscordError error, const std::string& message) {
-    PLEX_LOG_ERROR("DiscordPresenceService", message);
-
-    if (m_error_callback) {
-        try {
-            m_error_callback(error, message);
-        } catch (const std::exception& e) {
-            PLEX_LOG_ERROR("DiscordPresenceService",
-                "Exception in error callback: " + std::string(e.what()));
-        }
-    }
-}
 
 void DiscordPresenceService::update_loop() {
     PLEX_LOG_DEBUG("DiscordPresenceService", "Update loop started");
@@ -468,6 +424,28 @@ void DiscordPresenceService::handle_health_check_result(bool healthy) {
     if (!healthy) {
         PLEX_LOG_WARNING("DiscordPresenceService", "Health check failed");
         on_error_occurred(core::DiscordError::IpcError, "Discord health check failed");
+    }
+}
+
+void DiscordPresenceService::on_presence_updated(const PresenceData& data) {
+    if (m_event_bus) {
+        PresenceService::publish_presence_updated(data);
+    }
+}
+
+void DiscordPresenceService::on_connection_state_changed(bool connected) {
+    if (m_event_bus) {
+        if (connected) {
+            PresenceService::publish_discord_connected(m_config.client_id);
+        } else {
+            PresenceService::publish_discord_disconnected("Connection lost", false);
+        }
+    }
+}
+
+void DiscordPresenceService::on_error_occurred(core::DiscordError error, const std::string& message) {
+    if (m_event_bus) {
+        PresenceService::publish_discord_error(error, message);
     }
 }
 
