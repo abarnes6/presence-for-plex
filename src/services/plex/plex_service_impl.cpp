@@ -7,7 +7,6 @@
 #include <cassert>
 #include <stdexcept>
 #include <unordered_set>
-#include <thread>
 #include <chrono>
 
 namespace presence_for_plex {
@@ -102,43 +101,9 @@ std::expected<void, core::PlexError> PlexServiceImpl::start() {
 
     // No longer saving server configurations
 
-    // Start all connections
+    // Start all connections - servers will self-manage and connect asynchronously
     m_connection_manager->start_all_connections();
-
-    // Wait for connections to establish (up to 15 seconds)
-    // This gives SSE clients time to connect, especially for remote servers
-    int wait_attempts = 30;  // 30 * 500ms = 15 seconds
-    size_t connected_count = 0;
-
-    for (int i = 0; i < wait_attempts; ++i) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(500));
-        auto connected_servers = m_connection_manager->get_connected_servers();
-        connected_count = connected_servers.size();
-
-        // If we have at least one connection, that's good enough to proceed
-        if (connected_count > 0) {
-            PLEX_LOG_INFO("PlexService", "Successfully connected to " + std::to_string(connected_count) + " server(s)");
-            break;
-        }
-
-        // Log progress every 2 seconds
-        if ((i + 1) % 4 == 0) {
-            PLEX_LOG_DEBUG("PlexService", "Waiting for server connections... (" +
-                          std::to_string((i + 1) * 500 / 1000) + "s elapsed)");
-        }
-    }
-
-    // Final check and warning if no connections
-    if (connected_count == 0) {
-        auto connected_servers = m_connection_manager->get_connected_servers();
-        connected_count = connected_servers.size();
-
-        if (connected_count == 0) {
-            PLEX_LOG_WARNING("PlexService", "No servers successfully connected after waiting 15 seconds");
-        } else {
-            PLEX_LOG_INFO("PlexService", "Successfully connected to " + std::to_string(connected_count) + " server(s)");
-        }
-    }
+    PLEX_LOG_INFO("PlexService", "Server connections initiated - they will connect asynchronously");
 
     m_running = true;
     return {};
@@ -343,15 +308,16 @@ std::expected<void, core::PlexError> PlexServiceImpl::discover_servers(const std
     PLEX_LOG_DEBUG("PlexService", "Received server response from Plex.tv");
 
     // Parse the JSON response and add servers
-    if (!parse_server_json(response->body, auth_token)) {
+    auto parse_result = parse_server_json(response->body, auth_token);
+    if (!parse_result) {
         PLEX_LOG_ERROR("PlexService", "Failed to parse server response");
-        return std::unexpected<core::PlexError>(core::PlexError::ParseError);
+        return std::unexpected<core::PlexError>(parse_result.error());
     }
 
     return {};
 }
 
-bool PlexServiceImpl::parse_server_json(const std::string& json_response, const std::string& auth_token) {
+std::expected<void, core::PlexError> PlexServiceImpl::parse_server_json(const std::string& json_response, const std::string& auth_token) {
     (void)auth_token;
     PLEX_LOG_INFO("PlexService", "Parsing server JSON response");
 
@@ -406,11 +372,11 @@ bool PlexServiceImpl::parse_server_json(const std::string& json_response, const 
         }
 
         PLEX_LOG_INFO("PlexService", "Successfully discovered and added " + std::to_string(server_count) + " Plex servers");
-        return server_count > 0;
+        return {};
 
     } catch (const std::exception& e) {
         PLEX_LOG_ERROR("PlexService", "Failed to parse server JSON: " + std::string(e.what()));
-        return false;
+        return std::unexpected<core::PlexError>(core::PlexError::ParseError);
     }
 }
 

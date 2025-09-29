@@ -65,13 +65,10 @@ protected:
 private:
     // Server discovery and configuration
     std::expected<void, core::PlexError> discover_servers(const std::string& auth_token);
-    bool parse_server_json(const std::string& json_response, const std::string& auth_token);
-    void load_configured_servers();
-    void validate_server_configurations();
+    std::expected<void, core::PlexError> parse_server_json(const std::string& json_response, const std::string& auth_token);
 
     // Handle SSE events from connection manager
     void handle_sse_event(const core::ServerId& server_id, const std::string& event);
-    void process_play_session_notification(const core::ServerId& server_id, const nlohmann::json& notification);
 
     // Injected dependencies (following DIP)
     std::shared_ptr<IPlexAuthenticator> m_authenticator;

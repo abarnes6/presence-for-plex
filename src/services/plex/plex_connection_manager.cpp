@@ -160,7 +160,8 @@ std::string PlexConnectionManager::get_preferred_server_uri(const core::ServerId
     // Test local URI first if available
     if (!server->local_uri.empty()) {
         PLEX_LOG_DEBUG("PlexConnectionManager", "Testing local URI: " + server->local_uri);
-        if (test_uri_accessibility(server->local_uri, server->access_token)) {
+        auto test_result = test_uri_accessibility(server->local_uri, server->access_token);
+        if (test_result && test_result.value()) {
             PLEX_LOG_INFO("PlexConnectionManager", "Using local URI for " + server->name + ": " + server->local_uri);
             return server->local_uri;
         }
@@ -169,7 +170,8 @@ std::string PlexConnectionManager::get_preferred_server_uri(const core::ServerId
     // Test public URI as fallback
     if (!server->public_uri.empty()) {
         PLEX_LOG_DEBUG("PlexConnectionManager", "Testing public URI: " + server->public_uri);
-        if (test_uri_accessibility(server->public_uri, server->access_token)) {
+        auto test_result = test_uri_accessibility(server->public_uri, server->access_token);
+        if (test_result && test_result.value()) {
             PLEX_LOG_INFO("PlexConnectionManager", "Using public URI for " + server->name + ": " + server->public_uri);
             return server->public_uri;
         }
@@ -195,7 +197,12 @@ std::expected<void, core::PlexError> PlexConnectionManager::test_connection(cons
         return std::unexpected<core::PlexError>(core::PlexError::NetworkError);
     }
 
-    if (test_uri_accessibility(preferred_uri, server->access_token)) {
+    auto test_result = test_uri_accessibility(preferred_uri, server->access_token);
+    if (!test_result) {
+        return std::unexpected<core::PlexError>(test_result.error());
+    }
+
+    if (test_result.value()) {
         return {};
     }
 
@@ -349,7 +356,7 @@ void PlexConnectionManager::setup_server_sse_connection(PlexServerRuntime& runti
     }
 }
 
-bool PlexConnectionManager::test_uri_accessibility(const std::string& uri, const core::PlexToken& token) {
+std::expected<bool, core::PlexError> PlexConnectionManager::test_uri_accessibility(const std::string& uri, const core::PlexToken& token) {
     HttpHeaders headers = {
         {"X-Plex-Product", "Presence For Plex"},
         {"X-Plex-Version", "1.0.0"},
@@ -360,8 +367,12 @@ bool PlexConnectionManager::test_uri_accessibility(const std::string& uri, const
     };
 
     auto response = m_http_client->get(uri, headers);
-    bool accessible = response && response->is_success();
+    if (!response) {
+        PLEX_LOG_DEBUG("PlexConnectionManager", "URI accessibility test for " + uri + ": FAIL (no response)");
+        return std::unexpected<core::PlexError>(core::PlexError::NetworkError);
+    }
 
+    bool accessible = response->is_success();
     PLEX_LOG_DEBUG("PlexConnectionManager", "URI accessibility test for " + uri + ": " +
                    (accessible ? "PASS" : "FAIL"));
 

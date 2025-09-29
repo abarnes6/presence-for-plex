@@ -82,7 +82,7 @@ public:
 
 private:
     void setup_server_sse_connection(PlexServerRuntime& runtime);
-    bool test_uri_accessibility(const std::string& uri, const core::PlexToken& token);
+    std::expected<bool, core::PlexError> test_uri_accessibility(const std::string& uri, const core::PlexToken& token);
 
     std::shared_ptr<HttpClient> m_http_client;
     std::shared_ptr<core::AuthenticationService> m_auth_service;
