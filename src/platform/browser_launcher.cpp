@@ -19,6 +19,8 @@
 #include <QDesktopServices>
 #include <QUrl>
 #include <QMessageBox>
+#include <QApplication>
+#include <QMetaObject>
 #endif
 
 namespace presence_for_plex::platform {
@@ -126,9 +128,13 @@ public:
     }
 
     bool show_message(const std::string& title, const std::string& message) override {
-        QMessageBox::information(nullptr,
-                                QString::fromStdString(title),
-                                QString::fromStdString(message));
+        QString qtitle = QString::fromStdString(title);
+        QString qmessage = QString::fromStdString(message);
+
+        QMetaObject::invokeMethod(QApplication::instance(), [qtitle, qmessage]() {
+            QMessageBox::information(nullptr, qtitle, qmessage);
+        }, Qt::QueuedConnection);
+
         return true;
     }
 };
