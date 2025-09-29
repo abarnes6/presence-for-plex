@@ -312,7 +312,7 @@ private:
 
         // Subscribe to configuration updates
         auto config_sub = m_event_bus->subscribe<events::ConfigurationUpdated>(
-            [](const events::ConfigurationUpdated& event) {
+            [](const events::ConfigurationUpdated& /* event */) {
                 PLEX_LOG_INFO("Application", "Configuration updated");
 
                 // Services that need runtime config updates can listen to this event
@@ -408,8 +408,8 @@ private:
             return;
         }
 
-        m_system_tray->set_icon(":/icons/app_icon");
-        m_system_tray->set_tooltip("Presence for Plex");
+        (void)m_system_tray->set_icon(":/icons/app_icon");
+        (void)m_system_tray->set_tooltip("Presence for Plex");
         setup_tray_menu();
         m_system_tray->show();
         PLEX_LOG_INFO("Application", "System tray created");

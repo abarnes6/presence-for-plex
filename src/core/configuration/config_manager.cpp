@@ -52,7 +52,7 @@ public:
 
         if (result && !m_config_exists) {
             m_config_exists = true;
-            add_documentation_comments();
+            (void)add_documentation_comments();
         }
 
         return result;

@@ -155,7 +155,7 @@ int main(int argc, char* argv[]) {
         }
 
         auto single_instance = presence_for_plex::platform::SingleInstanceManager::create("PresenceForPlex");
-        single_instance->try_acquire_instance("PresenceForPlex");
+        (void)single_instance->try_acquire_instance("PresenceForPlex");
 
         PLEX_LOG_INFO("Main", "Creating application...");
         auto app_result = presence_for_plex::core::ApplicationFactory::create_default_application();
