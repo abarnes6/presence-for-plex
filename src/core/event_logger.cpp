@@ -89,6 +89,7 @@ EventLogger::LogLevel EventLogger::get_log_level() const {
 }
 
 void EventLogger::log_configuration_event(const events::ConfigurationUpdated& event) {
+    (void)event;
     PLEX_LOG_INFO("EventLogger", "Configuration updated");
 }
 
@@ -165,6 +166,7 @@ void EventDebugger::start_recording() {
     m_subscriptions.push_back(
         m_event_bus->subscribe<events::ConfigurationUpdated>(
             [this](const auto& e) {
+                (void)e;
                 add_record("ConfigurationUpdated", "Config changed");
             }));
 
@@ -288,15 +290,15 @@ void EventMetrics::start_collecting() {
 
     m_subscriptions.push_back(
         m_event_bus->subscribe<events::MediaSessionStarted>(
-            [this](const auto& e) { update_event_count("MediaSessionStarted"); }));
+            [this](const auto& e) { (void)e; update_event_count("MediaSessionStarted"); }));
 
     m_subscriptions.push_back(
         m_event_bus->subscribe<events::MediaSessionEnded>(
-            [this](const auto& e) { update_event_count("MediaSessionEnded"); }));
+            [this](const auto& e) { (void)e; update_event_count("MediaSessionEnded"); }));
 
     m_subscriptions.push_back(
         m_event_bus->subscribe<events::PresenceUpdated>(
-            [this](const auto& e) { update_event_count("PresenceUpdated"); }));
+            [this](const auto& e) { (void)e; update_event_count("PresenceUpdated"); }));
 }
 
 void EventMetrics::stop_collecting() {
