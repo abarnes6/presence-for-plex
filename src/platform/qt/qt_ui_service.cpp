@@ -134,14 +134,7 @@ void QtUiService::quit_event_loop() {
     m_app->quit();
 }
 
-std::unique_ptr<UiService> QtUiServiceFactory::create_service(PlatformType type) {
-    if (type != PlatformType::Auto &&
-        type != PlatformType::Windows &&
-        type != PlatformType::macOS &&
-        type != PlatformType::Linux) {
-        return nullptr;
-    }
-
+std::unique_ptr<QtUiService> QtUiService::create() {
     return std::make_unique<QtUiService>();
 }
 

@@ -11,6 +11,37 @@ namespace presence_for_plex::services {
 
 using json = nlohmann::json;
 
+// Event publishing helper implementations
+void DiscordPresenceService::publish_presence_updated(const PresenceData& data) {
+    if (m_event_bus) {
+        m_event_bus->publish(core::events::PresenceUpdated{data});
+    }
+}
+
+void DiscordPresenceService::publish_presence_cleared(const std::string& reason) {
+    if (m_event_bus) {
+        m_event_bus->publish(core::events::PresenceCleared{reason});
+    }
+}
+
+void DiscordPresenceService::publish_discord_connected(const std::string& app_id) {
+    if (m_event_bus) {
+        m_event_bus->publish(core::events::DiscordConnected{app_id});
+    }
+}
+
+void DiscordPresenceService::publish_discord_disconnected(const std::string& reason, bool will_retry) {
+    if (m_event_bus) {
+        m_event_bus->publish(core::events::DiscordDisconnected{reason, will_retry});
+    }
+}
+
+void DiscordPresenceService::publish_discord_error(core::DiscordError error, const std::string& message) {
+    if (m_event_bus) {
+        m_event_bus->publish(core::events::DiscordErrorEvent{error, message});
+    }
+}
+
 DiscordPresenceService::DiscordPresenceService(Config config)
     : m_config(std::move(config)) {
 
@@ -467,23 +498,23 @@ void DiscordPresenceService::handle_health_check_result(bool healthy) {
 
 void DiscordPresenceService::on_presence_updated(const PresenceData& data) {
     if (m_event_bus) {
-        PresenceService::publish_presence_updated(data);
+        publish_presence_updated(data);
     }
 }
 
 void DiscordPresenceService::on_connection_state_changed(bool connected) {
     if (m_event_bus) {
         if (connected) {
-            PresenceService::publish_discord_connected(m_config.client_id);
+            publish_discord_connected(m_config.client_id);
         } else {
-            PresenceService::publish_discord_disconnected("Connection lost", false);
+            publish_discord_disconnected("Connection lost", false);
         }
     }
 }
 
 void DiscordPresenceService::on_error_occurred(core::DiscordError error, const std::string& message) {
     if (m_event_bus) {
-        PresenceService::publish_discord_error(error, message);
+        publish_discord_error(error, message);
     }
 }
 

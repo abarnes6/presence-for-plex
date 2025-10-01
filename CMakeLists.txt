@@ -62,7 +62,6 @@ set(CORE_SOURCES
 
 set(SERVICES_SOURCES
     src/services/presence_service.cpp
-    src/services/presence_service_base.cpp
     src/services/media_service.cpp
     src/services/plex/plex_authenticator.cpp
     src/services/plex/plex_service_impl.cpp

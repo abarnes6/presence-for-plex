@@ -17,7 +17,6 @@ public:
         : m_state(ApplicationState::NotInitialized),
           m_running(false),
           m_shutdown_requested(false),
-          m_runtime_state(std::make_unique<RuntimeState>()),
           m_event_bus(std::make_shared<EventBus>()) {
         PLEX_LOG_DEBUG("Application", "Application created");
     }
@@ -193,13 +192,6 @@ public:
         return std::ref(*m_thread_pool);
     }
 
-    std::expected<std::reference_wrapper<utils::TaskScheduler>, ApplicationError> get_task_scheduler() override {
-        if (!m_task_scheduler) {
-            return std::unexpected(ApplicationError::ServiceUnavailable);
-        }
-        return std::ref(*m_task_scheduler);
-    }
-
     std::expected<std::reference_wrapper<EventBus>, ApplicationError> get_event_bus() override {
         if (!m_event_bus) {
             return std::unexpected(ApplicationError::ServiceUnavailable);
@@ -234,19 +226,12 @@ private:
 
     void initialize_thread_pool() {
         m_thread_pool = std::make_unique<utils::ThreadPool>(4);
-        m_task_scheduler = std::make_unique<utils::TaskScheduler>();
     }
 
     void initialize_ui_service() {
-        auto ui_factory = platform::UiServiceFactory::create_default_factory();
-        if (!ui_factory) {
-            PLEX_LOG_WARNING("Application", "UI not supported on this platform");
-            return;
-        }
-
-        m_ui_service = ui_factory->create_service();
+        m_ui_service = platform::UiService::create_default();
         if (!m_ui_service) {
-            PLEX_LOG_WARNING("Application", "UI service creation failed");
+            PLEX_LOG_WARNING("Application", "UI not supported on this platform");
             return;
         }
 
@@ -458,13 +443,11 @@ private:
 
     std::unique_ptr<ConfigurationService> m_config_service;
     std::unique_ptr<AuthenticationService> m_auth_service;
-    std::unique_ptr<RuntimeState> m_runtime_state;
     std::unique_ptr<services::MediaService> m_media_service;
     std::unique_ptr<services::PresenceService> m_presence_service;
     std::unique_ptr<platform::UiService> m_ui_service;
     std::unique_ptr<platform::SystemTray> m_system_tray;
     std::unique_ptr<utils::ThreadPool> m_thread_pool;
-    std::unique_ptr<utils::TaskScheduler> m_task_scheduler;
     std::shared_ptr<EventBus> m_event_bus;
     std::vector<EventBus::HandlerId> m_event_subscriptions;
     std::vector<std::future<void>> m_service_futures;

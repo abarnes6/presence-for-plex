@@ -17,12 +17,10 @@ Notification::Notification(std::string title, std::string message, NotificationT
     : type(type), title(std::move(title)), message(std::move(message)) {}
 
 // Static factory method implementation
-std::unique_ptr<UiServiceFactory> UiServiceFactory::create_default_factory() {
+std::unique_ptr<UiService> UiService::create_default() {
 #ifdef USE_QT_UI
-    // Use Qt for UI on all platforms when available
-    return std::make_unique<qt::QtUiServiceFactory>();
+    return qt::QtUiService::create();
 #else
-    // No UI implementation available
     return nullptr;
 #endif
 }

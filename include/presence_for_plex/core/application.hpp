@@ -4,7 +4,6 @@
 #include "presence_for_plex/core/event_bus.hpp"
 #include "presence_for_plex/core/events.hpp"
 #include "presence_for_plex/core/authentication_service.hpp"
-#include "presence_for_plex/core/runtime_state.hpp"
 #include "presence_for_plex/services/media_service.hpp"
 #include "presence_for_plex/services/presence_service.hpp"
 #include "presence_for_plex/platform/ui_service.hpp"
@@ -100,7 +99,6 @@ public:
 
     // Utilities
     virtual std::expected<std::reference_wrapper<utils::ThreadPool>, ApplicationError> get_thread_pool() = 0;
-    virtual std::expected<std::reference_wrapper<utils::TaskScheduler>, ApplicationError> get_task_scheduler() = 0;
 };
 
 // Application factory
@@ -116,36 +114,6 @@ public:
     static std::expected<std::unique_ptr<Application>, ApplicationError> create_application_with_config(
         const ApplicationConfig& config
     );
-};
-
-// Dependency injection container interface
-class ServiceContainer {
-public:
-    virtual ~ServiceContainer() = default;
-
-    // Service registration
-    template<typename Interface, typename Implementation, typename... Args>
-    void register_singleton(Args&&... args);
-
-    template<typename Interface, typename Implementation, typename... Args>
-    void register_transient(Args&&... args);
-
-    template<typename Interface>
-    void register_instance(std::shared_ptr<Interface> instance);
-
-    // Service resolution
-    template<typename Interface>
-    std::shared_ptr<Interface> resolve();
-
-    template<typename Interface>
-    std::optional<std::shared_ptr<Interface>> try_resolve();
-
-    // Container management
-    virtual void clear() = 0;
-    virtual bool contains(const std::type_info& type) const = 0;
-
-    // Factory method
-    static std::unique_ptr<ServiceContainer> create();
 };
 
 } // namespace core

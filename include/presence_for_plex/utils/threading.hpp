@@ -138,25 +138,5 @@ auto ThreadPool::try_submit(F&& f, Args&&... args) -> std::expected<std::future<
     });
 }
 
-// Task scheduler for delayed/periodic execution
-class TaskScheduler {
-public:
-    TaskScheduler();
-    ~TaskScheduler();
-
-    // Non-copyable, movable
-    TaskScheduler(const TaskScheduler&) = delete;
-    TaskScheduler& operator=(const TaskScheduler&) = delete;
-    TaskScheduler(TaskScheduler&&) = delete;
-    TaskScheduler& operator=(TaskScheduler&&) = delete;
-
-private:
-    std::jthread m_scheduler_thread;
-    std::atomic<bool> m_shutdown{false};
-
-    void scheduler_loop(std::stop_token stop_token);
-};
-
-
 } // namespace utils
 } // namespace presence_for_plex

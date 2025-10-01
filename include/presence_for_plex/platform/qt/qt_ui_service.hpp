@@ -30,15 +30,12 @@ public:
 
     QApplication* get_application() { return m_app; }
 
+    static std::unique_ptr<QtUiService> create();
+
 private:
     QApplication* m_app = nullptr;
     bool m_initialized = false;
     std::string m_component_name = "QtUiService";
-};
-
-class QtUiServiceFactory : public UiServiceFactory {
-public:
-    std::unique_ptr<UiService> create_service(PlatformType type = PlatformType::Auto) override;
 };
 
 } // namespace presence_for_plex::platform::qt

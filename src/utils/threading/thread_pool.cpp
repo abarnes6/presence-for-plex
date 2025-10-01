@@ -75,28 +75,6 @@ void ThreadPool::worker_thread(std::stop_token stop_token) {
     }
 }
 
-// TaskScheduler implementation
-TaskScheduler::TaskScheduler() {
-    m_scheduler_thread = std::jthread([this](std::stop_token stop_token) {
-        scheduler_loop(stop_token);
-    });
-}
-
-TaskScheduler::~TaskScheduler() {
-    m_shutdown = true;
-    if (m_scheduler_thread.joinable()) {
-        m_scheduler_thread.request_stop();
-        m_scheduler_thread.join();
-    }
-}
-
-void TaskScheduler::scheduler_loop(std::stop_token stop_token) {
-    // Empty implementation since TaskScheduler is not used
-    while (!stop_token.stop_requested() && !m_shutdown.load()) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    }
-}
-
 // Explicit template instantiations are not needed since templates are in header
 
 } // namespace utils

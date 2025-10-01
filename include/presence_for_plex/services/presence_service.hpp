@@ -84,13 +84,6 @@ public:
 
 protected:
     std::shared_ptr<EventBus> m_event_bus;
-
-    // Event publishing helpers
-    void publish_presence_updated(const PresenceData& data);
-    void publish_presence_cleared(const std::string& reason = "");
-    void publish_discord_connected(const std::string& app_id);
-    void publish_discord_disconnected(const std::string& reason, bool will_retry);
-    void publish_discord_error(DiscordError error, const std::string& message);
 };
 
 // Rich presence formatter interface

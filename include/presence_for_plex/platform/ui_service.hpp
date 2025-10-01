@@ -249,23 +249,8 @@ public:
     // Event loop integration
     virtual void process_events() = 0;
     virtual void quit_event_loop() = 0;
-};
 
-// Factory for creating platform-specific UI services
-class UiServiceFactory {
-public:
-    virtual ~UiServiceFactory() = default;
-
-    enum class PlatformType {
-        Windows,
-        macOS,
-        Linux,
-        Auto // Detect automatically
-    };
-
-    virtual std::unique_ptr<UiService> create_service(PlatformType type = PlatformType::Auto) = 0;
-
-    static std::unique_ptr<UiServiceFactory> create_default_factory();
+    static std::unique_ptr<UiService> create_default();
 };
 
 } // namespace platform
