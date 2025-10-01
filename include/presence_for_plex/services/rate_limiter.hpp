@@ -106,23 +106,6 @@ private:
 };
 
 /**
- * @brief Factory for creating rate limiters
- *
- * Follows the Factory pattern and Open/Closed Principle
- */
-class RateLimiterFactory {
-public:
-    enum class Type {
-        Discord,
-        None  // No-op rate limiter for testing
-    };
-
-    static std::unique_ptr<IRateLimiter> create(Type type, const DiscordRateLimitConfig& config = {});
-    static std::unique_ptr<IRateLimiter> create_discord_limiter(const DiscordRateLimitConfig& config = {});
-    static std::unique_ptr<IRateLimiter> create_no_op_limiter();
-};
-
-/**
  * @brief No-operation rate limiter for testing and debugging
  */
 class NoOpRateLimiter : public IRateLimiter {

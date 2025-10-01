@@ -17,7 +17,7 @@ using json = nlohmann::json;
 // Constructor with dependency injection
 PlexServiceImpl::PlexServiceImpl(
     std::shared_ptr<IPlexAuthenticator> authenticator,
-    std::shared_ptr<IPlexCacheManager> cache_manager,
+    std::shared_ptr<PlexCacheManager> cache_manager,
     std::shared_ptr<IPlexConnectionManager> connection_manager,
     std::shared_ptr<IPlexMediaFetcher> media_fetcher,
     std::shared_ptr<IPlexSessionManager> session_manager,
@@ -390,7 +390,7 @@ PlexServiceBuilder& PlexServiceBuilder::with_authenticator(std::shared_ptr<IPlex
     return *this;
 }
 
-PlexServiceBuilder& PlexServiceBuilder::with_cache_manager(std::shared_ptr<IPlexCacheManager> cache) {
+PlexServiceBuilder& PlexServiceBuilder::with_cache_manager(std::shared_ptr<PlexCacheManager> cache) {
     m_cache_manager = std::move(cache);
     return *this;
 }

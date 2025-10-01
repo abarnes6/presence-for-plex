@@ -13,7 +13,7 @@ namespace services {
 
 // Forward declarations
 class HttpClient;
-class IPlexCacheManager;
+class PlexCacheManager;
 class IPlexMediaFetcher;
 
 // Server connection info for session management
@@ -62,7 +62,7 @@ class SessionValidator {
 public:
     explicit SessionValidator(
         std::shared_ptr<HttpClient> http_client,
-        std::shared_ptr<IPlexCacheManager> cache_manager
+        std::shared_ptr<PlexCacheManager> cache_manager
     );
 
     // Validate if session belongs to target user
@@ -84,7 +84,7 @@ private:
     std::map<std::string, std::string> get_standard_headers(const core::PlexToken& token) const;
 
     std::shared_ptr<HttpClient> m_http_client;
-    std::shared_ptr<IPlexCacheManager> m_cache_manager;
+    std::shared_ptr<PlexCacheManager> m_cache_manager;
     static constexpr const char* SESSION_ENDPOINT = "/status/sessions";
 };
 
@@ -96,7 +96,7 @@ public:
     // Dependency injection for services
     void set_dependencies(
         std::shared_ptr<HttpClient> http_client,
-        std::shared_ptr<IPlexCacheManager> cache_manager,
+        std::shared_ptr<PlexCacheManager> cache_manager,
         std::shared_ptr<IPlexMediaFetcher> media_fetcher
     );
 
@@ -150,7 +150,7 @@ private:
 
     // Dependencies
     std::shared_ptr<HttpClient> m_http_client;
-    std::shared_ptr<IPlexCacheManager> m_cache_manager;
+    std::shared_ptr<PlexCacheManager> m_cache_manager;
     std::shared_ptr<IPlexMediaFetcher> m_media_fetcher;
     std::unique_ptr<SessionValidator> m_session_validator;
 

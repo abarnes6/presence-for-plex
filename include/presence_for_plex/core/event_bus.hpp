@@ -109,46 +109,4 @@ private:
     void handle_exception(const std::string& event_type, const std::exception& e);
 };
 
-class ScopedEventSubscription {
-public:
-    ScopedEventSubscription(EventBus& bus, EventBus::HandlerId id)
-        : m_bus(bus), m_handler_id(id) {}
-
-    ~ScopedEventSubscription() {
-        if (m_handler_id != 0) {
-            m_bus.unsubscribe(m_handler_id);
-        }
-    }
-
-    ScopedEventSubscription(ScopedEventSubscription&& other) noexcept
-        : m_bus(other.m_bus), m_handler_id(other.m_handler_id) {
-        other.m_handler_id = 0;
-    }
-
-    ScopedEventSubscription& operator=(ScopedEventSubscription&& other) = delete;
-    ScopedEventSubscription(const ScopedEventSubscription&) = delete;
-    ScopedEventSubscription& operator=(const ScopedEventSubscription&) = delete;
-
-private:
-    EventBus& m_bus;
-    EventBus::HandlerId m_handler_id;
-};
-
-template<typename EventType>
-class TypedEventPublisher {
-public:
-    explicit TypedEventPublisher(EventBus& bus) : m_bus(bus) {}
-
-    void publish(const EventType& event) {
-        m_bus.publish(event);
-    }
-
-    void publish_async(const EventType& event) {
-        m_bus.publish_async(event);
-    }
-
-private:
-    EventBus& m_bus;
-};
-
 }

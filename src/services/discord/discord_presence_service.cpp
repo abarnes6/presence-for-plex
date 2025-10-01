@@ -18,13 +18,9 @@ DiscordPresenceService::DiscordPresenceService(Config config)
 
     // Initialize components
     if (m_config.enable_rate_limiting) {
-        m_rate_limiter = RateLimiterFactory::create_discord_limiter(m_config.rate_limit_config);
+        m_rate_limiter = std::make_unique<DiscordRateLimiter>(m_config.rate_limit_config);
     } else {
-        m_rate_limiter = RateLimiterFactory::create_no_op_limiter();
-    }
-
-    if (m_config.enable_frame_queuing) {
-        m_frame_queue = std::make_unique<FrameQueue<json>>(m_config.queue_config);
+        m_rate_limiter = std::make_unique<NoOpRateLimiter>();
     }
 
     m_formatter = PresenceFormatter::create_default_formatter();
@@ -95,8 +91,11 @@ void DiscordPresenceService::shutdown() {
     }
 
     // Clear any queued frames
-    if (m_frame_queue) {
-        m_frame_queue->clear();
+    {
+        std::lock_guard lock(m_queue_mutex);
+        while (!m_frame_queue.empty()) {
+            m_frame_queue.pop();
+        }
     }
 
     PLEX_LOG_INFO("DiscordPresenceService", "Discord presence service shut down");
@@ -219,11 +218,6 @@ DiscordPresenceService::ServiceStats DiscordPresenceService::get_service_stats()
         stats.connection_stats = m_connection_manager->get_retry_stats();
     }
 
-    if (m_frame_queue) {
-        stats.queue_stats = m_frame_queue->get_stats();
-        stats.queued_frames = m_frame_queue->size();
-    }
-
     return stats;
 }
 
@@ -259,23 +253,19 @@ void DiscordPresenceService::update_loop() {
                             on_presence_updated(current_presence);
                         } else {
                             record_failed_update();
-                            // Queue for retry if queuing is enabled
-                            if (m_frame_queue) {
-                                m_frame_queue->enqueue(std::move(activity), 1); // Normal priority
-                            }
+                            std::lock_guard lock(m_queue_mutex);
+                            m_frame_queue.push(std::move(activity));
                         }
                     } else {
                         // Rate limited, queue the frame
-                        if (m_frame_queue) {
-                            m_frame_queue->enqueue(std::move(activity), 1);
-                            increment_stat_counter(&ServiceStats::rate_limited_updates);
-                        }
+                        std::lock_guard lock(m_queue_mutex);
+                        m_frame_queue.push(std::move(activity));
+                        increment_stat_counter(&ServiceStats::rate_limited_updates);
                     }
                 } else {
                     // Not connected, queue the frame
-                    if (m_frame_queue) {
-                        m_frame_queue->enqueue(std::move(activity), 1);
-                    }
+                    std::lock_guard lock(m_queue_mutex);
+                    m_frame_queue.push(std::move(activity));
                 }
             }
 
@@ -296,27 +286,30 @@ void DiscordPresenceService::update_loop() {
 }
 
 void DiscordPresenceService::process_pending_frames() {
-    if (!m_frame_queue || !is_connected()) {
+    if (!is_connected()) {
         return;
     }
 
     // Process frames while rate limits allow
     while (m_rate_limiter && m_rate_limiter->can_proceed()) {
-        auto frame = m_frame_queue->dequeue();
-        if (!frame) {
-            break; // No more frames
+        json frame;
+        {
+            std::lock_guard lock(m_queue_mutex);
+            if (m_frame_queue.empty()) {
+                break; // No more frames
+            }
+            frame = std::move(m_frame_queue.front());
+            m_frame_queue.pop();
         }
 
-        if (send_presence_frame(frame->data)) {
+        if (send_presence_frame(frame)) {
             m_rate_limiter->record_operation();
-            // For queued frames, we can't easily map back to PresenceData,
-            // so we'll just record the successful update
             record_successful_update();
         } else {
             record_failed_update();
-            // Re-queue with lower priority for retry, preventing underflow
-            int retry_priority = frame->priority == 0 ? 0 : frame->priority - 1;
-            m_frame_queue->enqueue(std::move(frame->data), retry_priority);
+            // Re-queue for retry
+            std::lock_guard lock(m_queue_mutex);
+            m_frame_queue.push(std::move(frame));
             break; // Stop processing on failure
         }
     }
@@ -458,8 +451,8 @@ void DiscordPresenceService::handle_connection_changed(bool connected) {
     if (connected) {
         PLEX_LOG_INFO("DiscordPresenceService", "Connection established, processing queued frames");
         // Process any queued frames when we reconnect
-        if (m_frame_queue && !m_frame_queue->empty()) {
-            // Trigger immediate processing by requesting an update
+        std::lock_guard lock(m_queue_mutex);
+        if (!m_frame_queue.empty()) {
             m_update_requested = true;
         }
     }
@@ -506,10 +499,8 @@ DiscordPresenceService::create(const core::ApplicationConfig& app_config) {
 
     config.rate_limit_config = DiscordRateLimitConfig{};
     config.connection_config = ConnectionRetryConfig{};
-    config.queue_config = FrameQueueConfig{};
 
     config.enable_rate_limiting = true;
-    config.enable_frame_queuing = true;
     config.enable_health_checks = true;
 
     if (!config.is_valid()) {

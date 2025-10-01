@@ -97,11 +97,11 @@ private:
 
     void generate_client_identifier() {
         PLEX_LOG_INFO("AuthService", "Generating new Plex client identifier");
-        utils::Uuid id = utils::Uuid::generate_v4();
+        std::string id = utils::generate_uuid_v4();
 
         {
             std::unique_lock lock(m_mutex);
-            m_plex_client_identifier = id.to_string();
+            m_plex_client_identifier = id;
         }
 
         save();

@@ -339,7 +339,7 @@ void MusicExtractor::extract_track_info(const nlohmann::json& metadata, core::Me
 // PlexMediaFetcher implementation
 PlexMediaFetcher::PlexMediaFetcher(
     std::shared_ptr<HttpClient> http_client,
-    std::shared_ptr<IPlexCacheManager> cache_manager)
+    std::shared_ptr<PlexCacheManager> cache_manager)
     : m_http_client(std::move(http_client))
     , m_cache_manager(std::move(cache_manager)) {
 

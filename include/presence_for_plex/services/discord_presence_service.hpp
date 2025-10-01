@@ -3,13 +3,13 @@
 #include "presence_for_plex/services/presence_service.hpp"
 #include "presence_for_plex/services/rate_limiter.hpp"
 #include "presence_for_plex/services/connection_manager.hpp"
-#include "presence_for_plex/services/frame_queue.hpp"
 #include "presence_for_plex/services/discord_ipc.hpp"
 #include <nlohmann/json.hpp>
 #include <memory>
 #include <atomic>
 #include <mutex>
 #include <thread>
+#include <queue>
 #include <expected>
 
 namespace presence_for_plex::services {
@@ -27,20 +27,15 @@ public:
         // Connection retry configuration
         ConnectionRetryConfig connection_config;
 
-        // Frame queue configuration
-        FrameQueueConfig queue_config;
-
         // Feature flags
         bool enable_rate_limiting = true;
-        bool enable_frame_queuing = true;
         bool enable_health_checks = true;
 
         bool is_valid() const {
             return !client_id.empty() &&
                    update_interval > std::chrono::seconds{0} &&
                    rate_limit_config.is_valid() &&
-                   connection_config.is_valid() &&
-                   queue_config.is_valid();
+                   connection_config.is_valid();
         }
     };
 
@@ -65,9 +60,7 @@ public:
         size_t total_presence_updates = 0;
         size_t failed_presence_updates = 0;
         size_t rate_limited_updates = 0;
-        size_t queued_frames = 0;
         ConnectionManager::RetryStats connection_stats;
-        FrameQueue<nlohmann::json>::Stats queue_stats;
 
         std::chrono::system_clock::time_point last_successful_update;
         std::chrono::system_clock::time_point service_start_time;
@@ -116,7 +109,7 @@ private:
     // Core components
     std::unique_ptr<IRateLimiter> m_rate_limiter;
     std::unique_ptr<ConnectionManager> m_connection_manager;
-    std::unique_ptr<FrameQueue<nlohmann::json>> m_frame_queue;
+    std::queue<nlohmann::json> m_frame_queue;
     std::unique_ptr<PresenceFormatter> m_formatter;
 
     // Threading
@@ -126,6 +119,7 @@ private:
     // Synchronization
     mutable std::mutex m_stats_mutex;
     mutable std::mutex m_presence_mutex;
+    mutable std::mutex m_queue_mutex;
     PresenceData m_current_presence;
 
     // Statistics

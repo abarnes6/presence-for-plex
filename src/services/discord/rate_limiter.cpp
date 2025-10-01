@@ -187,24 +187,4 @@ std::chrono::milliseconds DiscordRateLimiter::calculate_wait_time() const {
     return max_wait;
 }
 
-// Factory implementations
-std::unique_ptr<IRateLimiter> RateLimiterFactory::create(Type type, const DiscordRateLimitConfig& config) {
-    switch (type) {
-        case Type::Discord:
-            return create_discord_limiter(config);
-        case Type::None:
-            return create_no_op_limiter();
-        default:
-            return create_no_op_limiter();
-    }
-}
-
-std::unique_ptr<IRateLimiter> RateLimiterFactory::create_discord_limiter(const DiscordRateLimitConfig& config) {
-    return std::make_unique<DiscordRateLimiter>(config);
-}
-
-std::unique_ptr<IRateLimiter> RateLimiterFactory::create_no_op_limiter() {
-    return std::make_unique<NoOpRateLimiter>();
-}
-
 } // namespace presence_for_plex::services

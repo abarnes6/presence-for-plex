@@ -1,6 +1,7 @@
 #pragma once
 
 #include "presence_for_plex/core/models.hpp"
+#include "presence_for_plex/services/plex/plex_cache_manager.hpp"
 #include <memory>
 #include <string>
 #include <vector>
@@ -13,7 +14,6 @@ namespace services {
 
 // Forward declarations
 class HttpClient;
-class IPlexCacheManager;
 
 // Interface for extracting media information from different content types
 class IMediaExtractor {
@@ -145,7 +145,7 @@ class PlexMediaFetcher : public IPlexMediaFetcher {
 public:
     PlexMediaFetcher(
         std::shared_ptr<HttpClient> http_client,
-        std::shared_ptr<IPlexCacheManager> cache_manager
+        std::shared_ptr<PlexCacheManager> cache_manager
     );
 
     ~PlexMediaFetcher() override = default;
@@ -173,7 +173,7 @@ private:
     std::map<std::string, std::string> get_standard_headers(const core::PlexToken& token) const;
 
     std::shared_ptr<HttpClient> m_http_client;
-    std::shared_ptr<IPlexCacheManager> m_cache_manager;
+    std::shared_ptr<PlexCacheManager> m_cache_manager;
     std::vector<std::unique_ptr<IMediaExtractor>> m_extractors;
     std::vector<std::unique_ptr<IExternalMetadataService>> m_external_services;
 };

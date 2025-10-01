@@ -13,7 +13,7 @@ using json = nlohmann::json;
 // SessionValidator implementation
 SessionValidator::SessionValidator(
     std::shared_ptr<HttpClient> http_client,
-    std::shared_ptr<IPlexCacheManager> cache_manager)
+    std::shared_ptr<PlexCacheManager> cache_manager)
     : m_http_client(std::move(http_client))
     , m_cache_manager(std::move(cache_manager)) {
 }
@@ -141,7 +141,7 @@ PlexSessionManager::PlexSessionManager()
 
 void PlexSessionManager::set_dependencies(
     std::shared_ptr<HttpClient> http_client,
-    std::shared_ptr<IPlexCacheManager> cache_manager,
+    std::shared_ptr<PlexCacheManager> cache_manager,
     std::shared_ptr<IPlexMediaFetcher> media_fetcher) {
 
     m_http_client = http_client;
