@@ -142,7 +142,7 @@ PlexSessionManager::PlexSessionManager()
 void PlexSessionManager::set_dependencies(
     std::shared_ptr<HttpClient> http_client,
     std::shared_ptr<PlexCacheManager> cache_manager,
-    std::shared_ptr<IPlexMediaFetcher> media_fetcher) {
+    std::shared_ptr<PlexMediaFetcher> media_fetcher) {
 
     m_http_client = http_client;
     m_cache_manager = cache_manager;

@@ -19,40 +19,21 @@ namespace services {
 // Forward declarations
 class HttpClient;
 
-// Interface for Plex authentication following SRP
-class IPlexAuthenticator {
-public:
-    virtual ~IPlexAuthenticator() = default;
-
-    // Core authentication methods
-    virtual std::expected<core::PlexToken, core::PlexError> acquire_auth_token() = 0;
-    virtual std::expected<std::string, core::PlexError> fetch_username(const core::PlexToken& token) = 0;
-    virtual std::expected<void, core::PlexError> validate_token(const core::PlexToken& token) = 0;
-    virtual std::expected<core::PlexToken, core::PlexError> ensure_authenticated() = 0;
-
-    // Header generation for authenticated requests
-    virtual std::map<std::string, std::string> get_standard_headers(const core::PlexToken& token = {}) const = 0;
-
-    // Shutdown method to abort ongoing operations
-    virtual void shutdown() = 0;
-};
-
-// Concrete implementation
-class PlexAuthenticator : public IPlexAuthenticator {
+class PlexAuthenticator {
 public:
     explicit PlexAuthenticator(std::shared_ptr<HttpClient> http_client,
                               std::shared_ptr<core::AuthenticationService> auth_service,
                               std::shared_ptr<platform::BrowserLauncher> browser_launcher = nullptr);
-    ~PlexAuthenticator() override = default;
+    ~PlexAuthenticator() = default;
 
-    std::expected<core::PlexToken, core::PlexError> acquire_auth_token() override;
-    std::expected<std::string, core::PlexError> fetch_username(const core::PlexToken& token) override;
-    std::expected<void, core::PlexError> validate_token(const core::PlexToken& token) override;
-    std::expected<core::PlexToken, core::PlexError> ensure_authenticated() override;
+    std::expected<core::PlexToken, core::PlexError> acquire_auth_token();
+    std::expected<std::string, core::PlexError> fetch_username(const core::PlexToken& token);
+    std::expected<void, core::PlexError> validate_token(const core::PlexToken& token);
+    std::expected<core::PlexToken, core::PlexError> ensure_authenticated();
 
-    std::map<std::string, std::string> get_standard_headers(const core::PlexToken& token = {}) const override;
+    std::map<std::string, std::string> get_standard_headers(const core::PlexToken& token = {}) const;
 
-    void shutdown() override;
+    void shutdown();
 
 private:
     // Internal helper methods

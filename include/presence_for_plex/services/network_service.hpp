@@ -246,31 +246,5 @@ public:
     static std::optional<std::string> get_scheme(const std::string& url);
 };
 
-// Server-Sent Events (SSE) client interface
-class SSEClient {
-public:
-    SSEClient();
-    ~SSEClient();
-
-    // Move-only semantics
-    SSEClient(const SSEClient&) = delete;
-    SSEClient& operator=(const SSEClient&) = delete;
-    SSEClient(SSEClient&&) = delete;
-    SSEClient& operator=(SSEClient&&) = delete;
-
-    bool connect(const std::string& url, const HttpHeaders& headers);
-    void disconnect();
-    bool is_connected() const;
-    void process_sse_data(const std::string& data);
-
-    void set_message_callback(std::function<void(const std::string&)> callback);
-    void set_error_callback(std::function<void(const std::string&)> callback);
-    void set_connection_callback(std::function<void(bool)> callback);
-
-private:
-    struct Impl;
-    std::unique_ptr<Impl> m_impl;
-};
-
 } // namespace services
 } // namespace presence_for_plex

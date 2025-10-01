@@ -14,7 +14,7 @@ namespace services {
 // Forward declarations
 class HttpClient;
 class PlexCacheManager;
-class IPlexMediaFetcher;
+class PlexMediaFetcher;
 
 // Server connection info for session management
 struct ServerConnectionInfo {
@@ -25,37 +25,6 @@ struct ServerConnectionInfo {
 
 // Session state callback
 using SessionStateCallback = std::function<void(const core::MediaInfo&)>;
-
-// Interface for session management following SRP
-class IPlexSessionManager {
-public:
-    virtual ~IPlexSessionManager() = default;
-
-    // Session management
-    virtual void process_play_session_notification(
-        const core::ServerId& server_id,
-        const nlohmann::json& notification
-    ) = 0;
-
-    virtual std::optional<core::MediaInfo> get_current_playback() const = 0;
-    virtual std::expected<std::vector<core::MediaInfo>, core::PlexError> get_active_sessions() const = 0;
-
-    // Session filtering
-    virtual void set_target_username(const std::string& username) = 0;
-    virtual std::string get_target_username() const = 0;
-
-    // Callbacks
-    virtual void set_session_state_callback(SessionStateCallback callback) = 0;
-
-    // Server connection management
-    virtual void update_server_connection(
-        const core::ServerId& server_id,
-        const ServerConnectionInfo& connection_info) = 0;
-
-    // Cleanup
-    virtual void clear_all() = 0;
-    virtual void remove_sessions_for_server(const core::ServerId& server_id) = 0;
-};
 
 // Session validation helper
 class SessionValidator {
@@ -88,8 +57,7 @@ private:
     static constexpr const char* SESSION_ENDPOINT = "/status/sessions";
 };
 
-// Concrete implementation
-class PlexSessionManager : public IPlexSessionManager {
+class PlexSessionManager {
 public:
     PlexSessionManager();
 
@@ -97,30 +65,30 @@ public:
     void set_dependencies(
         std::shared_ptr<HttpClient> http_client,
         std::shared_ptr<PlexCacheManager> cache_manager,
-        std::shared_ptr<IPlexMediaFetcher> media_fetcher
+        std::shared_ptr<PlexMediaFetcher> media_fetcher
     );
 
     // Server connection management
     void update_server_connection(
         const core::ServerId& server_id,
         const ServerConnectionInfo& connection_info
-    ) override;
+    );
 
     void process_play_session_notification(
         const core::ServerId& server_id,
         const nlohmann::json& notification
-    ) override;
+    );
 
-    std::optional<core::MediaInfo> get_current_playback() const override;
-    std::expected<std::vector<core::MediaInfo>, core::PlexError> get_active_sessions() const override;
+    std::optional<core::MediaInfo> get_current_playback() const;
+    std::expected<std::vector<core::MediaInfo>, core::PlexError> get_active_sessions() const;
 
-    void set_target_username(const std::string& username) override;
-    std::string get_target_username() const override;
+    void set_target_username(const std::string& username);
+    std::string get_target_username() const;
 
-    void set_session_state_callback(SessionStateCallback callback) override;
+    void set_session_state_callback(SessionStateCallback callback);
 
-    void clear_all() override;
-    void remove_sessions_for_server(const core::ServerId& server_id) override;
+    void clear_all();
+    void remove_sessions_for_server(const core::ServerId& server_id);
 
 private:
     void update_session_info(
@@ -151,7 +119,7 @@ private:
     // Dependencies
     std::shared_ptr<HttpClient> m_http_client;
     std::shared_ptr<PlexCacheManager> m_cache_manager;
-    std::shared_ptr<IPlexMediaFetcher> m_media_fetcher;
+    std::shared_ptr<PlexMediaFetcher> m_media_fetcher;
     std::unique_ptr<SessionValidator> m_session_validator;
 
     // Configuration

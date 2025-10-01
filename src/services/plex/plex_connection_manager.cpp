@@ -43,7 +43,7 @@ std::expected<void, core::PlexError> PlexConnectionManager::add_server(std::uniq
     // Create runtime info
     auto runtime = std::make_unique<PlexServerRuntime>();
     runtime->server = std::move(server);
-    runtime->sse_client = SSEClientFactory::create_client(m_http_client);
+    runtime->sse_client = std::make_unique<SSEClient>(m_http_client);
 
     m_servers[server_id] = std::move(runtime);
 

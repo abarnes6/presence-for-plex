@@ -16,11 +16,11 @@ using json = nlohmann::json;
 
 // Constructor with dependency injection
 PlexServiceImpl::PlexServiceImpl(
-    std::shared_ptr<IPlexAuthenticator> authenticator,
+    std::shared_ptr<PlexAuthenticator> authenticator,
     std::shared_ptr<PlexCacheManager> cache_manager,
-    std::shared_ptr<IPlexConnectionManager> connection_manager,
-    std::shared_ptr<IPlexMediaFetcher> media_fetcher,
-    std::shared_ptr<IPlexSessionManager> session_manager,
+    std::shared_ptr<PlexConnectionManager> connection_manager,
+    std::shared_ptr<PlexMediaFetcher> media_fetcher,
+    std::shared_ptr<PlexSessionManager> session_manager,
     std::shared_ptr<HttpClient> http_client,
     std::shared_ptr<core::ConfigurationService> config_service,
     std::shared_ptr<core::AuthenticationService> auth_service)
@@ -385,7 +385,7 @@ PlexServiceBuilder::PlexServiceBuilder() {
     // Initialize with null pointers
 }
 
-PlexServiceBuilder& PlexServiceBuilder::with_authenticator(std::shared_ptr<IPlexAuthenticator> auth) {
+PlexServiceBuilder& PlexServiceBuilder::with_authenticator(std::shared_ptr<PlexAuthenticator> auth) {
     m_authenticator = std::move(auth);
     return *this;
 }
@@ -395,17 +395,17 @@ PlexServiceBuilder& PlexServiceBuilder::with_cache_manager(std::shared_ptr<PlexC
     return *this;
 }
 
-PlexServiceBuilder& PlexServiceBuilder::with_connection_manager(std::shared_ptr<IPlexConnectionManager> conn) {
+PlexServiceBuilder& PlexServiceBuilder::with_connection_manager(std::shared_ptr<PlexConnectionManager> conn) {
     m_connection_manager = std::move(conn);
     return *this;
 }
 
-PlexServiceBuilder& PlexServiceBuilder::with_media_fetcher(std::shared_ptr<IPlexMediaFetcher> fetcher) {
+PlexServiceBuilder& PlexServiceBuilder::with_media_fetcher(std::shared_ptr<PlexMediaFetcher> fetcher) {
     m_media_fetcher = std::move(fetcher);
     return *this;
 }
 
-PlexServiceBuilder& PlexServiceBuilder::with_session_manager(std::shared_ptr<IPlexSessionManager> session) {
+PlexServiceBuilder& PlexServiceBuilder::with_session_manager(std::shared_ptr<PlexSessionManager> session) {
     m_session_manager = std::move(session);
     return *this;
 }
@@ -471,9 +471,7 @@ std::unique_ptr<PlexServiceImpl> PlexServiceBuilder::build() {
 
     if (!m_session_manager) {
         m_session_manager = std::make_shared<PlexSessionManager>();
-        // Inject dependencies into session manager
-        std::static_pointer_cast<PlexSessionManager>(m_session_manager)->set_dependencies(
-            m_http_client, m_cache_manager, m_media_fetcher);
+        m_session_manager->set_dependencies(m_http_client, m_cache_manager, m_media_fetcher);
     }
 
     return std::make_unique<PlexServiceImpl>(

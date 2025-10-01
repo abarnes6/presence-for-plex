@@ -17,43 +17,22 @@ namespace services {
 // SSE event callback type (basic callback, server-specific callback defined in connection manager)
 using SSEBasicEventCallback = std::function<void(const std::string&)>;
 
-// Interface for Server-Sent Events client
-class ISSEClient {
+class SSEClient {
 public:
-    virtual ~ISSEClient() = default;
-
-    // Connection management
-    virtual std::expected<void, core::PlexError> connect(
-        const std::string& url,
-        const HttpHeaders& headers,
-        SSEBasicEventCallback callback
-    ) = 0;
-
-    virtual void disconnect() = 0;
-    virtual bool is_connected() const = 0;
-
-    // Status
-    virtual std::string get_url() const = 0;
-    virtual std::chrono::system_clock::time_point get_last_event_time() const = 0;
-};
-
-// Concrete SSE client implementation using HTTP streaming
-class SSEClientImpl : public ISSEClient {
-public:
-    explicit SSEClientImpl(std::shared_ptr<HttpClient> http_client);
-    ~SSEClientImpl() override;
+    explicit SSEClient(std::shared_ptr<HttpClient> http_client);
+    ~SSEClient();
 
     std::expected<void, core::PlexError> connect(
         const std::string& url,
         const HttpHeaders& headers,
         SSEBasicEventCallback callback
-    ) override;
+    );
 
-    void disconnect() override;
-    bool is_connected() const override;
+    void disconnect();
+    bool is_connected() const;
 
-    std::string get_url() const override;
-    std::chrono::system_clock::time_point get_last_event_time() const override;
+    std::string get_url() const;
+    std::chrono::system_clock::time_point get_last_event_time() const;
 
     // Public method for processing streaming data chunks
     void process_streaming_data(const std::string& data_chunk);
@@ -90,12 +69,6 @@ private:
 
     static constexpr std::chrono::seconds RECONNECT_DELAY{5};
     static constexpr std::chrono::seconds CONNECTION_TIMEOUT{30};
-};
-
-// Factory for creating SSE clients
-class SSEClientFactory {
-public:
-    static std::unique_ptr<ISSEClient> create_client(std::shared_ptr<HttpClient> http_client);
 };
 
 } // namespace services

@@ -40,30 +40,6 @@ public:
     ) = 0;
 };
 
-// Interface for media fetching following SRP
-class IPlexMediaFetcher {
-public:
-    virtual ~IPlexMediaFetcher() = default;
-
-    // Core media fetching
-    virtual std::expected<core::MediaInfo, core::PlexError> fetch_media_details(
-        const std::string& server_uri,
-        const core::PlexToken& access_token,
-        const std::string& media_key
-    ) = 0;
-
-    // Extractor management
-    virtual void add_media_extractor(std::unique_ptr<IMediaExtractor> extractor) = 0;
-    virtual void add_external_service(std::unique_ptr<IExternalMetadataService> service) = 0;
-
-    // Utility methods
-    virtual std::expected<void, core::PlexError> fetch_grandparent_metadata(
-        const std::string& server_uri,
-        const core::PlexToken& access_token,
-        core::MediaInfo& info
-    ) = 0;
-};
-
 // TMDB service implementation
 class TMDBService : public IExternalMetadataService {
 public:
@@ -140,30 +116,29 @@ private:
     void extract_track_info(const nlohmann::json& metadata, core::MediaInfo& info) const;
 };
 
-// Concrete implementation
-class PlexMediaFetcher : public IPlexMediaFetcher {
+class PlexMediaFetcher {
 public:
     PlexMediaFetcher(
         std::shared_ptr<HttpClient> http_client,
         std::shared_ptr<PlexCacheManager> cache_manager
     );
 
-    ~PlexMediaFetcher() override = default;
+    ~PlexMediaFetcher() = default;
 
     std::expected<core::MediaInfo, core::PlexError> fetch_media_details(
         const std::string& server_uri,
         const core::PlexToken& access_token,
         const std::string& media_key
-    ) override;
+    );
 
-    void add_media_extractor(std::unique_ptr<IMediaExtractor> extractor) override;
-    void add_external_service(std::unique_ptr<IExternalMetadataService> service) override;
+    void add_media_extractor(std::unique_ptr<IMediaExtractor> extractor);
+    void add_external_service(std::unique_ptr<IExternalMetadataService> service);
 
     std::expected<void, core::PlexError> fetch_grandparent_metadata(
         const std::string& server_uri,
         const core::PlexToken& access_token,
         core::MediaInfo& info
-    ) override;
+    );
 
 private:
     void extract_basic_media_info(const nlohmann::json& metadata, core::MediaInfo& info) const;

@@ -25,11 +25,11 @@ class PlexServiceImpl : public MediaService {
 public:
     // Constructor with dependency injection
     PlexServiceImpl(
-        std::shared_ptr<IPlexAuthenticator> authenticator,
+        std::shared_ptr<PlexAuthenticator> authenticator,
         std::shared_ptr<PlexCacheManager> cache_manager,
-        std::shared_ptr<IPlexConnectionManager> connection_manager,
-        std::shared_ptr<IPlexMediaFetcher> media_fetcher,
-        std::shared_ptr<IPlexSessionManager> session_manager,
+        std::shared_ptr<PlexConnectionManager> connection_manager,
+        std::shared_ptr<PlexMediaFetcher> media_fetcher,
+        std::shared_ptr<PlexSessionManager> session_manager,
         std::shared_ptr<HttpClient> http_client,
         std::shared_ptr<core::ConfigurationService> config_service,
         std::shared_ptr<core::AuthenticationService> auth_service
@@ -70,12 +70,12 @@ private:
     // Handle SSE events from connection manager
     void handle_sse_event(const core::ServerId& server_id, const std::string& event);
 
-    // Injected dependencies (following DIP)
-    std::shared_ptr<IPlexAuthenticator> m_authenticator;
+    // Injected dependencies
+    std::shared_ptr<PlexAuthenticator> m_authenticator;
     std::shared_ptr<PlexCacheManager> m_cache_manager;
-    std::shared_ptr<IPlexConnectionManager> m_connection_manager;
-    std::shared_ptr<IPlexMediaFetcher> m_media_fetcher;
-    std::shared_ptr<IPlexSessionManager> m_session_manager;
+    std::shared_ptr<PlexConnectionManager> m_connection_manager;
+    std::shared_ptr<PlexMediaFetcher> m_media_fetcher;
+    std::shared_ptr<PlexSessionManager> m_session_manager;
     std::shared_ptr<HttpClient> m_http_client;
     std::shared_ptr<core::ConfigurationService> m_config_service;
     std::shared_ptr<core::AuthenticationService> m_auth_service;
@@ -97,11 +97,11 @@ class PlexServiceBuilder {
 public:
     PlexServiceBuilder();
 
-    PlexServiceBuilder& with_authenticator(std::shared_ptr<IPlexAuthenticator> auth);
+    PlexServiceBuilder& with_authenticator(std::shared_ptr<PlexAuthenticator> auth);
     PlexServiceBuilder& with_cache_manager(std::shared_ptr<PlexCacheManager> cache);
-    PlexServiceBuilder& with_connection_manager(std::shared_ptr<IPlexConnectionManager> conn);
-    PlexServiceBuilder& with_media_fetcher(std::shared_ptr<IPlexMediaFetcher> fetcher);
-    PlexServiceBuilder& with_session_manager(std::shared_ptr<IPlexSessionManager> session);
+    PlexServiceBuilder& with_connection_manager(std::shared_ptr<PlexConnectionManager> conn);
+    PlexServiceBuilder& with_media_fetcher(std::shared_ptr<PlexMediaFetcher> fetcher);
+    PlexServiceBuilder& with_session_manager(std::shared_ptr<PlexSessionManager> session);
     PlexServiceBuilder& with_http_client(std::shared_ptr<HttpClient> client);
     PlexServiceBuilder& with_configuration_service(std::shared_ptr<core::ConfigurationService> config);
     PlexServiceBuilder& with_authentication_service(std::shared_ptr<core::AuthenticationService> auth);
@@ -109,11 +109,11 @@ public:
     std::unique_ptr<PlexServiceImpl> build();
 
 private:
-    std::shared_ptr<IPlexAuthenticator> m_authenticator;
+    std::shared_ptr<PlexAuthenticator> m_authenticator;
     std::shared_ptr<PlexCacheManager> m_cache_manager;
-    std::shared_ptr<IPlexConnectionManager> m_connection_manager;
-    std::shared_ptr<IPlexMediaFetcher> m_media_fetcher;
-    std::shared_ptr<IPlexSessionManager> m_session_manager;
+    std::shared_ptr<PlexConnectionManager> m_connection_manager;
+    std::shared_ptr<PlexMediaFetcher> m_media_fetcher;
+    std::shared_ptr<PlexSessionManager> m_session_manager;
     std::shared_ptr<HttpClient> m_http_client;
     std::shared_ptr<core::ConfigurationService> m_config_service;
     std::shared_ptr<core::AuthenticationService> m_auth_service;
