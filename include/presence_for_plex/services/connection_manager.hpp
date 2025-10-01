@@ -188,7 +188,7 @@ private:
 
     std::chrono::seconds calculate_next_delay();
     void reset_retry_state();
-    bool should_attempt_reconnection() const;
+    bool should_attempt_reconnection();
 };
 
 } // namespace presence_for_plex::services

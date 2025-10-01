@@ -94,7 +94,7 @@ private:
     mutable std::mutex m_mutex;
     DiscordRateLimitConfig m_config;
 
-    std::deque<std::chrono::steady_clock::time_point> m_operation_times;
+    mutable std::deque<std::chrono::steady_clock::time_point> m_operation_times;
     std::chrono::steady_clock::time_point m_last_operation;
 
     void cleanup_expired_operations() const;

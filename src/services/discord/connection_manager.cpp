@@ -311,20 +311,19 @@ void ConnectionManager::reset_retry_state() {
     m_stats.current_delay = std::chrono::seconds{0};
 }
 
-bool ConnectionManager::should_attempt_reconnection() const {
+bool ConnectionManager::should_attempt_reconnection() {
     std::lock_guard<std::mutex> lock(m_stats_mutex);
 
-    // Check if we've hit the max failures limit
     if (m_stats.consecutive_failures >= m_config.max_consecutive_failures) {
         auto now = std::chrono::system_clock::now();
         auto time_since_last_failure = now - m_stats.last_failure;
 
         if (time_since_last_failure < m_config.failure_cooldown) {
-            return false; // Still in cooldown period
+            return false;
         }
 
-        // Reset failure count after cooldown
-        const_cast<ConnectionManager*>(this)->reset_retry_state();
+        m_stats.consecutive_failures = 0;
+        m_stats.current_delay = std::chrono::seconds{0};
     }
 
     return true;

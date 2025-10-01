@@ -9,11 +9,20 @@
 #include <typeindex>
 #include <unordered_map>
 #include <vector>
+#include <atomic>
 
 namespace presence_for_plex::core {
 
 class EventBus : public std::enable_shared_from_this<EventBus> {
 public:
+    EventBus() = default;
+    ~EventBus() {
+        shutdown();
+    }
+
+    void shutdown() {
+        m_shutting_down = true;
+    }
     using EventHandler = std::function<void(const std::any&)>;
     using HandlerId = std::size_t;
 
@@ -61,10 +70,16 @@ public:
 
     template<typename EventType>
     void publish_async(const EventType& event) {
+        if (m_shutting_down) {
+            return;
+        }
+
         auto event_copy = std::make_shared<EventType>(event);
         auto self = shared_from_this();
         std::thread([self, event_copy]() {
-            self->publish(*event_copy);
+            if (!self->m_shutting_down) {
+                self->publish(*event_copy);
+            }
         }).detach();
     }
 
@@ -105,6 +120,7 @@ private:
     std::unordered_map<std::type_index, std::vector<std::pair<HandlerId, EventHandler>>> m_handlers;
     std::unordered_map<HandlerId, std::type_index> m_handler_types;
     HandlerId m_next_handler_id{1};
+    std::atomic<bool> m_shutting_down{false};
 
     void handle_exception(const std::string& event_type, const std::exception& e);
 };

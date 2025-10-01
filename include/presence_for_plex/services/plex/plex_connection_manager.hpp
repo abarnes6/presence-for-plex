@@ -25,11 +25,10 @@ class SSEClient;
 // SSE event callback
 using SSEEventCallback = std::function<void(const core::ServerId&, const std::string&)>;
 
-// Server runtime info
+// Server runtime info - each server has its own SSE event thread
 struct PlexServerRuntime {
     std::unique_ptr<core::PlexServer> server;
-    std::unique_ptr<SSEClient> sse_client;
-    std::thread sse_thread;
+    std::unique_ptr<SSEClient> sse_client;  // Manages dedicated thread internally
     std::atomic<bool> sse_running{false};
     std::atomic<bool> initial_connection_succeeded{false};
 };

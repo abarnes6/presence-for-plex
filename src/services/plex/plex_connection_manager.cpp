@@ -119,10 +119,6 @@ void PlexConnectionManager::disconnect_from_server(const core::ServerId& server_
             runtime.sse_client->disconnect();
         }
 
-        if (runtime.sse_thread.joinable()) {
-            runtime.sse_thread.join();
-        }
-
         PLEX_LOG_DEBUG("PlexConnectionManager", "Server disconnected: " + server_id.get());
     }
 }
@@ -216,51 +212,21 @@ void PlexConnectionManager::set_sse_event_callback(SSEEventCallback callback) {
 void PlexConnectionManager::start_all_connections() {
     PLEX_LOG_INFO("PlexConnectionManager", "Starting all server connections");
 
-    // Collect server info while holding lock
-    std::vector<std::pair<core::ServerId, bool>> servers_to_connect;
-    {
-        std::lock_guard<std::mutex> lock(m_servers_mutex);
-        PLEX_LOG_DEBUG("PlexConnectionManager", "Total servers to process: " + std::to_string(m_servers.size()));
+    std::lock_guard<std::mutex> lock(m_servers_mutex);
+    PLEX_LOG_DEBUG("PlexConnectionManager", "Total servers to process: " + std::to_string(m_servers.size()));
 
-        for (const auto& [server_id, runtime] : m_servers) {
-            if (!runtime->sse_client->is_connected()) {
-                servers_to_connect.emplace_back(server_id, runtime->server->owned);
-            } else {
-                PLEX_LOG_DEBUG("PlexConnectionManager", "Server already connected: " + server_id.get());
-            }
+    size_t started = 0;
+    for (const auto& [server_id, runtime] : m_servers) {
+        if (!runtime->sse_client->is_connected()) {
+            PLEX_LOG_DEBUG("PlexConnectionManager", "Starting connection for server: " + server_id.get());
+            setup_server_sse_connection(*runtime);
+            ++started;
+        } else {
+            PLEX_LOG_DEBUG("PlexConnectionManager", "Server already connected: " + server_id.get());
         }
     }
 
-    // Start connection threads without holding the main mutex
-    for (const auto& [server_id, is_owned] : servers_to_connect) {
-        PLEX_LOG_DEBUG("PlexConnectionManager", "Starting connection thread for server: " + server_id.get());
-
-        // Start each server connection in its own thread
-        std::thread([this, server_id]() {
-            try {
-                // Get server runtime with brief lock
-                PlexServerRuntime* runtime_ptr = nullptr;
-                {
-                    std::lock_guard<std::mutex> lock(m_servers_mutex);
-                    auto it = m_servers.find(server_id);
-                    if (it != m_servers.end()) {
-                        runtime_ptr = it->second.get();
-                    }
-                }
-
-                if (runtime_ptr) {
-                    // Now call setup without holding the main mutex
-                    setup_server_sse_connection(*runtime_ptr);
-                }
-            } catch (const std::exception& e) {
-                PLEX_LOG_ERROR("PlexConnectionManager", "Exception in connection thread for " +
-                              server_id.get() + ": " + e.what());
-            }
-        }).detach();
-    }
-
-    PLEX_LOG_INFO("PlexConnectionManager", "Started " + std::to_string(servers_to_connect.size()) +
-                  " connection thread(s)");
+    PLEX_LOG_INFO("PlexConnectionManager", "Started " + std::to_string(started) + " server connection(s)");
 }
 
 void PlexConnectionManager::stop_all_connections() {
@@ -334,20 +300,22 @@ void PlexConnectionManager::setup_server_sse_connection(PlexServerRuntime& runti
         // We'll monitor the connection status separately
         // The SSE client will handle its own retries (3 attempts)
 
-        // Start a monitoring thread to update initial_connection_succeeded when connected
-        std::thread([&runtime, server_name = server->name, this]() {
-            // Wait for connection to establish (up to 30 seconds)
-            for (int wait = 0; wait < 300 && !m_shutting_down; ++wait) {
+        // Start a monitoring thread with shared ownership to prevent dangling references
+        auto runtime_ptr = std::shared_ptr<PlexServerRuntime>(&runtime, [](PlexServerRuntime*){});
+        std::thread([runtime_ptr, server_name = server->name, shutdown_flag = &m_shutting_down]() {
+            for (int wait = 0; wait < 300 && !(*shutdown_flag); ++wait) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
-                if (runtime.sse_client && runtime.sse_client->is_connected()) {
+                if (runtime_ptr->sse_client && runtime_ptr->sse_client->is_connected()) {
                     PLEX_LOG_INFO("PlexConnectionManager", "SSE connection confirmed for: " + server_name);
-                    runtime.initial_connection_succeeded = true;
+                    runtime_ptr->initial_connection_succeeded = true;
                     return;
                 }
             }
 
-            PLEX_LOG_WARNING("PlexConnectionManager", "SSE connection timeout for: " + server_name);
+            if (!(*shutdown_flag)) {
+                PLEX_LOG_WARNING("PlexConnectionManager", "SSE connection timeout for: " + server_name);
+            }
         }).detach();
     } else {
         PLEX_LOG_ERROR("PlexConnectionManager", "Failed to initiate SSE connection for: " + server->name);

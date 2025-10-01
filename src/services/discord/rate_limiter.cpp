@@ -96,14 +96,11 @@ size_t DiscordRateLimiter::burst_operations_in_window() const {
 }
 
 void DiscordRateLimiter::cleanup_expired_operations() const {
-    // Remove const since we need to modify the deque
-    auto& operations = const_cast<std::deque<std::chrono::steady_clock::time_point>&>(m_operation_times);
     auto now = std::chrono::steady_clock::now();
     auto cutoff = now - m_config.primary_window_duration;
 
-    // Remove operations outside the primary window
-    while (!operations.empty() && operations.front() < cutoff) {
-        operations.pop_front();
+    while (!m_operation_times.empty() && m_operation_times.front() < cutoff) {
+        m_operation_times.pop_front();
     }
 }
 

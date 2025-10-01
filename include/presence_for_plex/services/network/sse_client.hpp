@@ -51,6 +51,7 @@ private:
 
     std::atomic<bool> m_running{false};
     std::atomic<bool> m_connected{false};
+    std::atomic<bool> m_initial_connection_succeeded{false};
     std::thread m_event_thread;
 
     mutable std::mutex m_state_mutex;
@@ -60,7 +61,6 @@ private:
     // Connection tracking
     int m_connection_attempts{0};
     static constexpr int MAX_INITIAL_CONNECTION_ATTEMPTS = 3;
-    bool m_initial_connection_succeeded{false};
 
     // SSE event parsing state
     std::string m_current_event_data;

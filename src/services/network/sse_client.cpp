@@ -149,10 +149,9 @@ void SSEClient::event_loop() {
             auto streaming_callback = [this](const std::string& data_chunk) {
                 PLEX_LOG_DEBUG("SSEClient", "Received data chunk of size: " + std::to_string(data_chunk.size()));
                 if (m_running) {
-                    // Mark connection as successful on first data received
-                    if (!m_initial_connection_succeeded) {
-                        m_initial_connection_succeeded = true;
-                        m_connected = true;
+                    if (!m_initial_connection_succeeded.load()) {
+                        m_initial_connection_succeeded.store(true);
+                        m_connected.store(true);
                         PLEX_LOG_INFO("SSEClient", "SSE connection successfully established for: " + m_url);
                     }
                     this->process_streaming_data(data_chunk);
@@ -167,8 +166,8 @@ void SSEClient::event_loop() {
             auto result = m_http_client->execute_streaming(sse_request, streaming_callback, &m_running);
 
             if (!result) {
-                m_connected = false;
-                if (m_initial_connection_succeeded) {
+                m_connected.store(false);
+                if (m_initial_connection_succeeded.load()) {
                     PLEX_LOG_WARNING("SSEClient", "SSE streaming failed, will retry");
                 } else {
                     PLEX_LOG_WARNING("SSEClient", "Initial SSE connection failed for: " + m_url);
@@ -178,14 +177,13 @@ void SSEClient::event_loop() {
             }
 
         } catch (const std::exception& e) {
-            m_connected = false;
+            m_connected.store(false);
             PLEX_LOG_ERROR("SSEClient", "SSE event loop error: " + std::string(e.what()));
         }
 
-        m_connected = false;
+        m_connected.store(false);
 
-        // Only retry if we've had a successful connection before or haven't exceeded initial attempts
-        if (!m_running || (!m_initial_connection_succeeded && m_connection_attempts >= MAX_INITIAL_CONNECTION_ATTEMPTS)) {
+        if (!m_running || (!m_initial_connection_succeeded.load() && m_connection_attempts >= MAX_INITIAL_CONNECTION_ATTEMPTS)) {
             break;
         }
 
@@ -251,12 +249,10 @@ void SSEClient::process_sse_line(const std::string& line) {
 
     // Handle comment lines
     if (line[0] == ':') {
-        // Check if this is our connection established comment
         if (line.find(": connection established") == 0) {
-            // Mark connection as successful on receiving this special comment
-            if (!m_initial_connection_succeeded) {
-                m_initial_connection_succeeded = true;
-                m_connected = true;
+            if (!m_initial_connection_succeeded.load()) {
+                m_initial_connection_succeeded.store(true);
+                m_connected.store(true);
                 PLEX_LOG_INFO("SSEClient", "SSE connection successfully established for: " + m_url);
             }
         }
