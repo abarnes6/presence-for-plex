@@ -129,6 +129,8 @@ endif()
 # Create the main executable
 if(APPLE)
     add_executable(PresenceForPlex MACOSX_BUNDLE ${ALL_SOURCES} ${HEADERS})
+elseif(WIN32)
+    add_executable(PresenceForPlex WIN32 ${ALL_SOURCES} ${HEADERS})
 else()
     add_executable(PresenceForPlex ${ALL_SOURCES} ${HEADERS})
 endif()
