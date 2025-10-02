@@ -41,6 +41,10 @@ struct PresenceData {
     struct Button {
         std::string label;
         std::string url;
+
+        bool operator==(const Button& other) const {
+            return label == other.label && url == other.url;
+        }
     };
     std::vector<Button> buttons;
 
@@ -49,10 +53,34 @@ struct PresenceData {
         std::string id;
         int current_size = 0;
         int max_size = 0;
+
+        bool operator==(const Party& other) const {
+            return id == other.id &&
+                   current_size == other.current_size &&
+                   max_size == other.max_size;
+        }
     };
     std::optional<Party> party;
 
     bool is_valid() const;
+
+    bool operator==(const PresenceData& other) const {
+        return state == other.state &&
+               details == other.details &&
+               large_image_key == other.large_image_key &&
+               large_image_text == other.large_image_text &&
+               small_image_key == other.small_image_key &&
+               small_image_text == other.small_image_text &&
+               activity_type == other.activity_type &&
+               start_timestamp == other.start_timestamp &&
+               end_timestamp == other.end_timestamp &&
+               buttons == other.buttons &&
+               party == other.party;
+    }
+
+    bool operator!=(const PresenceData& other) const {
+        return !(*this == other);
+    }
 };
 
 // Abstract interface for rich presence services (Discord, Slack, etc.)

@@ -118,13 +118,12 @@ void DiscordPresenceService::shutdown() {
 
     // Signal update thread to exit
     m_shutdown_cv.notify_all();
+    m_update_cv.notify_all();
 
-    // Clear any queued frames
+    // Clear any pending frame
     {
-        std::lock_guard lock(m_queue_mutex);
-        while (!m_frame_queue.empty()) {
-            m_frame_queue.pop();
-        }
+        std::lock_guard lock(m_pending_mutex);
+        m_pending_frame.reset();
     }
 
     PLEX_LOG_INFO("DiscordPresenceService", "Discord presence service shut down");
@@ -143,13 +142,23 @@ std::expected<void, core::DiscordError> DiscordPresenceService::update_presence(
         return std::unexpected<core::DiscordError>(core::DiscordError::InvalidPayload);
     }
 
+    bool state_changed = false;
     {
         std::lock_guard<std::mutex> lock(m_presence_mutex);
-        m_current_presence = data;
-        m_update_requested = true;
+        state_changed = (m_current_presence != data);
+        if (state_changed) {
+            m_current_presence = data;
+            m_update_requested = true;
+        }
     }
 
-    PLEX_LOG_DEBUG("DiscordPresenceService", "Presence update requested");
+    if (state_changed) {
+        m_update_cv.notify_one();
+        PLEX_LOG_DEBUG("DiscordPresenceService", "Presence update requested (state changed)");
+    } else {
+        PLEX_LOG_DEBUG("DiscordPresenceService", "Presence update skipped (no state change)");
+    }
+
     return {};
 }
 
@@ -158,13 +167,24 @@ std::expected<void, core::DiscordError> DiscordPresenceService::clear_presence()
         return std::unexpected<core::DiscordError>(core::DiscordError::ServiceUnavailable);
     }
 
+    bool state_changed = false;
     {
         std::lock_guard<std::mutex> lock(m_presence_mutex);
-        m_current_presence = {}; // Empty presence
-        m_update_requested = true;
+        PresenceData empty_presence{};
+        state_changed = (m_current_presence != empty_presence);
+        if (state_changed) {
+            m_current_presence = empty_presence;
+            m_update_requested = true;
+        }
     }
 
-    PLEX_LOG_DEBUG("DiscordPresenceService", "Presence clear requested");
+    if (state_changed) {
+        m_update_cv.notify_one();
+        PLEX_LOG_DEBUG("DiscordPresenceService", "Presence clear requested");
+    } else {
+        PLEX_LOG_DEBUG("DiscordPresenceService", "Presence clear skipped (already cleared)");
+    }
+
     return {};
 }
 
@@ -279,32 +299,36 @@ void DiscordPresenceService::update_loop() {
                     if (m_rate_limiter && m_rate_limiter->can_proceed()) {
                         if (send_presence_frame(activity)) {
                             m_rate_limiter->record_operation();
+                            {
+                                std::lock_guard lock(m_presence_mutex);
+                                m_last_sent_presence = current_presence;
+                            }
                             on_presence_updated(current_presence);
                         } else {
                             record_failed_update();
-                            std::lock_guard lock(m_queue_mutex);
-                            m_frame_queue.push(std::move(activity));
+                            std::lock_guard lock(m_pending_mutex);
+                            m_pending_frame = std::move(activity);
                         }
                     } else {
-                        // Rate limited, queue the frame
-                        std::lock_guard lock(m_queue_mutex);
-                        m_frame_queue.push(std::move(activity));
+                        // Rate limited, store as pending (replaces any old pending frame)
+                        std::lock_guard lock(m_pending_mutex);
+                        m_pending_frame = std::move(activity);
                         increment_stat_counter(&ServiceStats::rate_limited_updates);
                     }
                 } else {
-                    // Not connected, queue the frame
-                    std::lock_guard lock(m_queue_mutex);
-                    m_frame_queue.push(std::move(activity));
+                    // Not connected, store as pending
+                    std::lock_guard lock(m_pending_mutex);
+                    m_pending_frame = std::move(activity);
                 }
             }
 
-            // Process queued frames
-            process_pending_frames();
+            // Process pending frame
+            process_pending_frame();
 
-            // Sleep until next update cycle or shutdown
+            // Wait for update request or timeout
             std::unique_lock lock(m_shutdown_mutex);
-            m_shutdown_cv.wait_for(lock, m_config.update_interval,
-                [this] { return m_shutting_down.load(); });
+            m_update_cv.wait_for(lock, std::chrono::seconds(1),
+                [this] { return m_shutting_down.load() || m_update_requested.load(); });
 
         } catch (const std::exception& e) {
             PLEX_LOG_ERROR("DiscordPresenceService",
@@ -316,33 +340,33 @@ void DiscordPresenceService::update_loop() {
     PLEX_LOG_DEBUG("DiscordPresenceService", "Update loop terminated");
 }
 
-void DiscordPresenceService::process_pending_frames() {
+void DiscordPresenceService::process_pending_frame() {
     if (!is_connected()) {
         return;
     }
 
-    // Process frames while rate limits allow
-    while (m_rate_limiter && m_rate_limiter->can_proceed()) {
-        json frame;
-        {
-            std::lock_guard lock(m_queue_mutex);
-            if (m_frame_queue.empty()) {
-                break; // No more frames
-            }
-            frame = std::move(m_frame_queue.front());
-            m_frame_queue.pop();
-        }
+    if (!m_rate_limiter || !m_rate_limiter->can_proceed()) {
+        return;
+    }
 
-        if (send_presence_frame(frame)) {
-            m_rate_limiter->record_operation();
-            record_successful_update();
-        } else {
-            record_failed_update();
-            // Re-queue for retry
-            std::lock_guard lock(m_queue_mutex);
-            m_frame_queue.push(std::move(frame));
-            break; // Stop processing on failure
+    std::optional<json> frame;
+    {
+        std::lock_guard lock(m_pending_mutex);
+        if (!m_pending_frame) {
+            return;
         }
+        frame = std::move(m_pending_frame);
+        m_pending_frame.reset();
+    }
+
+    if (send_presence_frame(*frame)) {
+        m_rate_limiter->record_operation();
+        record_successful_update();
+    } else {
+        record_failed_update();
+        // Put it back as pending for retry
+        std::lock_guard lock(m_pending_mutex);
+        m_pending_frame = std::move(frame);
     }
 }
 
@@ -480,12 +504,8 @@ void DiscordPresenceService::handle_connection_changed(bool connected) {
     on_connection_state_changed(connected);
 
     if (connected) {
-        PLEX_LOG_INFO("DiscordPresenceService", "Connection established, processing queued frames");
-        // Process any queued frames when we reconnect
-        std::lock_guard lock(m_queue_mutex);
-        if (!m_frame_queue.empty()) {
-            m_update_requested = true;
-        }
+        PLEX_LOG_INFO("DiscordPresenceService", "Connection established, will process pending frame");
+        m_update_cv.notify_one();
     }
 }
 

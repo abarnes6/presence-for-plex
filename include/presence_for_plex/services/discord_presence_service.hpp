@@ -117,7 +117,7 @@ private:
     // Core components
     std::unique_ptr<IRateLimiter> m_rate_limiter;
     std::unique_ptr<ConnectionManager> m_connection_manager;
-    std::queue<nlohmann::json> m_frame_queue;
+    std::optional<nlohmann::json> m_pending_frame;
     std::unique_ptr<PresenceFormatter> m_formatter;
 
     // Threading
@@ -127,19 +127,22 @@ private:
     // Synchronization
     mutable std::mutex m_stats_mutex;
     mutable std::mutex m_presence_mutex;
-    mutable std::mutex m_queue_mutex;
+    mutable std::mutex m_pending_mutex;
     std::mutex m_shutdown_mutex;
     std::condition_variable m_shutdown_cv;
+    std::condition_variable m_update_cv;
     PresenceData m_current_presence;
+    PresenceData m_last_sent_presence;
 
     // Statistics
     mutable ServiceStats m_stats;
 
     // Internal methods
     void update_loop();
-    void process_pending_frames();
+    void process_pending_frame();
     bool send_presence_frame(const nlohmann::json& frame);
     nlohmann::json create_discord_activity(const PresenceData& data) const;
+    bool presence_changed(const PresenceData& old_data, const PresenceData& new_data) const;
 
     void increment_stat_counter(size_t ServiceStats::*counter) const;
     void record_successful_update();
