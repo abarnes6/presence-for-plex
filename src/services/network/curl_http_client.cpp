@@ -50,6 +50,7 @@ static long safe_timeout_cast(long long timeout_value) {
 struct StreamingCallbackData {
     StreamingCallback* data_callback;
     bool connection_established = false;
+    std::atomic<bool>* stop_flag = nullptr;
 };
 
 // Callback for HTTP headers (to detect connection establishment)
@@ -444,10 +445,18 @@ public:
             return std::unexpected<NetworkError>(NetworkError::ConnectionFailed);
         }
 
+        CURLM* multi = curl_multi_init();
+        if (!multi) {
+            PLEX_LOG_ERROR("CurlHttpClient", "Failed to initialize curl multi handle");
+            curl_easy_cleanup(curl);
+            return std::unexpected<NetworkError>(NetworkError::ConnectionFailed);
+        }
+
         // Setup callback data structure
         StreamingCallbackData callback_data;
         callback_data.data_callback = &callback;
         callback_data.connection_established = false;
+        callback_data.stop_flag = stop_flag;
 
         // Setup basic options for streaming
         curl_easy_setopt(curl, CURLOPT_URL, request.url.c_str());
@@ -480,7 +489,7 @@ public:
 
         // Set low-speed limits to detect dead connections
         curl_easy_setopt(curl, CURLOPT_LOW_SPEED_LIMIT, 1L);  // 1 byte/sec minimum
-        curl_easy_setopt(curl, CURLOPT_LOW_SPEED_TIME, 60L);  // for 60 seconds
+        curl_easy_setopt(curl, CURLOPT_LOW_SPEED_TIME, 2L);  // for 2 seconds
 
         // Don't follow redirects for streaming connections
         curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 0L);
@@ -489,16 +498,65 @@ public:
         curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, request.verify_ssl ? 1L : 0L);
         curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, request.verify_ssl ? 2L : 0L);
 
-        PLEX_LOG_DEBUG("CurlHttpClient", "Performing streaming request...");
+        PLEX_LOG_DEBUG("CurlHttpClient", "Performing streaming request with multi interface...");
 
-        // Perform the streaming request - this will block and call the callback for each data chunk
-        CURLcode res = curl_easy_perform(curl);
+        // Add easy handle to multi handle
+        curl_multi_add_handle(multi, curl);
+
+        CURLcode res = CURLE_OK;
+        int still_running = 0;
+
+        // Perform the transfer using multi interface with non-blocking poll
+        do {
+            CURLMcode mc = curl_multi_perform(multi, &still_running);
+
+            if (mc != CURLM_OK) {
+                PLEX_LOG_ERROR("CurlHttpClient", "Multi perform failed: " + std::string(curl_multi_strerror(mc)));
+                break;
+            }
+
+            // Check stop flag - this allows instant cancellation
+            if (stop_flag && !stop_flag->load()) {
+                PLEX_LOG_DEBUG("CurlHttpClient", "Stop flag detected, aborting streaming request");
+                break;
+            }
+
+            if (still_running) {
+                // Wait for activity with a short timeout for responsive cancellation
+                int numfds = 0;
+                mc = curl_multi_poll(multi, nullptr, 0, 100, &numfds);  // 100ms timeout
+
+                if (mc != CURLM_OK) {
+                    PLEX_LOG_ERROR("CurlHttpClient", "Multi poll failed: " + std::string(curl_multi_strerror(mc)));
+                    break;
+                }
+            }
+        } while (still_running);
+
+        // Check for errors
+        CURLMsg* msg;
+        int msgs_left;
+        while ((msg = curl_multi_info_read(multi, &msgs_left))) {
+            if (msg->msg == CURLMSG_DONE) {
+                res = msg->data.result;
+                break;
+            }
+        }
 
         // Clean up
+        curl_multi_remove_handle(multi, curl);
+        curl_multi_cleanup(multi);
+
         if (header_list) {
             curl_slist_free_all(header_list);
         }
         curl_easy_cleanup(curl);
+
+        // Check if we stopped due to stop flag
+        if (stop_flag && !stop_flag->load()) {
+            PLEX_LOG_DEBUG("CurlHttpClient", "Streaming request cancelled by stop flag");
+            return std::unexpected<NetworkError>(NetworkError::Cancelled);
+        }
 
         if (res != CURLE_OK) {
             PLEX_LOG_ERROR("CurlHttpClient", "Streaming request failed: " + std::string(curl_easy_strerror(res)));

@@ -40,7 +40,7 @@ std::expected<void, core::PlexError> SSEClient::connect(
     PLEX_LOG_INFO("SSEClient", "Connecting to SSE endpoint: " + url);
 
     m_running = true;
-    m_event_thread = std::thread(&SSEClient::event_loop, this);
+    m_event_thread = std::jthread(&SSEClient::event_loop, this);
 
     return {};
 }
@@ -55,13 +55,8 @@ void SSEClient::disconnect() {
     m_running = false;
     m_connected = false;
 
-    if (m_event_thread.joinable()) {
-        // The progress callback will cause CURL to abort the transfer quickly
-        // Just join the thread - it should exit promptly thanks to the progress callback
-        PLEX_LOG_DEBUG("SSEClient", "Waiting for SSE thread to exit...");
-        m_event_thread.join();
-        PLEX_LOG_DEBUG("SSEClient", "SSE thread exited successfully");
-    }
+    // std::jthread will auto-join in destructor, but we can explicitly request stop
+    // No need to join/detach - just let it clean up naturally
 
     PLEX_LOG_DEBUG("SSEClient", "SSE client disconnected");
 }

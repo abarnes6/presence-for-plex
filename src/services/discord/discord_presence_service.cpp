@@ -96,7 +96,7 @@ std::expected<void, core::DiscordError> DiscordPresenceService::initialize() {
     }
 
     // Start update thread
-    m_update_thread = std::thread([this] { update_loop(); });
+    m_update_thread = std::jthread([this](std::stop_token) { update_loop(); });
 
     PLEX_LOG_INFO("DiscordPresenceService", "Discord presence service initialized");
     return {};
@@ -119,10 +119,7 @@ void DiscordPresenceService::shutdown() {
     // Signal update thread to exit
     m_shutdown_cv.notify_all();
 
-    // Detach update thread instead of joining for instant shutdown
-    if (m_update_thread.joinable()) {
-        m_update_thread.detach();
-    }
+    // std::jthread will auto-join in destructor - no need to explicitly join/detach
 
     // Clear any queued frames
     {

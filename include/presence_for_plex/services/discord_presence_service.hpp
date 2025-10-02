@@ -121,7 +121,7 @@ private:
     std::unique_ptr<PresenceFormatter> m_formatter;
 
     // Threading
-    std::thread m_update_thread;
+    std::jthread m_update_thread;
     std::atomic<bool> m_update_requested{false};
 
     // Synchronization

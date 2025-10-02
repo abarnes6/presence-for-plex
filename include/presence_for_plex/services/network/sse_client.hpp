@@ -52,7 +52,7 @@ private:
     std::atomic<bool> m_running{false};
     std::atomic<bool> m_connected{false};
     std::atomic<bool> m_initial_connection_succeeded{false};
-    std::thread m_event_thread;
+    std::jthread m_event_thread;
 
     mutable std::mutex m_state_mutex;
     std::chrono::system_clock::time_point m_last_event_time;
