@@ -22,8 +22,6 @@
 namespace presence_for_plex {
 namespace core {
 
-// Application error types - defined in events.hpp if included
-#ifndef PRESENCE_FOR_PLEX_EVENTS_HPP_INCLUDED
 enum class ApplicationError {
     InitializationFailed,
     ServiceUnavailable,
@@ -40,7 +38,6 @@ enum class ApplicationState {
     Stopped,
     Error
 };
-#endif
 
 // Configuration service interface - simplified for clarity
 class ConfigurationService {

@@ -141,11 +141,11 @@ int main(int argc, char* argv[]) {
     }
 
     const auto& config = config_service->get();
-    auto logger = setup_logging(presence_for_plex::core::to_string(config.log_level));
+    auto logger = setup_logging(presence_for_plex::utils::to_string(config.log_level));
     presence_for_plex::utils::LoggerManager::set_instance(std::move(logger));
 
     PLEX_LOG_INFO("Main", "PresenceForPlex v0.4.0 starting...");
-    PLEX_LOG_INFO("Main", "Log level: " + presence_for_plex::core::to_string(config.log_level));
+    PLEX_LOG_INFO("Main", "Log level: " + presence_for_plex::utils::to_string(config.log_level));
 
     register_signal_handlers();
 

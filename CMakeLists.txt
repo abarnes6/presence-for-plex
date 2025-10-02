@@ -57,7 +57,6 @@ set(CORE_SOURCES
     src/core/authentication_service.cpp
     src/core/models/model_validation.cpp
     src/core/event_bus.cpp
-    src/core/event_logger.cpp
 )
 
 set(SERVICES_SOURCES

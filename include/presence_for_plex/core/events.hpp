@@ -1,33 +1,17 @@
 #pragma once
-#define PRESENCE_FOR_PLEX_EVENTS_HPP_INCLUDED
 
-#include "presence_for_plex/core/events_fwd.hpp"
 #include "presence_for_plex/core/models.hpp"
 #include <chrono>
 #include <optional>
 #include <string>
 
-namespace presence_for_plex::core {
-// Forward declarations
-enum class ApplicationState {
-    NotInitialized,
-    Initializing,
-    Running,
-    Stopping,
-    Stopped,
-    Error
-};
-
-enum class ApplicationError {
-    InitializationFailed,
-    ServiceUnavailable,
-    ConfigurationError,
-    AlreadyRunning,
-    ShutdownFailed
-};
-}
-
 namespace presence_for_plex::core::events {
+
+struct Event {
+    std::chrono::steady_clock::time_point timestamp{std::chrono::steady_clock::now()};
+    Event() = default;
+    virtual ~Event() = default;
+};
 
 using core::ApplicationState;
 using core::ApplicationError;

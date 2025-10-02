@@ -70,7 +70,7 @@ public:
             content << "# This file was automatically generated on first run\n";
             content << "# Edit values below to customize your experience\n\n";
             content << "# General Settings\n";
-            content << "# log_level: Options are trace, debug, info, warning, error, critical\n";
+            content << "# log_level: Options are debug, info, warning, error, critical\n";
             content << "# start_minimized: Start application in system tray\n\n";
             content << "# Discord Rich Presence Settings\n";
             content << "# client_id: Discord application ID for rich presence\n";

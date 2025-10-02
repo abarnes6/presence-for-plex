@@ -39,7 +39,7 @@ void QtSettingsDialog::setup_ui() {
     auto* general_form = new QFormLayout(general_group);
 
     m_log_level_combo = new QComboBox();
-    m_log_level_combo->addItems({"Trace", "Debug", "Info", "Warning", "Error", "Critical"});
+    m_log_level_combo->addItems({"Debug", "Info", "Warning", "Error"});
     general_form->addRow("Log Level:", m_log_level_combo);
 
     m_start_minimized_check = new QCheckBox("Start minimized to system tray");
@@ -239,7 +239,7 @@ void QtSettingsDialog::load_config(const core::ApplicationConfig& config) {
 core::ApplicationConfig QtSettingsDialog::get_config() const {
     core::ApplicationConfig config = m_original_config;
 
-    config.log_level = static_cast<core::LogLevel>(m_log_level_combo->currentIndex());
+    config.log_level = static_cast<utils::LogLevel>(m_log_level_combo->currentIndex());
     config.start_minimized = m_start_minimized_check->isChecked();
 
     config.discord.client_id = m_discord_client_id_edit->text().toStdString();

@@ -129,6 +129,27 @@ class LoggerManager {
   static std::mutex s_init_mutex;
 };
 
+// Utility functions
+inline std::string to_string(LogLevel level) {
+    switch (level) {
+        case LogLevel::Debug: return "debug";
+        case LogLevel::Info: return "info";
+        case LogLevel::Warning: return "warning";
+        case LogLevel::Error: return "error";
+        case LogLevel::None: return "none";
+        default: return "info";
+    }
+}
+
+inline LogLevel log_level_from_string(const std::string& str) {
+    if (str == "debug") return LogLevel::Debug;
+    if (str == "info") return LogLevel::Info;
+    if (str == "warning" || str == "warn") return LogLevel::Warning;
+    if (str == "error") return LogLevel::Error;
+    if (str == "none") return LogLevel::None;
+    return LogLevel::Info;
+}
+
 // Convenience macros
 #define PLEX_LOG_DEBUG(component, message)                                 \
   presence_for_plex::utils::LoggerManager::get_instance().debug(component, \

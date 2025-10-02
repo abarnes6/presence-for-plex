@@ -1,5 +1,6 @@
 #pragma once
 
+#include "presence_for_plex/utils/logger.hpp"
 #include <chrono>
 #include <memory>
 #include <string>
@@ -48,38 +49,22 @@ namespace ConfigLimits {
 // Forward declarations
 class HttpClient;
 
-// Log levels for configuration
-enum class LogLevel {
-    Trace,
-    Debug,
-    Info,
-    Warning,
-    Error,
-    Critical
+enum class ApplicationState {
+    NotInitialized,
+    Initializing,
+    Running,
+    Stopping,
+    Stopped,
+    Error
 };
 
-// Helper functions for LogLevel
-inline std::string to_string(LogLevel level) {
-    switch (level) {
-        case LogLevel::Trace: return "trace";
-        case LogLevel::Debug: return "debug";
-        case LogLevel::Info: return "info";
-        case LogLevel::Warning: return "warning";
-        case LogLevel::Error: return "error";
-        case LogLevel::Critical: return "critical";
-        default: return "info";
-    }
-}
-
-inline LogLevel log_level_from_string(const std::string& str) {
-    if (str == "trace") return LogLevel::Trace;
-    if (str == "debug") return LogLevel::Debug;
-    if (str == "info") return LogLevel::Info;
-    if (str == "warning") return LogLevel::Warning;
-    if (str == "error") return LogLevel::Error;
-    if (str == "critical") return LogLevel::Critical;
-    return LogLevel::Info; // Default
-}
+enum class ApplicationError {
+    InitializationFailed,
+    ServiceUnavailable,
+    ConfigurationError,
+    AlreadyRunning,
+    ShutdownFailed
+};
 
 enum class PlaybackState {
     Stopped,       // No active session
@@ -299,7 +284,7 @@ struct PlexConfig {
 struct ApplicationConfig {
     DiscordConfig discord;
     PlexConfig plex;
-    LogLevel log_level = LogLevel::Info;
+    presence_for_plex::utils::LogLevel log_level = presence_for_plex::utils::LogLevel::Info;
     bool start_minimized = false;
 
     // External service tokens and settings
