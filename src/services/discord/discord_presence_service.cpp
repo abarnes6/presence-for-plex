@@ -111,6 +111,9 @@ void DiscordPresenceService::shutdown() {
 
     m_initialized = false;
 
+    // Wake up update thread
+    m_shutdown_cv.notify_all();
+
     // Stop update thread
     if (m_update_thread.joinable()) {
         m_update_thread.join();
@@ -303,8 +306,10 @@ void DiscordPresenceService::update_loop() {
             // Process queued frames
             process_pending_frames();
 
-            // Sleep until next update cycle
-            std::this_thread::sleep_for(m_config.update_interval);
+            // Sleep until next update cycle or shutdown
+            std::unique_lock lock(m_shutdown_mutex);
+            m_shutdown_cv.wait_for(lock, m_config.update_interval,
+                [this] { return m_shutting_down.load(); });
 
         } catch (const std::exception& e) {
             PLEX_LOG_ERROR("DiscordPresenceService",

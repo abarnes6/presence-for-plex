@@ -11,6 +11,7 @@
 #include <thread>
 #include <queue>
 #include <expected>
+#include <condition_variable>
 
 namespace presence_for_plex::services {
 
@@ -127,6 +128,8 @@ private:
     mutable std::mutex m_stats_mutex;
     mutable std::mutex m_presence_mutex;
     mutable std::mutex m_queue_mutex;
+    std::mutex m_shutdown_mutex;
+    std::condition_variable m_shutdown_cv;
     PresenceData m_current_presence;
 
     // Statistics
