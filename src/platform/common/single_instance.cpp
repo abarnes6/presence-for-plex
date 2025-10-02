@@ -1,15 +1,17 @@
 #include "presence_for_plex/platform/system_service.hpp"
 #include "presence_for_plex/utils/logger.hpp"
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 #ifdef USE_QT_UI
 #include <QLockFile>
 #include <QStandardPaths>
 #include <QDir>
 #include <QCoreApplication>
 #else
-#ifdef _WIN32
-#include <windows.h>
-#else
+#ifndef _WIN32
 #include <sys/file.h>
 #include <sys/stat.h>
 #include <fcntl.h>

@@ -457,13 +457,13 @@ private:
                 auto autostart_manager = platform::AutostartManager::create("PresenceForPlex");
 
                 if (new_config.start_at_boot) {
-                    auto result = autostart_manager->enable_autostart();
-                    if (!result) {
+                    auto autostart_result = autostart_manager->enable_autostart();
+                    if (!autostart_result) {
                         PLEX_LOG_ERROR("Application", "Failed to enable autostart");
                     }
                 } else {
-                    auto result = autostart_manager->disable_autostart();
-                    if (!result) {
+                    auto autostart_result = autostart_manager->disable_autostart();
+                    if (!autostart_result) {
                         PLEX_LOG_ERROR("Application", "Failed to disable autostart");
                     }
                 }
