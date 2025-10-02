@@ -63,7 +63,7 @@ private:
     std::shared_ptr<HttpClient> m_http_client;
     std::shared_ptr<core::AuthenticationService> m_auth_service;
     mutable std::mutex m_servers_mutex;
-    std::map<core::ServerId, std::unique_ptr<PlexServerRuntime>> m_servers;
+    std::map<core::ServerId, std::shared_ptr<PlexServerRuntime>> m_servers;
     SSEEventCallback m_sse_callback;
     ConnectionStateCallback m_connection_state_callback;
     std::atomic<bool> m_shutting_down{false};

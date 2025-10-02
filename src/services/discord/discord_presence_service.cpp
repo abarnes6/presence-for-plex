@@ -119,8 +119,6 @@ void DiscordPresenceService::shutdown() {
     // Signal update thread to exit
     m_shutdown_cv.notify_all();
 
-    // std::jthread will auto-join in destructor - no need to explicitly join/detach
-
     // Clear any queued frames
     {
         std::lock_guard lock(m_queue_mutex);

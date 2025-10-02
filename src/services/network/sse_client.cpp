@@ -54,11 +54,6 @@ void SSEClient::disconnect() {
 
     m_running = false;
     m_connected = false;
-
-    // std::jthread will auto-join in destructor, but we can explicitly request stop
-    // No need to join/detach - just let it clean up naturally
-
-    PLEX_LOG_DEBUG("SSEClient", "SSE client disconnected");
 }
 
 bool SSEClient::is_connected() const {

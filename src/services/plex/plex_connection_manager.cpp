@@ -41,11 +41,11 @@ std::expected<void, core::PlexError> PlexConnectionManager::add_server(std::uniq
     std::lock_guard<std::mutex> lock(m_servers_mutex);
 
     // Create runtime info
-    auto runtime = std::make_unique<PlexServerRuntime>();
+    auto runtime = std::make_shared<PlexServerRuntime>();
     runtime->server = std::move(server);
     runtime->sse_client = std::make_unique<SSEClient>(m_http_client);
 
-    m_servers[server_id] = std::move(runtime);
+    m_servers[server_id] = runtime;
 
     PLEX_LOG_DEBUG("PlexConnectionManager", "Server added successfully");
     return {};
@@ -220,8 +220,6 @@ void PlexConnectionManager::stop_all_connections() {
         }
     }
 
-    // Clear the servers map - this will destroy SSE clients and threads
-    // Since SSE clients detach their threads in disconnect(), this is safe
     m_servers.clear();
 
     PLEX_LOG_INFO("PlexConnectionManager", "All server connections stopped");
@@ -232,6 +230,21 @@ void PlexConnectionManager::setup_server_sse_connection(PlexServerRuntime& runti
     core::ServerId server_id(server->client_identifier.get());
 
     PLEX_LOG_INFO("PlexConnectionManager", "Setting up SSE connection to: " + server->name);
+
+    // Get shared ownership of the runtime to keep it alive while monitoring
+    std::shared_ptr<PlexServerRuntime> runtime_ptr;
+    {
+        std::lock_guard<std::mutex> lock(m_servers_mutex);
+        auto it = m_servers.find(server_id);
+        if (it != m_servers.end()) {
+            runtime_ptr = it->second;
+        }
+    }
+
+    if (!runtime_ptr) {
+        PLEX_LOG_ERROR("PlexConnectionManager", "Runtime not found for server: " + server->name);
+        return;
+    }
 
     // Prepare headers using server-specific client identifier
     HttpHeaders headers = {
@@ -272,17 +285,9 @@ void PlexConnectionManager::setup_server_sse_connection(PlexServerRuntime& runti
         PLEX_LOG_INFO("PlexConnectionManager", "SSE connection initiated for: " + server->name + " at: " + sse_url);
         runtime.sse_running = true;
 
-        // Don't wait - the SSE client runs asynchronously and will connect in the background
-        // We'll monitor the connection status separately
-        // The SSE client will handle its own retries (3 attempts)
-
-        // Start a monitoring thread with shared ownership to prevent dangling references
-        auto runtime_ptr = std::shared_ptr<PlexServerRuntime>(&runtime, [](PlexServerRuntime*){});
         auto conn_callback = m_connection_state_callback;
         std::thread([runtime_ptr, server_id, server_name = server->name, sse_url, shutdown_flag = &m_shutting_down, conn_callback = std::move(conn_callback)]() {
             for (int wait = 0; wait < 300 && !(*shutdown_flag); ++wait) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(100));
-
                 if (runtime_ptr->sse_client && runtime_ptr->sse_client->is_connected()) {
                     PLEX_LOG_INFO("PlexConnectionManager", "SSE connection confirmed for: " + server_name);
                     runtime_ptr->initial_connection_succeeded = true;
@@ -293,6 +298,7 @@ void PlexConnectionManager::setup_server_sse_connection(PlexServerRuntime& runti
                     }
                     return;
                 }
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
             }
 
             if (!(*shutdown_flag)) {
