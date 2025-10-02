@@ -60,8 +60,8 @@ core::ApplicationConfig YamlConfigHelper::from_yaml(const YAML::Node& node) {
     if (node["log_level"]) {
         config.log_level = log_level_from_string(node["log_level"].as<std::string>());
     }
-    if (node["start_minimized"]) {
-        config.start_minimized = node["start_minimized"].as<bool>();
+    if (node["start_at_boot"]) {
+        config.start_at_boot = node["start_at_boot"].as<bool>();
     }
 
     if (node["discord"]) {
@@ -92,7 +92,7 @@ YAML::Node YamlConfigHelper::to_yaml(const core::ApplicationConfig& config) {
     YAML::Node node;
 
     node["log_level"] = to_string(config.log_level);
-    node["start_minimized"] = config.start_minimized;
+    node["start_at_boot"] = config.start_at_boot;
 
     merge_discord_config(node, config.discord);
     merge_plex_config(node, config.plex);

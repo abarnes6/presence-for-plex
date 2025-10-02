@@ -34,5 +34,17 @@ public:
     static std::unique_ptr<SingleInstanceManager> create(const std::string& instance_name);
 };
 
+// Autostart management
+class AutostartManager {
+public:
+    virtual ~AutostartManager() = default;
+
+    virtual std::expected<void, SystemError> enable_autostart() = 0;
+    virtual std::expected<void, SystemError> disable_autostart() = 0;
+    virtual std::expected<bool, SystemError> is_autostart_enabled() = 0;
+
+    static std::unique_ptr<AutostartManager> create(const std::string& app_name);
+};
+
 } // namespace platform
 } // namespace presence_for_plex

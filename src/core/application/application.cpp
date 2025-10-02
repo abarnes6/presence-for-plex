@@ -452,6 +452,23 @@ private:
         if (result == QDialog::Accepted) {
             auto new_config = dialog->get_config();
 
+            // Handle autostart changes
+            if (current_config.start_at_boot != new_config.start_at_boot) {
+                auto autostart_manager = platform::AutostartManager::create("PresenceForPlex");
+
+                if (new_config.start_at_boot) {
+                    auto result = autostart_manager->enable_autostart();
+                    if (!result) {
+                        PLEX_LOG_ERROR("Application", "Failed to enable autostart");
+                    }
+                } else {
+                    auto result = autostart_manager->disable_autostart();
+                    if (!result) {
+                        PLEX_LOG_ERROR("Application", "Failed to disable autostart");
+                    }
+                }
+            }
+
             auto update_result = m_config_service->update(new_config);
             if (update_result) {
                 PLEX_LOG_INFO("Application", "Configuration updated successfully");

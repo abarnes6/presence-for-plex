@@ -292,7 +292,7 @@ struct ApplicationConfig {
     DiscordConfig discord;
     PlexConfig plex;
     presence_for_plex::utils::LogLevel log_level = presence_for_plex::utils::LogLevel::Info;
-    bool start_minimized = false;
+    bool start_at_boot = false;
 
     // External service tokens and settings
     std::string tmdb_access_token = "eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiIzNmMxOTI3ZjllMTlkMzUxZWFmMjAxNGViN2JmYjNkZiIsIm5iZiI6MTc0NTQzMTA3NC4yMjcsInN1YiI6IjY4MDkyYTIyNmUxYTc2OWU4MWVmMGJhOSIsInNjb3BlcyI6WyJhcGlfcmVhZCJdLCJ2ZXJzaW9uIjoxfQ.Td6eAbW7SgQOMmQpRDwVM-_3KIMybGRqWNK8Yqw1Zzs";

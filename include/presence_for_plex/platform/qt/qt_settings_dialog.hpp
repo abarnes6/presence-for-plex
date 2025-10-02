@@ -37,7 +37,7 @@ private:
 private:
     // General settings
     QComboBox* m_log_level_combo = nullptr;
-    QCheckBox* m_start_minimized_check = nullptr;
+    QCheckBox* m_start_at_boot_check = nullptr;
 
     // Discord settings
     QLineEdit* m_discord_client_id_edit = nullptr;

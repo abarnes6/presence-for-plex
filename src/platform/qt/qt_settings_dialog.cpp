@@ -1,4 +1,5 @@
 #include "presence_for_plex/platform/qt/qt_settings_dialog.hpp"
+#include "presence_for_plex/platform/system_service.hpp"
 #include "presence_for_plex/utils/logger.hpp"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -42,8 +43,8 @@ void QtSettingsDialog::setup_ui() {
     m_log_level_combo->addItems({"Debug", "Info", "Warning", "Error"});
     general_form->addRow("Log Level:", m_log_level_combo);
 
-    m_start_minimized_check = new QCheckBox("Start minimized to system tray");
-    general_form->addRow(m_start_minimized_check);
+    m_start_at_boot_check = new QCheckBox("Start at boot");
+    general_form->addRow(m_start_at_boot_check);
 
     general_layout->addWidget(general_group);
     general_layout->addStretch();
@@ -208,7 +209,14 @@ void QtSettingsDialog::load_config(const core::ApplicationConfig& config) {
     int log_level_index = static_cast<int>(config.log_level);
     m_log_level_combo->setCurrentIndex(log_level_index);
 
-    m_start_minimized_check->setChecked(config.start_minimized);
+    // Check actual autostart status from system
+    auto autostart_manager = platform::AutostartManager::create("PresenceForPlex");
+    auto autostart_status = autostart_manager->is_autostart_enabled();
+    if (autostart_status) {
+        m_start_at_boot_check->setChecked(*autostart_status);
+    } else {
+        m_start_at_boot_check->setChecked(config.start_at_boot);
+    }
 
     m_discord_client_id_edit->setText(QString::fromStdString(config.discord.client_id));
     m_show_buttons_check->setChecked(config.discord.show_buttons);
@@ -240,7 +248,7 @@ core::ApplicationConfig QtSettingsDialog::get_config() const {
     core::ApplicationConfig config = m_original_config;
 
     config.log_level = static_cast<utils::LogLevel>(m_log_level_combo->currentIndex());
-    config.start_minimized = m_start_minimized_check->isChecked();
+    config.start_at_boot = m_start_at_boot_check->isChecked();
 
     config.discord.client_id = m_discord_client_id_edit->text().toStdString();
     config.discord.show_buttons = m_show_buttons_check->isChecked();

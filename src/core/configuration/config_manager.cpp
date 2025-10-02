@@ -71,7 +71,7 @@ public:
             content << "# Edit values below to customize your experience\n\n";
             content << "# General Settings\n";
             content << "# log_level: Options are debug, info, warning, error, critical\n";
-            content << "# start_minimized: Start application in system tray\n\n";
+            content << "# start_at_boot: Start application at system boot\n\n";
             content << "# Discord Rich Presence Settings\n";
             content << "# client_id: Discord application ID for rich presence\n";
             content << "# show_buttons: Display action buttons in Discord\n";

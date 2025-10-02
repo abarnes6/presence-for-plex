@@ -5,6 +5,7 @@
 #include <QLockFile>
 #include <QStandardPaths>
 #include <QDir>
+#include <QCoreApplication>
 #else
 #ifdef _WIN32
 #include <windows.h>
@@ -15,6 +16,9 @@
 #include <unistd.h>
 #endif
 #endif
+
+#include <filesystem>
+#include <fstream>
 
 namespace presence_for_plex {
 namespace platform {
@@ -176,6 +180,209 @@ private:
 
 std::unique_ptr<SingleInstanceManager> SingleInstanceManager::create(const std::string& instance_name) {
     return std::make_unique<SingleInstanceManagerImpl>(instance_name);
+}
+
+class AutostartManagerImpl : public AutostartManager {
+public:
+    explicit AutostartManagerImpl(const std::string& app_name)
+        : m_app_name(app_name) {
+        PLEX_LOG_DEBUG("Autostart", "Creating autostart manager for: " + app_name);
+    }
+
+    std::expected<void, SystemError> enable_autostart() override {
+        PLEX_LOG_INFO("Autostart", "Enabling autostart");
+
+#ifdef _WIN32
+        // Windows: Add registry key in HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run
+        HKEY hkey;
+        const std::string registry_path = "Software\\Microsoft\\Windows\\CurrentVersion\\Run";
+
+        if (RegOpenKeyExA(HKEY_CURRENT_USER, registry_path.c_str(), 0, KEY_WRITE, &hkey) != ERROR_SUCCESS) {
+            PLEX_LOG_ERROR("Autostart", "Failed to open registry key");
+            return std::unexpected(SystemError::OperationFailed);
+        }
+
+        char exe_path[MAX_PATH];
+        if (GetModuleFileNameA(nullptr, exe_path, MAX_PATH) == 0) {
+            RegCloseKey(hkey);
+            PLEX_LOG_ERROR("Autostart", "Failed to get executable path");
+            return std::unexpected(SystemError::OperationFailed);
+        }
+
+        if (RegSetValueExA(hkey, m_app_name.c_str(), 0, REG_SZ,
+                          reinterpret_cast<const BYTE*>(exe_path),
+                          static_cast<DWORD>(strlen(exe_path) + 1)) != ERROR_SUCCESS) {
+            RegCloseKey(hkey);
+            PLEX_LOG_ERROR("Autostart", "Failed to set registry value");
+            return std::unexpected(SystemError::OperationFailed);
+        }
+
+        RegCloseKey(hkey);
+        PLEX_LOG_INFO("Autostart", "Autostart enabled successfully");
+        return {};
+
+#elif defined(__linux__)
+        // Linux: Create .desktop file in ~/.config/autostart/
+        const char* home = std::getenv("HOME");
+        const char* xdg_config = std::getenv("XDG_CONFIG_HOME");
+
+        std::filesystem::path autostart_dir;
+        if (xdg_config) {
+            autostart_dir = std::filesystem::path(xdg_config) / "autostart";
+        } else if (home) {
+            autostart_dir = std::filesystem::path(home) / ".config" / "autostart";
+        } else {
+            PLEX_LOG_ERROR("Autostart", "Could not determine config directory");
+            return std::unexpected(SystemError::OperationFailed);
+        }
+
+        try {
+            std::filesystem::create_directories(autostart_dir);
+        } catch (const std::exception& e) {
+            PLEX_LOG_ERROR("Autostart", "Failed to create autostart directory: " + std::string(e.what()));
+            return std::unexpected(SystemError::OperationFailed);
+        }
+
+        std::filesystem::path desktop_file = autostart_dir / "presence-for-plex.desktop";
+
+        // Get executable path
+        char exe_path[PATH_MAX];
+        ssize_t len = readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1);
+        if (len == -1) {
+            PLEX_LOG_ERROR("Autostart", "Failed to get executable path");
+            return std::unexpected(SystemError::OperationFailed);
+        }
+        exe_path[len] = '\0';
+
+        std::ofstream file(desktop_file);
+        if (!file.is_open()) {
+            PLEX_LOG_ERROR("Autostart", "Failed to create desktop file");
+            return std::unexpected(SystemError::OperationFailed);
+        }
+
+        file << "[Desktop Entry]\n"
+             << "Type=Application\n"
+             << "Name=" << m_app_name << "\n"
+             << "Exec=" << exe_path << "\n"
+             << "Hidden=false\n"
+             << "NoDisplay=false\n"
+             << "X-GNOME-Autostart-enabled=true\n";
+
+        file.close();
+        PLEX_LOG_INFO("Autostart", "Autostart enabled successfully");
+        return {};
+
+#else
+        PLEX_LOG_WARNING("Autostart", "Autostart not supported on this platform");
+        return std::unexpected(SystemError::NotSupported);
+#endif
+    }
+
+    std::expected<void, SystemError> disable_autostart() override {
+        PLEX_LOG_INFO("Autostart", "Disabling autostart");
+
+#ifdef _WIN32
+        // Windows: Remove registry key
+        HKEY hkey;
+        const std::string registry_path = "Software\\Microsoft\\Windows\\CurrentVersion\\Run";
+
+        if (RegOpenKeyExA(HKEY_CURRENT_USER, registry_path.c_str(), 0, KEY_WRITE, &hkey) != ERROR_SUCCESS) {
+            PLEX_LOG_ERROR("Autostart", "Failed to open registry key");
+            return std::unexpected(SystemError::OperationFailed);
+        }
+
+        LONG result = RegDeleteValueA(hkey, m_app_name.c_str());
+        RegCloseKey(hkey);
+
+        if (result != ERROR_SUCCESS && result != ERROR_FILE_NOT_FOUND) {
+            PLEX_LOG_ERROR("Autostart", "Failed to delete registry value");
+            return std::unexpected(SystemError::OperationFailed);
+        }
+
+        PLEX_LOG_INFO("Autostart", "Autostart disabled successfully");
+        return {};
+
+#elif defined(__linux__)
+        // Linux: Remove .desktop file
+        const char* home = std::getenv("HOME");
+        const char* xdg_config = std::getenv("XDG_CONFIG_HOME");
+
+        std::filesystem::path autostart_dir;
+        if (xdg_config) {
+            autostart_dir = std::filesystem::path(xdg_config) / "autostart";
+        } else if (home) {
+            autostart_dir = std::filesystem::path(home) / ".config" / "autostart";
+        } else {
+            PLEX_LOG_ERROR("Autostart", "Could not determine config directory");
+            return std::unexpected(SystemError::OperationFailed);
+        }
+
+        std::filesystem::path desktop_file = autostart_dir / "presence-for-plex.desktop";
+
+        try {
+            if (std::filesystem::exists(desktop_file)) {
+                std::filesystem::remove(desktop_file);
+                PLEX_LOG_INFO("Autostart", "Autostart disabled successfully");
+            }
+        } catch (const std::exception& e) {
+            PLEX_LOG_ERROR("Autostart", "Failed to remove desktop file: " + std::string(e.what()));
+            return std::unexpected(SystemError::OperationFailed);
+        }
+
+        return {};
+
+#else
+        PLEX_LOG_WARNING("Autostart", "Autostart not supported on this platform");
+        return std::unexpected(SystemError::NotSupported);
+#endif
+    }
+
+    std::expected<bool, SystemError> is_autostart_enabled() override {
+#ifdef _WIN32
+        // Windows: Check registry key
+        HKEY hkey;
+        const std::string registry_path = "Software\\Microsoft\\Windows\\CurrentVersion\\Run";
+
+        if (RegOpenKeyExA(HKEY_CURRENT_USER, registry_path.c_str(), 0, KEY_READ, &hkey) != ERROR_SUCCESS) {
+            return false; // Key doesn't exist, so autostart is not enabled
+        }
+
+        char value[MAX_PATH];
+        DWORD value_size = sizeof(value);
+        LONG result = RegQueryValueExA(hkey, m_app_name.c_str(), nullptr, nullptr,
+                                       reinterpret_cast<LPBYTE>(value), &value_size);
+        RegCloseKey(hkey);
+
+        return result == ERROR_SUCCESS;
+
+#elif defined(__linux__)
+        // Linux: Check for .desktop file
+        const char* home = std::getenv("HOME");
+        const char* xdg_config = std::getenv("XDG_CONFIG_HOME");
+
+        std::filesystem::path autostart_dir;
+        if (xdg_config) {
+            autostart_dir = std::filesystem::path(xdg_config) / "autostart";
+        } else if (home) {
+            autostart_dir = std::filesystem::path(home) / ".config" / "autostart";
+        } else {
+            return false;
+        }
+
+        std::filesystem::path desktop_file = autostart_dir / "presence-for-plex.desktop";
+        return std::filesystem::exists(desktop_file);
+
+#else
+        return std::unexpected(SystemError::NotSupported);
+#endif
+    }
+
+private:
+    std::string m_app_name;
+};
+
+std::unique_ptr<AutostartManager> AutostartManager::create(const std::string& app_name) {
+    return std::make_unique<AutostartManagerImpl>(app_name);
 }
 
 } // namespace platform
