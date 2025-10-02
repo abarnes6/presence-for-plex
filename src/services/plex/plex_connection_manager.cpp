@@ -94,9 +94,9 @@ std::expected<void, core::PlexError> PlexConnectionManager::connect_to_server(co
         return std::unexpected<core::PlexError>(core::PlexError::ServerNotFound);
     }
 
-    auto& runtime = *it->second;
+    auto runtime = it->second;
 
-    if (runtime.sse_client->is_connected()) {
+    if (runtime->sse_client->is_connected()) {
         PLEX_LOG_DEBUG("PlexConnectionManager", "Server already connected: " + server_id.get());
         return {};
     }
