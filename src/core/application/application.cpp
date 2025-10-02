@@ -346,15 +346,8 @@ private:
     }
 
     void wait_for_service_tasks() {
-        for (auto& future : m_service_futures) {
-            if (future.valid()) {
-                try {
-                    future.wait();
-                } catch (const std::exception& e) {
-                    PLEX_LOG_WARNING("Application", "Task wait error: " + std::string(e.what()));
-                }
-            }
-        }
+        // Don't block on futures during shutdown - services are already stopping
+        // and waiting here adds unnecessary delay. Just clear the futures.
         m_service_futures.clear();
     }
 

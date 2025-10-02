@@ -33,10 +33,10 @@ void ThreadPool::shutdown() {
     for (auto& worker : m_workers) {
         if (worker.joinable()) {
             worker.request_stop();
-            worker.join();
         }
     }
 
+    // Workers are std::jthread and will auto-join in their destructor
     m_workers.clear();
 }
 

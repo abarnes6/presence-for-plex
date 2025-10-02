@@ -111,17 +111,17 @@ void DiscordPresenceService::shutdown() {
 
     m_initialized = false;
 
-    // Wake up update thread
-    m_shutdown_cv.notify_all();
-
-    // Stop update thread
-    if (m_update_thread.joinable()) {
-        m_update_thread.join();
-    }
-
-    // Stop connection manager
+    // Stop connection manager first to prevent new operations
     if (m_connection_manager) {
         m_connection_manager->stop();
+    }
+
+    // Signal update thread to exit
+    m_shutdown_cv.notify_all();
+
+    // Detach update thread instead of joining for instant shutdown
+    if (m_update_thread.joinable()) {
+        m_update_thread.detach();
     }
 
     // Clear any queued frames
