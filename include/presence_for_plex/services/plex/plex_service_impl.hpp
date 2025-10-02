@@ -12,6 +12,8 @@
 #include <expected>
 #include <atomic>
 #include <chrono>
+#include <mutex>
+#include <map>
 #include <nlohmann/json.hpp>
 
 namespace presence_for_plex {
@@ -89,6 +91,14 @@ private:
 
     // Track last media state for proper state transitions
     core::MediaInfo m_last_media_state{};
+
+    // Track server tokens and ownership for connection callbacks
+    struct ServerTokenInfo {
+        core::PlexToken token;
+        bool owned;
+    };
+    std::map<core::ServerId, ServerTokenInfo> m_server_tokens;
+    std::mutex m_server_tokens_mutex;
 };
 
 // Builder for PlexServiceImpl (following Builder pattern)

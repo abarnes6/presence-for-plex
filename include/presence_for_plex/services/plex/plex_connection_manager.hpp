@@ -25,6 +25,9 @@ class SSEClient;
 // SSE event callback
 using SSEEventCallback = std::function<void(const core::ServerId&, const std::string&)>;
 
+// Connection state callback
+using ConnectionStateCallback = std::function<void(const core::ServerId&, bool connected, const std::string& uri)>;
+
 // Server runtime info - each server has its own SSE event thread
 struct PlexServerRuntime {
     std::unique_ptr<core::PlexServer> server;
@@ -49,6 +52,7 @@ public:
     std::string get_preferred_server_uri(const core::ServerId& server_id);
 
     void set_sse_event_callback(SSEEventCallback callback);
+    void set_connection_state_callback(ConnectionStateCallback callback);
     void start_all_connections();
     void stop_all_connections();
 
@@ -61,6 +65,7 @@ private:
     mutable std::mutex m_servers_mutex;
     std::map<core::ServerId, std::unique_ptr<PlexServerRuntime>> m_servers;
     SSEEventCallback m_sse_callback;
+    ConnectionStateCallback m_connection_state_callback;
     std::atomic<bool> m_shutting_down{false};
 };
 

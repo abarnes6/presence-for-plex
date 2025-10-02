@@ -181,6 +181,10 @@ void PlexConnectionManager::set_sse_event_callback(SSEEventCallback callback) {
     m_sse_callback = std::move(callback);
 }
 
+void PlexConnectionManager::set_connection_state_callback(ConnectionStateCallback callback) {
+    m_connection_state_callback = std::move(callback);
+}
+
 void PlexConnectionManager::start_all_connections() {
     PLEX_LOG_INFO("PlexConnectionManager", "Starting all server connections");
 
@@ -274,13 +278,19 @@ void PlexConnectionManager::setup_server_sse_connection(PlexServerRuntime& runti
 
         // Start a monitoring thread with shared ownership to prevent dangling references
         auto runtime_ptr = std::shared_ptr<PlexServerRuntime>(&runtime, [](PlexServerRuntime*){});
-        std::thread([runtime_ptr, server_name = server->name, shutdown_flag = &m_shutting_down]() {
+        auto conn_callback = m_connection_state_callback;
+        std::thread([runtime_ptr, server_id, server_name = server->name, sse_url, shutdown_flag = &m_shutting_down, conn_callback = std::move(conn_callback)]() {
             for (int wait = 0; wait < 300 && !(*shutdown_flag); ++wait) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
                 if (runtime_ptr->sse_client && runtime_ptr->sse_client->is_connected()) {
                     PLEX_LOG_INFO("PlexConnectionManager", "SSE connection confirmed for: " + server_name);
                     runtime_ptr->initial_connection_succeeded = true;
+
+                    if (conn_callback && !(*shutdown_flag)) {
+                        std::string uri = sse_url.substr(0, sse_url.find("/:/eventsource"));
+                        conn_callback(server_id, true, uri);
+                    }
                     return;
                 }
             }

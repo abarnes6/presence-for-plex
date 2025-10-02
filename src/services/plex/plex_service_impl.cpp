@@ -42,6 +42,30 @@ PlexServiceImpl::PlexServiceImpl(
         }
     );
 
+    // Set up connection state callback
+    m_connection_manager->set_connection_state_callback(
+        [this](const core::ServerId& server_id, bool connected, const std::string& uri) {
+            on_connection_state_changed(server_id, connected);
+            if (connected && m_session_manager) {
+                ServerConnectionInfo conn_info;
+                conn_info.preferred_uri = uri;
+                conn_info.access_token = core::PlexToken("");  // Will be filled below
+                conn_info.owned = false;  // Will be filled below
+
+                // Get server details from connection manager
+                std::lock_guard<std::mutex> lock(m_server_tokens_mutex);
+                auto token_it = m_server_tokens.find(server_id);
+                if (token_it != m_server_tokens.end()) {
+                    conn_info.access_token = token_it->second.token;
+                    conn_info.owned = token_it->second.owned;
+                }
+
+                m_session_manager->update_server_connection(server_id, conn_info);
+                PLEX_LOG_DEBUG("PlexService", "Updated session manager with connected URI for server: " + server_id.get());
+            }
+        }
+    );
+
     // Set up session state callback
     m_session_manager->set_session_state_callback(
         [this](const core::MediaInfo& info) {
@@ -195,24 +219,18 @@ std::expected<void, core::PlexError> PlexServiceImpl::add_server(std::unique_ptr
     // Store server details before moving ownership
     core::ServerId server_id(server->client_identifier.get());
     core::PlexToken server_token = server->access_token;
-    bool is_owned = server->owned;  // Store owned flag before moving
+    bool is_owned = server->owned;
+
+    // Store server token and ownership for later use in connection callbacks
+    {
+        std::lock_guard<std::mutex> lock(m_server_tokens_mutex);
+        m_server_tokens[server_id] = {server_token, is_owned};
+    }
 
     auto result = m_connection_manager->add_server(std::move(server));
 
     if (result) {
         PLEX_LOG_DEBUG("PlexService", "add_server() succeeded");
-
-        // Update session manager with server connection info
-        std::string preferred_uri = m_connection_manager->get_preferred_server_uri(server_id);
-        if (!preferred_uri.empty()) {
-            ServerConnectionInfo conn_info;
-            conn_info.preferred_uri = preferred_uri;
-            conn_info.access_token = server_token;
-            conn_info.owned = is_owned;  // Set the owned flag
-
-            m_session_manager->update_server_connection(server_id, conn_info);
-            PLEX_LOG_DEBUG("PlexService", "Updated session manager with connection info for server: " + server_id.get() + " (owned: " + std::to_string(is_owned) + ")");
-        }
     } else {
         PLEX_LOG_DEBUG("PlexService", "add_server() failed");
     }
