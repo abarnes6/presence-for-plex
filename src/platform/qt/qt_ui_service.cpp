@@ -134,8 +134,4 @@ void QtUiService::quit_event_loop() {
     m_app->quit();
 }
 
-std::unique_ptr<QtUiService> QtUiService::create() {
-    return std::make_unique<QtUiService>();
-}
-
 } // namespace presence_for_plex::platform::qt

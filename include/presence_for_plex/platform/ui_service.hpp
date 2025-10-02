@@ -252,8 +252,6 @@ public:
     // Event loop integration
     virtual void process_events() = 0;
     virtual void quit_event_loop() = 0;
-
-    static std::unique_ptr<UiService> create_default();
 };
 
 } // namespace platform

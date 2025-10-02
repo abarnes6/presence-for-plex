@@ -6,6 +6,7 @@
 #include "presence_for_plex/utils/logger.hpp"
 #include "presence_for_plex/utils/threading.hpp"
 #include "presence_for_plex/platform/qt/qt_settings_dialog.hpp"
+#include "presence_for_plex/platform/qt/qt_ui_service.hpp"
 #include "version.h"
 
 #include <QDialog>
@@ -258,9 +259,9 @@ private:
     }
 
     void initialize_ui_service() {
-        m_ui_service = platform::UiService::create_default();
+        m_ui_service = std::make_unique<platform::qt::QtUiService>();
         if (!m_ui_service) {
-            PLEX_LOG_WARNING("Application", "UI not supported on this platform");
+            PLEX_LOG_WARNING("Application", "UI service creation failed");
             return;
         }
 

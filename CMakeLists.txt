@@ -80,7 +80,7 @@ set(SERVICES_SOURCES
 
 set(PLATFORM_SOURCES
     src/platform/common/single_instance.cpp
-    src/platform/ui_service_factory.cpp
+    src/platform/ui_service.cpp
     src/platform/browser_launcher.cpp
 )
 

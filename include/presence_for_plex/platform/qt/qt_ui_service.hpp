@@ -30,8 +30,6 @@ public:
 
     QApplication* get_application() { return m_app; }
 
-    static std::unique_ptr<QtUiService> create();
-
 private:
     QApplication* m_app = nullptr;
     bool m_initialized = false;
