@@ -112,6 +112,9 @@ std::expected<void, core::PlexError> TMDBService::enrich_media_info(core::MediaI
     auto artwork_result = fetch_artwork_url(info.tmdb_id, info.type);
     if (artwork_result.has_value()) {
         info.art_path = artwork_result.value();
+        PLEX_LOG_DEBUG("TMDB", "Set art_path from TMDB: " + info.art_path);
+    } else {
+        PLEX_LOG_WARNING("TMDB", "Failed to fetch artwork for TMDB ID: " + info.tmdb_id);
     }
 
     return {};
@@ -184,6 +187,9 @@ std::expected<void, core::PlexError> JikanService::enrich_media_info(core::Media
         auto artwork_result = fetch_artwork_url(info.mal_id, info.type);
         if (artwork_result.has_value()) {
             info.art_path = artwork_result.value();
+            PLEX_LOG_DEBUG("Jikan", "Set art_path from Jikan: " + info.art_path);
+        } else {
+            PLEX_LOG_WARNING("Jikan", "Failed to fetch artwork for MAL ID: " + info.mal_id);
         }
     }
 

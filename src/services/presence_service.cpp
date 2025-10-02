@@ -1,5 +1,6 @@
 #include "presence_for_plex/services/presence_service.hpp"
 #include "presence_for_plex/services/discord_presence_service.hpp"
+#include "presence_for_plex/utils/logger.hpp"
 #include <sstream>
 #include <numeric>
 #include <algorithm>
@@ -19,6 +20,9 @@ public:
         data.large_image_key = "plex_logo";
         if (!media.art_path.empty()) {
             data.large_image_key = media.art_path;
+            PLEX_LOG_DEBUG("PresenceFormatter", "Using art_path for large_image: " + media.art_path);
+        } else {
+            PLEX_LOG_DEBUG("PresenceFormatter", "art_path is empty, using default plex_logo");
         }
 
         // Format based on media type
