@@ -18,9 +18,6 @@ public:
     virtual std::string get_plex_username() const = 0;
     virtual void set_plex_username(const std::string& username) = 0;
 
-    // Discord authentication
-    virtual uint64_t get_discord_client_id() const = 0;
-
     // Persistence
     virtual void save() = 0;
     virtual void load() = 0;

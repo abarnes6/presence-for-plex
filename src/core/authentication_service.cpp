@@ -53,11 +53,6 @@ public:
         save();
     }
 
-    uint64_t get_discord_client_id() const override {
-        std::shared_lock lock(m_mutex);
-        return m_discord_client_id;
-    }
-
     void save() override {
         std::shared_lock lock(m_mutex);
         save_internal();
@@ -123,9 +118,6 @@ private:
                 node["plex"]["username"] = m_plex_username;
             }
 
-            // Discord client ID (store as number)
-            node["discord"]["client_id"] = m_discord_client_id;
-
             std::ofstream file(m_storage_path);
             if (!file) {
                 PLEX_LOG_ERROR("AuthService", "Failed to open auth file for writing");
@@ -162,11 +154,6 @@ private:
                 }
             }
 
-            // Load Discord client ID
-            if (node["discord"] && node["discord"]["client_id"]) {
-                m_discord_client_id = node["discord"]["client_id"].as<uint64_t>();
-            }
-
             PLEX_LOG_DEBUG("AuthService", "Loaded authentication data");
         } catch (const std::exception& e) {
             PLEX_LOG_ERROR("AuthService", "Error loading auth data: " + std::string(e.what()));
@@ -181,9 +168,6 @@ private:
     std::string m_plex_token;
     std::string m_plex_client_identifier;
     std::string m_plex_username;
-
-    // Discord authentication - default value
-    uint64_t m_discord_client_id = 1359742002618564618ULL;
 };
 
 std::unique_ptr<AuthenticationService> AuthenticationService::create(
