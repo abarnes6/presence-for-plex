@@ -76,14 +76,19 @@ public:
             content << "# client_id: Discord application ID for rich presence\n";
             content << "# show_buttons: Display action buttons in Discord\n";
             content << "# show_progress: Show media playback progress\n";
-            content << "# update_interval: Seconds between presence updates (1-300)\n\n";
+            content << "# show_artwork: Show movie/TV artwork as Discord image\n";
+            content << "# update_interval: Seconds between presence updates (1-300)\n";
+            content << "# details_format: Custom format for details line (use tokens like {title})\n";
+            content << "# state_format: Custom format for state line (use tokens like {state})\n\n";
             content << "# Plex Media Server Settings\n";
             content << "# auto_discover: Automatically find local Plex servers\n";
             content << "# poll_interval: Seconds between server status checks (1-60)\n";
             content << "# timeout: Connection timeout in seconds\n";
             content << "# server_urls: Manual server URLs (optional)\n\n";
             content << "# External Services\n";
-            content << "# tmdb.access_token: TMDB API key for enhanced metadata\n\n";
+            content << "# tmdb.access_token: TMDB API key for enhanced metadata\n";
+            content << "# tmdb.enabled: Enable/disable TMDB integration\n";
+            content << "# jikan.enabled: Enable/disable Jikan/MyAnimeList integration\n\n";
 
             content << in_file.rdbuf();
             in_file.close();

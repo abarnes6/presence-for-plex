@@ -72,8 +72,17 @@ core::ApplicationConfig YamlConfigHelper::from_yaml(const YAML::Node& node) {
         config.plex = parse_plex_config(node["plex"]);
     }
 
-    if (node["tmdb"] && node["tmdb"]["access_token"]) {
-        config.tmdb_access_token = node["tmdb"]["access_token"].as<std::string>();
+    if (node["tmdb"]) {
+        if (node["tmdb"]["access_token"]) {
+            config.tmdb_access_token = node["tmdb"]["access_token"].as<std::string>();
+        }
+        if (node["tmdb"]["enabled"]) {
+            config.enable_tmdb = node["tmdb"]["enabled"].as<bool>();
+        }
+    }
+
+    if (node["jikan"] && node["jikan"]["enabled"]) {
+        config.enable_jikan = node["jikan"]["enabled"].as<bool>();
     }
 
     return config;
@@ -88,9 +97,10 @@ YAML::Node YamlConfigHelper::to_yaml(const core::ApplicationConfig& config) {
     merge_discord_config(node, config.discord);
     merge_plex_config(node, config.plex);
 
-    if (config.tmdb_access_token != core::ApplicationConfig{}.tmdb_access_token) {
-        node["tmdb"]["access_token"] = config.tmdb_access_token;
-    }
+    node["tmdb"]["access_token"] = config.tmdb_access_token;
+    node["tmdb"]["enabled"] = config.enable_tmdb;
+
+    node["jikan"]["enabled"] = config.enable_jikan;
 
     return node;
 }
@@ -99,7 +109,10 @@ void YamlConfigHelper::merge_discord_config(YAML::Node& node, const core::Discor
     node["discord"]["client_id"] = config.client_id;
     node["discord"]["show_buttons"] = config.show_buttons;
     node["discord"]["show_progress"] = config.show_progress;
+    node["discord"]["show_artwork"] = config.show_artwork;
     node["discord"]["update_interval"] = config.update_interval.count();
+    node["discord"]["details_format"] = config.details_format;
+    node["discord"]["state_format"] = config.state_format;
 }
 
 void YamlConfigHelper::merge_plex_config(YAML::Node& node, const core::PlexConfig& config) {
@@ -125,6 +138,9 @@ core::DiscordConfig YamlConfigHelper::parse_discord_config(const YAML::Node& nod
     if (node["show_progress"]) {
         config.show_progress = node["show_progress"].as<bool>();
     }
+    if (node["show_artwork"]) {
+        config.show_artwork = node["show_artwork"].as<bool>();
+    }
 
     if (node["update_interval"]) {
         auto seconds = clamp_to_limits(
@@ -132,6 +148,13 @@ core::DiscordConfig YamlConfigHelper::parse_discord_config(const YAML::Node& nod
             static_cast<int>(core::ConfigLimits::MIN_UPDATE_INTERVAL.count()),
             static_cast<int>(core::ConfigLimits::MAX_UPDATE_INTERVAL.count()));
         config.update_interval = std::chrono::seconds(seconds);
+    }
+
+    if (node["details_format"]) {
+        config.details_format = node["details_format"].as<std::string>();
+    }
+    if (node["state_format"]) {
+        config.state_format = node["state_format"].as<std::string>();
     }
 
     return config;

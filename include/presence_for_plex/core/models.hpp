@@ -276,7 +276,10 @@ struct DiscordConfig {
     std::string client_id = "1359742002618564618";  // Default Discord client ID
     bool show_buttons = true;
     bool show_progress = true;
+    bool show_artwork = true;
     std::chrono::seconds update_interval{15};
+    std::string details_format = "{title}";
+    std::string state_format = "{state}";
 
     bool is_valid() const;  // Legacy method for compatibility
     std::expected<void, ValidationError> validate() const;
@@ -299,8 +302,10 @@ struct ApplicationConfig {
     LogLevel log_level = LogLevel::Info;
     bool start_minimized = false;
 
-    // External service tokens
+    // External service tokens and settings
     std::string tmdb_access_token = "eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiIzNmMxOTI3ZjllMTlkMzUxZWFmMjAxNGViN2JmYjNkZiIsIm5iZiI6MTc0NTQzMTA3NC4yMjcsInN1YiI6IjY4MDkyYTIyNmUxYTc2OWU4MWVmMGJhOSIsInNjb3BlcyI6WyJhcGlfcmVhZCJdLCJ2ZXJzaW9uIjoxfQ.Td6eAbW7SgQOMmQpRDwVM-_3KIMybGRqWNK8Yqw1Zzs";
+    bool enable_tmdb = true;
+    bool enable_jikan = true;
 
     // Version information
     std::string version_string() const;

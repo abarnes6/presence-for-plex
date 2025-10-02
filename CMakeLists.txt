@@ -93,6 +93,7 @@ if(USE_QT_UI)
         src/platform/qt/qt_notification_manager.cpp
         src/platform/qt/qt_dialog_manager.cpp
         src/platform/qt/qt_window_manager.cpp
+        src/platform/qt/qt_settings_dialog.cpp
     )
 endif()
 

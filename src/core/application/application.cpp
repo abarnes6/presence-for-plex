@@ -5,8 +5,10 @@
 #include "presence_for_plex/services/update_service.hpp"
 #include "presence_for_plex/utils/logger.hpp"
 #include "presence_for_plex/utils/threading.hpp"
+#include "presence_for_plex/platform/qt/qt_settings_dialog.hpp"
 #include "version.h"
 
+#include <QDialog>
 #include <chrono>
 #include <thread>
 
@@ -435,6 +437,31 @@ private:
         PLEX_LOG_INFO("Application", "System tray created");
     }
 
+    void show_settings_dialog() {
+        if (!m_config_service) {
+            PLEX_LOG_ERROR("Application", "Config service not available");
+            return;
+        }
+
+        const auto& current_config = m_config_service->get();
+
+        auto* dialog = new platform::qt::QtSettingsDialog(current_config);
+        int result = dialog->exec();
+
+        if (result == QDialog::Accepted) {
+            auto new_config = dialog->get_config();
+
+            auto update_result = m_config_service->update(new_config);
+            if (update_result) {
+                PLEX_LOG_INFO("Application", "Configuration updated successfully");
+            } else {
+                PLEX_LOG_ERROR("Application", "Failed to update configuration");
+            }
+        }
+
+        dialog->deleteLater();
+    }
+
     void setup_tray_menu() {
         if (!m_system_tray) return;
 
@@ -453,7 +480,11 @@ private:
         platform::MenuItem settings_item;
         settings_item.id = "settings";
         settings_item.label = "Settings...";
-        settings_item.enabled = false;
+        settings_item.enabled = true;
+        settings_item.action = [this]() {
+            PLEX_LOG_INFO("Application", "Opening settings dialog");
+            show_settings_dialog();
+        };
         menu_items.push_back(settings_item);
 
         platform::MenuItem update_item;
