@@ -14,40 +14,9 @@
 namespace presence_for_plex {
 namespace core {
 
-// Validation error types
-enum class ValidationError {
-    // MediaInfo errors
-    EmptyTitle,
-    InvalidDuration,
-    ProgressOutOfBounds,
-    MissingEpisodeInfo,
-    MissingSeasonInfo,
-
-    // Config errors
-    InvalidUpdateInterval,
-    InvalidPollInterval,
-    EmptyClientId,
-    InvalidServerUrl,
-    EmptyServerName,
-    EmptyAuthToken,
-
-    // General
-    InvalidFormat,
-    MissingRequiredField
-};
-
-// Configuration validation limits
-namespace ConfigLimits {
-    constexpr auto MIN_UPDATE_INTERVAL = std::chrono::seconds(1);
-    constexpr auto MAX_UPDATE_INTERVAL = std::chrono::seconds(300);
-    constexpr auto MIN_POLL_INTERVAL = std::chrono::seconds(1);
-    constexpr auto MAX_POLL_INTERVAL = std::chrono::seconds(60);
-    constexpr auto MIN_TIMEOUT = std::chrono::seconds(5);
-    constexpr auto MAX_TIMEOUT = std::chrono::seconds(300);
-}
-
-// Forward declarations
-class HttpClient;
+// ============================================================================
+// Application-wide types
+// ============================================================================
 
 enum class ApplicationState {
     NotInitialized,
@@ -66,13 +35,40 @@ enum class ApplicationError {
     ShutdownFailed
 };
 
+enum class ValidationError {
+    EmptyTitle,
+    InvalidDuration,
+    ProgressOutOfBounds,
+    MissingEpisodeInfo,
+    MissingSeasonInfo,
+    InvalidUpdateInterval,
+    InvalidPollInterval,
+    EmptyClientId,
+    InvalidServerUrl,
+    EmptyServerName,
+    EmptyAuthToken,
+    InvalidFormat,
+    MissingRequiredField
+};
+
+enum class ConfigError {
+    FileNotFound,
+    InvalidFormat,
+    ValidationError,
+    PermissionDenied
+};
+
+// ============================================================================
+// Domain-specific types
+// ============================================================================
+
 enum class PlaybackState {
-    Stopped,       // No active session
-    Playing,       // Media is playing
-    Paused,        // Media is paused
-    Buffering,     // Media is buffering
-    BadToken,      // Server configuration issue
-    NotInitialized // Server not initialized
+    Stopped,
+    Playing,
+    Paused,
+    Buffering,
+    BadToken,
+    NotInitialized
 };
 
 enum class MediaType {
@@ -82,7 +78,6 @@ enum class MediaType {
     Unknown
 };
 
-// Error types for better error handling
 enum class PlexError {
     NetworkError,
     AuthenticationError,
@@ -101,12 +96,24 @@ enum class DiscordError {
     ServiceUnavailable
 };
 
-enum class ConfigError {
-    FileNotFound,
-    InvalidFormat,
-    ValidationError,
-    PermissionDenied
-};
+// ============================================================================
+// Configuration limits
+// ============================================================================
+
+namespace ConfigLimits {
+    constexpr auto MIN_UPDATE_INTERVAL = std::chrono::seconds(1);
+    constexpr auto MAX_UPDATE_INTERVAL = std::chrono::seconds(300);
+    constexpr auto MIN_POLL_INTERVAL = std::chrono::seconds(1);
+    constexpr auto MAX_POLL_INTERVAL = std::chrono::seconds(60);
+    constexpr auto MIN_TIMEOUT = std::chrono::seconds(5);
+    constexpr auto MAX_TIMEOUT = std::chrono::seconds(300);
+}
+
+// ============================================================================
+// Forward declarations
+// ============================================================================
+
+class HttpClient;
 
 // Strong types for IDs and tokens
 struct PlexToken {

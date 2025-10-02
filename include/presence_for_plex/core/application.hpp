@@ -22,23 +22,6 @@
 namespace presence_for_plex {
 namespace core {
 
-enum class ApplicationError {
-    InitializationFailed,
-    ServiceUnavailable,
-    ConfigurationError,
-    AlreadyRunning,
-    ShutdownFailed
-};
-
-enum class ApplicationState {
-    NotInitialized,
-    Initializing,
-    Running,
-    Stopping,
-    Stopped,
-    Error
-};
-
 // Configuration service interface - simplified for clarity
 class ConfigurationService {
 public:
