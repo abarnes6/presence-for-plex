@@ -2,8 +2,10 @@
 #include "presence_for_plex/core/event_bus.hpp"
 #include "presence_for_plex/core/events.hpp"
 #include "presence_for_plex/services/plex/plex_service_impl.hpp"
+#include "presence_for_plex/services/update_service.hpp"
 #include "presence_for_plex/utils/logger.hpp"
 #include "presence_for_plex/utils/threading.hpp"
+#include "version.h"
 
 #include <chrono>
 #include <thread>
@@ -48,6 +50,7 @@ public:
             initialize_ui_service();
             initialize_media_service();
             initialize_presence_service();
+            initialize_update_service();
             connect_services();
 
             m_state = ApplicationState::Running;
@@ -199,6 +202,30 @@ public:
         return std::ref(*m_event_bus);
     }
 
+    void check_for_updates() override {
+        if (!m_update_service) {
+            PLEX_LOG_WARNING("Application", "Update service not available");
+            return;
+        }
+
+        PLEX_LOG_INFO("Application", "Checking for updates...");
+
+        m_thread_pool->submit([this]() {
+            auto result = m_update_service->check_for_updates();
+            if (!result) {
+                PLEX_LOG_ERROR("Application", "Update check failed");
+                return;
+            }
+
+            const auto& update_info = *result;
+            if (update_info.update_available) {
+                PLEX_LOG_INFO("Application", "Update available: " + update_info.latest_version);
+            } else {
+                PLEX_LOG_INFO("Application", "No updates available");
+            }
+        });
+    }
+
 private:
     bool initialize_configuration() {
         // Initialize configuration service
@@ -276,6 +303,21 @@ private:
             PLEX_LOG_INFO("Application", "Discord service initialized");
         } else {
             PLEX_LOG_ERROR("Application", "Discord service creation failed");
+        }
+    }
+
+    void initialize_update_service() {
+        m_update_service = services::UpdateServiceFactory::create_github_service(
+            "abarnes6",
+            "presence-for-plex",
+            VERSION_STRING
+        );
+
+        if (m_update_service) {
+            m_update_service->set_event_bus(m_event_bus);
+            PLEX_LOG_INFO("Application", "Update service initialized");
+        } else {
+            PLEX_LOG_WARNING("Application", "Update service creation failed");
         }
     }
 
@@ -414,6 +456,15 @@ private:
         settings_item.enabled = false;
         menu_items.push_back(settings_item);
 
+        platform::MenuItem update_item;
+        update_item.id = "check_update";
+        update_item.label = "Check for Updates";
+        update_item.action = [this]() {
+            PLEX_LOG_INFO("Application", "Update check from tray");
+            check_for_updates();
+        };
+        menu_items.push_back(update_item);
+
         menu_items.push_back(separator);
 
         platform::MenuItem exit_item;
@@ -438,6 +489,7 @@ private:
     std::unique_ptr<AuthenticationService> m_auth_service;
     std::unique_ptr<services::MediaService> m_media_service;
     std::unique_ptr<services::PresenceService> m_presence_service;
+    std::unique_ptr<services::UpdateService> m_update_service;
     std::unique_ptr<platform::UiService> m_ui_service;
     std::unique_ptr<platform::SystemTray> m_system_tray;
     std::unique_ptr<utils::ThreadPool> m_thread_pool;

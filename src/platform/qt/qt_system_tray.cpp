@@ -263,6 +263,19 @@ std::expected<void, UiError> QtSystemTray::check_menu_item(const std::string& id
     return {};
 }
 
+std::expected<void, UiError> QtSystemTray::set_status_text(const std::string& id, const std::string& text) {
+    std::lock_guard lock(m_mutex);
+
+    QAction* action = find_action_by_id(id);
+    if (!action) {
+        return std::unexpected(UiError::ResourceNotFound);
+    }
+
+    action->setText(QString::fromStdString(text));
+    PLEX_LOG_DEBUG(m_component_name, "Status text updated: " + id + " = " + text);
+    return {};
+}
+
 void QtSystemTray::set_click_callback(ClickCallback callback) {
     std::lock_guard lock(m_mutex);
     m_click_callback = callback;

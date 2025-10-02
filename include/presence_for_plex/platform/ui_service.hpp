@@ -88,6 +88,9 @@ public:
     virtual std::expected<void, UiError> enable_menu_item(const std::string& id, bool enabled) = 0;
     virtual std::expected<void, UiError> check_menu_item(const std::string& id, bool checked) = 0;
 
+    // Status text management
+    virtual std::expected<void, UiError> set_status_text(const std::string& id, const std::string& text) = 0;
+
     // Event callbacks
     using ClickCallback = std::function<void()>;
     using MenuCallback = std::function<void(const std::string& item_id)>;

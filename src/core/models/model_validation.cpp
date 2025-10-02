@@ -116,5 +116,38 @@ bool ApplicationConfig::is_valid() const {
     return validate().has_value();
 }
 
+// Version information methods
+std::string ApplicationConfig::version_string() const {
+#ifdef VERSION_STRING
+    return VERSION_STRING;
+#else
+    return "0.0.0";
+#endif
+}
+
+int ApplicationConfig::version_major() const {
+#ifdef VERSION_MAJOR
+    return VERSION_MAJOR;
+#else
+    return 0;
+#endif
+}
+
+int ApplicationConfig::version_minor() const {
+#ifdef VERSION_MINOR
+    return VERSION_MINOR;
+#else
+    return 0;
+#endif
+}
+
+int ApplicationConfig::version_patch() const {
+#ifdef VERSION_PATCH
+    return VERSION_PATCH;
+#else
+    return 0;
+#endif
+}
+
 } // namespace core
 } // namespace presence_for_plex

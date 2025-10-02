@@ -94,6 +94,9 @@ public:
     virtual std::expected<std::reference_wrapper<const ApplicationConfig>, ApplicationError> get_config() const = 0;
     virtual std::expected<std::reference_wrapper<AuthenticationService>, ApplicationError> get_authentication_service() = 0;
 
+    // Additional features
+    virtual void check_for_updates() = 0;
+
     // Event bus access
     virtual std::expected<std::reference_wrapper<EventBus>, ApplicationError> get_event_bus() = 0;
 

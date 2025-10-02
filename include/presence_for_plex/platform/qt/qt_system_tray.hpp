@@ -31,6 +31,7 @@ public:
     std::expected<void, UiError> update_menu_item(const std::string& id, const MenuItem& item) override;
     std::expected<void, UiError> enable_menu_item(const std::string& id, bool enabled) override;
     std::expected<void, UiError> check_menu_item(const std::string& id, bool checked) override;
+    std::expected<void, UiError> set_status_text(const std::string& id, const std::string& text) override;
 
     void set_click_callback(ClickCallback callback) override;
     void set_double_click_callback(ClickCallback callback) override;

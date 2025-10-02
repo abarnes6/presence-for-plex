@@ -261,4 +261,36 @@ struct HealthCheckFailed : Event {
         : service_name(std::move(name)), reason(std::move(r)) {}
 };
 
+struct UpdateCheckStarted : Event {
+    std::string current_version;
+
+    explicit UpdateCheckStarted(std::string ver)
+        : current_version(std::move(ver)) {}
+};
+
+struct UpdateAvailable : Event {
+    std::string current_version;
+    std::string latest_version;
+    std::string download_url;
+    std::string release_notes;
+
+    UpdateAvailable(std::string curr, std::string latest, std::string url, std::string notes)
+        : current_version(std::move(curr)), latest_version(std::move(latest)),
+          download_url(std::move(url)), release_notes(std::move(notes)) {}
+};
+
+struct NoUpdateAvailable : Event {
+    std::string current_version;
+
+    explicit NoUpdateAvailable(std::string ver)
+        : current_version(std::move(ver)) {}
+};
+
+struct UpdateCheckFailed : Event {
+    std::string reason;
+
+    explicit UpdateCheckFailed(std::string r)
+        : reason(std::move(r)) {}
+};
+
 }
