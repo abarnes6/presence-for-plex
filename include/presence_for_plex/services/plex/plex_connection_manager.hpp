@@ -57,7 +57,7 @@ public:
     void stop_all_connections();
 
 private:
-    void setup_server_sse_connection(PlexServerRuntime& runtime);
+    void setup_server_sse_connection(std::shared_ptr<PlexServerRuntime> runtime_ptr);
     std::expected<bool, core::PlexError> test_uri_accessibility(const std::string& uri, const core::PlexToken& token);
 
     std::shared_ptr<HttpClient> m_http_client;
