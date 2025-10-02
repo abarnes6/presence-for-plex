@@ -419,6 +419,15 @@ std::expected<core::MediaInfo, core::PlexError> PlexMediaFetcher::fetch_media_de
             info.grandparent_key = extracted_info.grandparent_key;
         }
 
+        // For TV shows, fetch grandparent metadata before enrichment to get TMDB/IMDB IDs
+        if (info.type == core::MediaType::TVShow && !info.grandparent_key.empty()) {
+            PLEX_LOG_DEBUG("PlexMediaFetcher", "Fetching grandparent metadata before enrichment");
+            auto grandparent_result = fetch_grandparent_metadata(server_uri, access_token, info);
+            if (!grandparent_result.has_value()) {
+                PLEX_LOG_WARNING("PlexMediaFetcher", "Failed to fetch grandparent metadata, continuing without it");
+            }
+        }
+
         // Enrich with external services
         enrich_with_external_services(info);
 

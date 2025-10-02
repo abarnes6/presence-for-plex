@@ -327,16 +327,6 @@ void PlexSessionManager::update_session_info(
         }
 
         info = fetch_result.value();
-
-        // For TV shows, fetch grandparent metadata if needed
-        if (info.type == core::MediaType::TVShow && !info.grandparent_key.empty()) {
-            (void)m_media_fetcher->fetch_grandparent_metadata(
-                connection_info.preferred_uri,
-                connection_info.access_token,
-                info
-            );
-        }
-
         PLEX_LOG_DEBUG("PlexSessionManager", "Fetched new media info for session: " + session_key.get());
     } else {
         PLEX_LOG_ERROR("PlexSessionManager", "No media fetcher available");
