@@ -46,7 +46,6 @@ public:
 
     // Health monitoring
     virtual bool is_server_connected(const ServerId& server_id) const = 0;
-    virtual std::expected<void, PlexError> test_connection(const ServerId& server_id) = 0;
 
 protected:
     std::shared_ptr<EventBus> m_event_bus;

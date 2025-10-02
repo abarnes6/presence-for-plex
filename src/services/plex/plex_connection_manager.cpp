@@ -177,34 +177,6 @@ std::string PlexConnectionManager::get_preferred_server_uri(const core::ServerId
     return "";
 }
 
-std::expected<void, core::PlexError> PlexConnectionManager::test_connection(const core::ServerId& server_id) {
-    PLEX_LOG_DEBUG("PlexConnectionManager", "test_connection() called for server: " + server_id.get());
-    std::lock_guard<std::mutex> lock(m_servers_mutex);
-
-    auto it = m_servers.find(server_id);
-    if (it == m_servers.end()) {
-        return std::unexpected<core::PlexError>(core::PlexError::ServerNotFound);
-    }
-
-    const auto& server = it->second->server;
-    std::string preferred_uri = get_preferred_server_uri(server_id);
-
-    if (preferred_uri.empty()) {
-        return std::unexpected<core::PlexError>(core::PlexError::NetworkError);
-    }
-
-    auto test_result = test_uri_accessibility(preferred_uri, server->access_token);
-    if (!test_result) {
-        return std::unexpected<core::PlexError>(test_result.error());
-    }
-
-    if (test_result.value()) {
-        return {};
-    }
-
-    return std::unexpected<core::PlexError>(core::PlexError::NetworkError);
-}
-
 void PlexConnectionManager::set_sse_event_callback(SSEEventCallback callback) {
     m_sse_callback = std::move(callback);
 }
@@ -274,17 +246,17 @@ void PlexConnectionManager::setup_server_sse_connection(PlexServerRuntime& runti
         }
     };
 
-    // Get the tested and validated URI (prefers local, tests accessibility)
-    std::string uri_to_use = get_preferred_server_uri(server_id);
+    // Prefer local URI, fall back to public URI
+    std::string uri_to_use = !server->local_uri.empty() ? server->local_uri : server->public_uri;
 
     if (uri_to_use.empty()) {
-        PLEX_LOG_ERROR("PlexConnectionManager", "No accessible URI found for server: " + server->name);
+        PLEX_LOG_ERROR("PlexConnectionManager", "No URI configured for server: " + server->name);
         runtime.sse_running = false;
         runtime.initial_connection_succeeded = false;
         return;
     }
 
-    PLEX_LOG_INFO("PlexConnectionManager", "Using tested URI for SSE connection to " + server->name + ": " + uri_to_use);
+    PLEX_LOG_INFO("PlexConnectionManager", "Attempting SSE connection to " + server->name + ": " + uri_to_use);
 
     // Construct SSE endpoint URL
     std::string sse_url = uri_to_use + "/:/eventsource/notifications?filters=playing";

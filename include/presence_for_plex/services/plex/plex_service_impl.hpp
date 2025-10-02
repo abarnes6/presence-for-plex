@@ -55,7 +55,6 @@ public:
     std::vector<core::ServerId> get_connected_servers() const override;
 
     bool is_server_connected(const core::ServerId& server_id) const override;
-    std::expected<void, core::PlexError> test_connection(const core::ServerId& server_id) override;
 
 protected:
     void on_media_state_changed(const core::MediaInfo& old_state, const core::MediaInfo& new_state);

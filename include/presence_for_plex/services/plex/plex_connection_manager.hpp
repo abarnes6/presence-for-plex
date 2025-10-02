@@ -47,7 +47,6 @@ public:
     bool is_server_connected(const core::ServerId& server_id) const;
 
     std::string get_preferred_server_uri(const core::ServerId& server_id);
-    std::expected<void, core::PlexError> test_connection(const core::ServerId& server_id);
 
     void set_sse_event_callback(SSEEventCallback callback);
     void start_all_connections();

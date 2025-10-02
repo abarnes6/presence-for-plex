@@ -234,10 +234,6 @@ bool PlexServiceImpl::is_server_connected(const core::ServerId& server_id) const
     return m_connection_manager->is_server_connected(server_id);
 }
 
-std::expected<void, core::PlexError> PlexServiceImpl::test_connection(const core::ServerId& server_id) {
-    return m_connection_manager->test_connection(server_id);
-}
-
 void PlexServiceImpl::on_media_state_changed(const core::MediaInfo& old_state, const core::MediaInfo& new_state) {
     PLEX_LOG_INFO("PlexService", "Media state changed: " + new_state.title);
 
