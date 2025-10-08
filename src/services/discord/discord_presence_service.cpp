@@ -54,8 +54,6 @@ DiscordPresenceService::DiscordPresenceService(Config config)
         m_rate_limiter = std::make_unique<NoOpRateLimiter>();
     }
 
-    m_formatter = PresenceFormatter::create_default_formatter();
-
     // Create Discord IPC and connection manager
     auto discord_ipc = std::make_unique<DiscordIPC>(m_config.client_id);
     m_connection_manager = std::make_unique<ConnectionManager>(
@@ -189,11 +187,7 @@ std::expected<void, core::DiscordError> DiscordPresenceService::clear_presence()
 }
 
 std::expected<void, core::DiscordError> DiscordPresenceService::update_from_media(const core::MediaInfo& media) {
-    if (!m_formatter) {
-        return std::unexpected<core::DiscordError>(core::DiscordError::ServiceUnavailable);
-    }
-
-    PresenceData presence = m_formatter->format_media(media);
+    PresenceData presence = format_media(media);
     return update_presence(presence);
 }
 
@@ -203,13 +197,11 @@ void DiscordPresenceService::set_event_bus(std::shared_ptr<core::EventBus> bus) 
     if (m_event_bus) {
         m_event_bus->subscribe<core::events::ConfigurationUpdated>(
             [this](const core::events::ConfigurationUpdated& event) {
-                if (m_formatter) {
-                    m_formatter->set_show_buttons(event.new_config.discord.show_buttons);
-                    m_formatter->set_show_progress(event.new_config.discord.show_progress);
-                }
+                set_show_buttons(event.new_config.presence.discord.show_buttons);
+                set_show_progress(event.new_config.presence.discord.show_progress);
 
-                if (event.new_config.discord.update_interval != m_config.update_interval) {
-                    set_update_interval(event.new_config.discord.update_interval);
+                if (event.new_config.presence.discord.update_interval != m_config.update_interval) {
+                    set_update_interval(event.new_config.presence.discord.update_interval);
                 }
 
                 PLEX_LOG_INFO("DiscordPresenceService", "Configuration updated from event");
@@ -228,6 +220,22 @@ void DiscordPresenceService::set_update_interval(std::chrono::seconds interval) 
 
 std::chrono::seconds DiscordPresenceService::get_update_interval() const {
     return m_config.update_interval;
+}
+
+void DiscordPresenceService::set_show_progress(bool show) {
+    m_show_progress = show;
+}
+
+void DiscordPresenceService::set_show_buttons(bool show) {
+    m_show_buttons = show;
+}
+
+bool DiscordPresenceService::is_progress_shown() const {
+    return m_show_progress;
+}
+
+bool DiscordPresenceService::are_buttons_shown() const {
+    return m_show_buttons;
 }
 
 void DiscordPresenceService::update_config(const Config& config) {
@@ -540,13 +548,13 @@ void DiscordPresenceService::on_error_occurred(core::DiscordError error, const s
 
 std::expected<std::unique_ptr<DiscordPresenceService>, core::ConfigError>
 DiscordPresenceService::create(const core::ApplicationConfig& app_config) {
-    if (app_config.discord.client_id.empty()) {
+    if (app_config.presence.discord.client_id.empty()) {
         return std::unexpected(core::ConfigError::ValidationError);
     }
 
     Config config;
-    config.client_id = app_config.discord.client_id;
-    config.update_interval = app_config.discord.update_interval;
+    config.client_id = app_config.presence.discord.client_id;
+    config.update_interval = app_config.presence.discord.update_interval;
 
     config.rate_limit_config = DiscordRateLimitConfig{};
     config.connection_config = ConnectionRetryConfig{};

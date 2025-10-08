@@ -18,9 +18,6 @@ using core::MediaInfo;
 using core::DiscordError;
 using core::EventBus;
 
-// Forward declarations
-class PresenceFormatter;
-
 // Rich presence data structure
 struct PresenceData {
     std::string state;              // First line of rich presence
@@ -107,50 +104,27 @@ public:
     virtual void set_update_interval(std::chrono::seconds interval) = 0;
     virtual std::chrono::seconds get_update_interval() const = 0;
 
-    // Get formatter for configuration
-    virtual PresenceFormatter* get_formatter() = 0;
-
-protected:
-    std::shared_ptr<EventBus> m_event_bus;
-};
-
-// Rich presence formatter interface
-class PresenceFormatter {
-public:
-    virtual ~PresenceFormatter() = default;
-
-    // Convert media info to presence data
-    virtual PresenceData format_media(const MediaInfo& media) const = 0;
-
-    // Customization methods
+    // Formatting configuration
     virtual void set_show_progress(bool show) = 0;
     virtual void set_show_buttons(bool show) = 0;
-    virtual void set_custom_format(const std::string& format) = 0;
-
     virtual bool is_progress_shown() const = 0;
     virtual bool are_buttons_shown() const = 0;
 
-    // Factory method
-    static std::unique_ptr<PresenceFormatter> create_default_formatter();
+protected:
+    std::shared_ptr<EventBus> m_event_bus;
+
+    // Format media to presence data
+    PresenceData format_media(const MediaInfo& media) const;
+
+    bool m_show_progress = true;
+    bool m_show_buttons = true;
 };
 
-// Factory interface for creating presence services
+// Factory for creating presence service implementations
 class PresenceServiceFactory {
 public:
-    virtual ~PresenceServiceFactory() = default;
-
-    enum class ServiceType {
-        Discord,
-        Slack,
-        Teams
-    };
-
-    virtual std::expected<std::unique_ptr<PresenceService>, core::ConfigError> create_service(
-        ServiceType type,
-        const core::ApplicationConfig& config
-    ) = 0;
-
-    static std::unique_ptr<PresenceServiceFactory> create_default_factory();
+    static std::expected<std::unique_ptr<PresenceService>, core::ConfigError>
+    create(core::PresenceServiceType type, const core::ApplicationConfig& config);
 };
 
 // Rich presence asset manager

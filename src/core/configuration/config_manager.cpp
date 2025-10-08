@@ -1,4 +1,6 @@
 #include "presence_for_plex/core/application.hpp"
+#include "presence_for_plex/core/event_bus.hpp"
+#include "presence_for_plex/core/events.hpp"
 #include "presence_for_plex/utils/yaml_config.hpp"
 #include "presence_for_plex/utils/logger.hpp"
 #include <shared_mutex>
@@ -118,7 +120,8 @@ public:
         PLEX_LOG_INFO("ConfigService", "Updating configuration");
 
         // Validate configuration first
-        if (!config.is_valid()) {
+        auto validation_result = config.validate();
+        if (!validation_result) {
             PLEX_LOG_ERROR("ConfigService", "Invalid configuration provided");
             return std::unexpected(ConfigError::ValidationError);
         }

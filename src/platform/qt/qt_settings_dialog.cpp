@@ -57,6 +57,9 @@ void QtSettingsDialog::setup_ui() {
     auto* discord_group = new QGroupBox("Discord Rich Presence");
     auto* discord_form = new QFormLayout(discord_group);
 
+    m_discord_enabled_check = new QCheckBox("Enable Discord Rich Presence");
+    discord_form->addRow(m_discord_enabled_check);
+
     m_discord_client_id_edit = new QLineEdit();
     m_discord_client_id_edit->setPlaceholderText("Discord Application Client ID");
     discord_form->addRow("Client ID:", m_discord_client_id_edit);
@@ -68,7 +71,6 @@ void QtSettingsDialog::setup_ui() {
     discord_form->addRow(m_show_progress_check);
 
     m_show_artwork_check = new QCheckBox("Show movie/TV artwork as image");
-    m_show_artwork_check->setChecked(true);
     discord_form->addRow(m_show_artwork_check);
 
     m_update_interval_spin = new QSpinBox();
@@ -86,6 +88,9 @@ void QtSettingsDialog::setup_ui() {
 
     auto* plex_group = new QGroupBox("Plex Media Server");
     auto* plex_form = new QFormLayout(plex_group);
+
+    m_plex_enabled_check = new QCheckBox("Enable Plex Media Service");
+    plex_form->addRow(m_plex_enabled_check);
 
     m_auto_discover_check = new QCheckBox("Auto-discover local servers");
     plex_form->addRow(m_auto_discover_check);
@@ -218,22 +223,24 @@ void QtSettingsDialog::load_config(const core::ApplicationConfig& config) {
         m_start_at_boot_check->setChecked(config.start_at_boot);
     }
 
-    m_discord_client_id_edit->setText(QString::fromStdString(config.discord.client_id));
-    m_show_buttons_check->setChecked(config.discord.show_buttons);
-    m_show_progress_check->setChecked(config.discord.show_progress);
-    m_show_artwork_check->setChecked(config.discord.show_artwork);
-    m_update_interval_spin->setValue(static_cast<int>(config.discord.update_interval.count()));
+    m_discord_enabled_check->setChecked(config.presence.enabled);
+    m_discord_client_id_edit->setText(QString::fromStdString(config.presence.discord.client_id));
+    m_show_buttons_check->setChecked(config.presence.discord.show_buttons);
+    m_show_progress_check->setChecked(config.presence.discord.show_progress);
+    m_show_artwork_check->setChecked(config.presence.discord.show_artwork);
+    m_update_interval_spin->setValue(static_cast<int>(config.presence.discord.update_interval.count()));
 
-    m_details_format_edit->setText(QString::fromStdString(config.discord.details_format));
-    m_state_format_edit->setText(QString::fromStdString(config.discord.state_format));
+    m_details_format_edit->setText(QString::fromStdString(config.presence.discord.details_format));
+    m_state_format_edit->setText(QString::fromStdString(config.presence.discord.state_format));
 
-    m_auto_discover_check->setChecked(config.plex.auto_discover);
-    m_poll_interval_spin->setValue(static_cast<int>(config.plex.poll_interval.count()));
-    m_timeout_spin->setValue(static_cast<int>(config.plex.timeout.count()));
+    m_plex_enabled_check->setChecked(config.media.enabled);
+    m_auto_discover_check->setChecked(config.media.auto_discover);
+    m_poll_interval_spin->setValue(static_cast<int>(config.media.poll_interval.count()));
+    m_timeout_spin->setValue(static_cast<int>(config.media.timeout.count()));
 
-    if (!config.plex.server_urls.empty()) {
+    if (!config.media.server_urls.empty()) {
         QString urls;
-        for (const auto& url : config.plex.server_urls) {
+        for (const auto& url : config.media.server_urls) {
             urls += QString::fromStdString(url) + "\n";
         }
         m_server_urls_edit->setPlainText(urls.trimmed());
@@ -250,26 +257,28 @@ core::ApplicationConfig QtSettingsDialog::get_config() const {
     config.log_level = static_cast<utils::LogLevel>(m_log_level_combo->currentIndex());
     config.start_at_boot = m_start_at_boot_check->isChecked();
 
-    config.discord.client_id = m_discord_client_id_edit->text().toStdString();
-    config.discord.show_buttons = m_show_buttons_check->isChecked();
-    config.discord.show_progress = m_show_progress_check->isChecked();
-    config.discord.show_artwork = m_show_artwork_check->isChecked();
-    config.discord.update_interval = std::chrono::seconds(m_update_interval_spin->value());
-    config.discord.details_format = m_details_format_edit->text().toStdString();
-    config.discord.state_format = m_state_format_edit->text().toStdString();
+    config.presence.enabled = m_discord_enabled_check->isChecked();
+    config.presence.discord.client_id = m_discord_client_id_edit->text().toStdString();
+    config.presence.discord.show_buttons = m_show_buttons_check->isChecked();
+    config.presence.discord.show_progress = m_show_progress_check->isChecked();
+    config.presence.discord.show_artwork = m_show_artwork_check->isChecked();
+    config.presence.discord.update_interval = std::chrono::seconds(m_update_interval_spin->value());
+    config.presence.discord.details_format = m_details_format_edit->text().toStdString();
+    config.presence.discord.state_format = m_state_format_edit->text().toStdString();
 
-    config.plex.auto_discover = m_auto_discover_check->isChecked();
-    config.plex.poll_interval = std::chrono::seconds(m_poll_interval_spin->value());
-    config.plex.timeout = std::chrono::seconds(m_timeout_spin->value());
+    config.media.enabled = m_plex_enabled_check->isChecked();
+    config.media.auto_discover = m_auto_discover_check->isChecked();
+    config.media.poll_interval = std::chrono::seconds(m_poll_interval_spin->value());
+    config.media.timeout = std::chrono::seconds(m_timeout_spin->value());
 
-    config.plex.server_urls.clear();
+    config.media.server_urls.clear();
     QString urls_text = m_server_urls_edit->toPlainText();
     if (!urls_text.isEmpty()) {
         QStringList urls = urls_text.split('\n', Qt::SkipEmptyParts);
         for (const auto& url : urls) {
             QString trimmed = url.trimmed();
             if (!trimmed.isEmpty()) {
-                config.plex.server_urls.push_back(trimmed.toStdString());
+                config.media.server_urls.push_back(trimmed.toStdString());
             }
         }
     }

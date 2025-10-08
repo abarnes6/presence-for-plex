@@ -10,6 +10,10 @@
 #include <vector>
 
 namespace presence_for_plex {
+namespace core {
+    class ConfigurationService;
+    class AuthenticationService;
+}
 namespace services {
 
 using core::MediaInfo;
@@ -57,6 +61,16 @@ protected:
     void publish_server_connected(const ServerId& server_id, const std::string& name);
     void publish_server_disconnected(const ServerId& server_id, const std::string& reason);
     void publish_media_error(PlexError error, const std::string& message, const std::optional<ServerId>& server_id = std::nullopt);
+};
+
+// Factory for creating media service implementations
+class MediaServiceFactory {
+public:
+    static std::expected<std::unique_ptr<MediaService>, core::ConfigError>
+    create(core::MediaServiceType type,
+           std::shared_ptr<core::ConfigurationService> config_service,
+           std::shared_ptr<core::AuthenticationService> auth_service,
+           std::shared_ptr<EventBus> event_bus);
 };
 
 } // namespace services

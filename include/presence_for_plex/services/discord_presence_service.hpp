@@ -56,6 +56,12 @@ public:
     void set_update_interval(std::chrono::seconds interval) override;
     std::chrono::seconds get_update_interval() const override;
 
+    // Formatting configuration
+    void set_show_progress(bool show) override;
+    void set_show_buttons(bool show) override;
+    bool is_progress_shown() const override;
+    bool are_buttons_shown() const override;
+
     // Additional functionality
     struct ServiceStats {
         size_t total_presence_updates = 0;
@@ -85,11 +91,6 @@ public:
      */
     void update_config(const Config& config);
 
-    /**
-     * @brief Get the presence formatter for configuration
-     */
-    PresenceFormatter* get_formatter() override { return m_formatter.get(); }
-
 protected:
     void on_presence_updated(const PresenceData& data);
     void on_connection_state_changed(bool connected);
@@ -118,7 +119,6 @@ private:
     std::unique_ptr<IRateLimiter> m_rate_limiter;
     std::unique_ptr<ConnectionManager> m_connection_manager;
     std::optional<nlohmann::json> m_pending_frame;
-    std::unique_ptr<PresenceFormatter> m_formatter;
 
     // Threading
     std::jthread m_update_thread;

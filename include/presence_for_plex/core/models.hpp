@@ -59,6 +59,20 @@ enum class ConfigError {
 };
 
 // ============================================================================
+// Service type identifiers
+// ============================================================================
+
+enum class MediaServiceType {
+    Plex,
+    // Future: Jellyfin, Emby, etc.
+};
+
+enum class PresenceServiceType {
+    Discord,
+    // Future: Slack, Teams, etc.
+};
+
+// ============================================================================
 // Domain-specific types
 // ============================================================================
 
@@ -258,14 +272,13 @@ struct MediaInfo {
     SessionKey session_key;          // Plex session key
     ServerId server_id;              // ID of the server hosting this content
 
-    // Validation methods
-    bool is_valid() const;  // Legacy method for compatibility
+    // Validation
     std::expected<void, ValidationError> validate() const;
 };
 
 // Configuration structures
 struct DiscordConfig {
-    std::string client_id = "1359742002618564618";  // Default Discord client ID
+    std::string client_id = "1359742002618564618";
     bool show_buttons = true;
     bool show_progress = true;
     bool show_artwork = true;
@@ -273,24 +286,33 @@ struct DiscordConfig {
     std::string details_format = "{title}";
     std::string state_format = "{state}";
 
-    bool is_valid() const;  // Legacy method for compatibility
     std::expected<void, ValidationError> validate() const;
 };
 
-struct PlexConfig {
-    // For now, we'll handle servers separately in runtime, and just store basic config here
-    std::vector<std::string> server_urls;  // Basic URLs, actual PlexServer objects created at runtime
+struct PresenceServiceConfig {
+    PresenceServiceType type = PresenceServiceType::Discord;
+    bool enabled = true;
+    DiscordConfig discord;
+
+    std::expected<void, ValidationError> validate() const;
+};
+
+struct MediaServiceConfig {
+    MediaServiceType type = MediaServiceType::Plex;
+    bool enabled = true;
+
+    // Plex-specific settings
+    std::vector<std::string> server_urls;
     std::chrono::seconds poll_interval{5};
     std::chrono::seconds timeout{30};
     bool auto_discover = true;
 
-    bool is_valid() const;  // Legacy method for compatibility
     std::expected<void, ValidationError> validate() const;
 };
 
 struct ApplicationConfig {
-    DiscordConfig discord;
-    PlexConfig plex;
+    PresenceServiceConfig presence;
+    MediaServiceConfig media;
     presence_for_plex::utils::LogLevel log_level = presence_for_plex::utils::LogLevel::Info;
     bool start_at_boot = false;
 
@@ -305,7 +327,6 @@ struct ApplicationConfig {
     int version_minor() const;
     int version_patch() const;
 
-    bool is_valid() const;  // Legacy method for compatibility
     std::expected<void, ValidationError> validate() const;
 };
 

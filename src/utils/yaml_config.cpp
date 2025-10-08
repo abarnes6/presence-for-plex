@@ -64,12 +64,12 @@ core::ApplicationConfig YamlConfigHelper::from_yaml(const YAML::Node& node) {
         config.start_at_boot = node["start_at_boot"].as<bool>();
     }
 
-    if (node["discord"]) {
-        config.discord = parse_discord_config(node["discord"]);
+    if (node["presence"] || node["discord"]) {
+        config.presence = parse_presence_config(node["presence"] ? node["presence"] : node["discord"]);
     }
 
-    if (node["plex"]) {
-        config.plex = parse_plex_config(node["plex"]);
+    if (node["media"] || node["plex"]) {
+        config.media = parse_media_config(node["media"] ? node["media"] : node["plex"]);
     }
 
     if (node["tmdb"]) {
@@ -94,8 +94,8 @@ YAML::Node YamlConfigHelper::to_yaml(const core::ApplicationConfig& config) {
     node["log_level"] = to_string(config.log_level);
     node["start_at_boot"] = config.start_at_boot;
 
-    merge_discord_config(node, config.discord);
-    merge_plex_config(node, config.plex);
+    merge_presence_config(node, config.presence);
+    merge_media_config(node, config.media);
 
     node["tmdb"]["access_token"] = config.tmdb_access_token;
     node["tmdb"]["enabled"] = config.enable_tmdb;
@@ -105,63 +105,76 @@ YAML::Node YamlConfigHelper::to_yaml(const core::ApplicationConfig& config) {
     return node;
 }
 
-void YamlConfigHelper::merge_discord_config(YAML::Node& node, const core::DiscordConfig& config) {
-    node["discord"]["client_id"] = config.client_id;
-    node["discord"]["show_buttons"] = config.show_buttons;
-    node["discord"]["show_progress"] = config.show_progress;
-    node["discord"]["show_artwork"] = config.show_artwork;
-    node["discord"]["update_interval"] = config.update_interval.count();
-    node["discord"]["details_format"] = config.details_format;
-    node["discord"]["state_format"] = config.state_format;
+void YamlConfigHelper::merge_presence_config(YAML::Node& node, const core::PresenceServiceConfig& config) {
+    node["presence"]["enabled"] = config.enabled;
+    node["presence"]["discord"]["client_id"] = config.discord.client_id;
+    node["presence"]["discord"]["show_buttons"] = config.discord.show_buttons;
+    node["presence"]["discord"]["show_progress"] = config.discord.show_progress;
+    node["presence"]["discord"]["show_artwork"] = config.discord.show_artwork;
+    node["presence"]["discord"]["update_interval"] = config.discord.update_interval.count();
+    node["presence"]["discord"]["details_format"] = config.discord.details_format;
+    node["presence"]["discord"]["state_format"] = config.discord.state_format;
 }
 
-void YamlConfigHelper::merge_plex_config(YAML::Node& node, const core::PlexConfig& config) {
-    node["plex"]["auto_discover"] = config.auto_discover;
-    node["plex"]["poll_interval"] = config.poll_interval.count();
-    node["plex"]["timeout"] = config.timeout.count();
+void YamlConfigHelper::merge_media_config(YAML::Node& node, const core::MediaServiceConfig& config) {
+    node["media"]["enabled"] = config.enabled;
+    node["media"]["auto_discover"] = config.auto_discover;
+    node["media"]["poll_interval"] = config.poll_interval.count();
+    node["media"]["timeout"] = config.timeout.count();
 
     if (!config.server_urls.empty()) {
-        node["plex"]["server_urls"] = config.server_urls;
+        node["media"]["server_urls"] = config.server_urls;
     }
 }
 
-core::DiscordConfig YamlConfigHelper::parse_discord_config(const YAML::Node& node) {
-    core::DiscordConfig config;
+core::PresenceServiceConfig YamlConfigHelper::parse_presence_config(const YAML::Node& node) {
+    core::PresenceServiceConfig config;
 
-    if (node["client_id"]) {
-        config.client_id = node["client_id"].as<std::string>();
-    }
-
-    if (node["show_buttons"]) {
-        config.show_buttons = node["show_buttons"].as<bool>();
-    }
-    if (node["show_progress"]) {
-        config.show_progress = node["show_progress"].as<bool>();
-    }
-    if (node["show_artwork"]) {
-        config.show_artwork = node["show_artwork"].as<bool>();
+    if (node["enabled"]) {
+        config.enabled = node["enabled"].as<bool>();
     }
 
-    if (node["update_interval"]) {
+    // Support both old flat format and new nested discord format
+    const YAML::Node discord_node = node["discord"] ? node["discord"] : node;
+
+    if (discord_node["client_id"]) {
+        config.discord.client_id = discord_node["client_id"].as<std::string>();
+    }
+
+    if (discord_node["show_buttons"]) {
+        config.discord.show_buttons = discord_node["show_buttons"].as<bool>();
+    }
+    if (discord_node["show_progress"]) {
+        config.discord.show_progress = discord_node["show_progress"].as<bool>();
+    }
+    if (discord_node["show_artwork"]) {
+        config.discord.show_artwork = discord_node["show_artwork"].as<bool>();
+    }
+
+    if (discord_node["update_interval"]) {
         auto seconds = clamp_to_limits(
-            node["update_interval"].as<int>(),
+            discord_node["update_interval"].as<int>(),
             static_cast<int>(core::ConfigLimits::MIN_UPDATE_INTERVAL.count()),
             static_cast<int>(core::ConfigLimits::MAX_UPDATE_INTERVAL.count()));
-        config.update_interval = std::chrono::seconds(seconds);
+        config.discord.update_interval = std::chrono::seconds(seconds);
     }
 
-    if (node["details_format"]) {
-        config.details_format = node["details_format"].as<std::string>();
+    if (discord_node["details_format"]) {
+        config.discord.details_format = discord_node["details_format"].as<std::string>();
     }
-    if (node["state_format"]) {
-        config.state_format = node["state_format"].as<std::string>();
+    if (discord_node["state_format"]) {
+        config.discord.state_format = discord_node["state_format"].as<std::string>();
     }
 
     return config;
 }
 
-core::PlexConfig YamlConfigHelper::parse_plex_config(const YAML::Node& node) {
-    core::PlexConfig config;
+core::MediaServiceConfig YamlConfigHelper::parse_media_config(const YAML::Node& node) {
+    core::MediaServiceConfig config;
+
+    if (node["enabled"]) {
+        config.enabled = node["enabled"].as<bool>();
+    }
 
     if (node["auto_discover"]) {
         config.auto_discover = node["auto_discover"].as<bool>();

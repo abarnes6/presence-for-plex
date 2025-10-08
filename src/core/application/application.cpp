@@ -1,12 +1,16 @@
 #include "presence_for_plex/core/application.hpp"
 #include "presence_for_plex/core/event_bus.hpp"
 #include "presence_for_plex/core/events.hpp"
-#include "presence_for_plex/services/plex/plex_service_impl.hpp"
+#include "presence_for_plex/core/authentication_service.hpp"
+#include "presence_for_plex/services/presence_service.hpp"
+#include "presence_for_plex/services/media_service.hpp"
 #include "presence_for_plex/services/update_service.hpp"
 #include "presence_for_plex/utils/logger.hpp"
 #include "presence_for_plex/utils/threading.hpp"
 #include "presence_for_plex/platform/qt/qt_settings_dialog.hpp"
 #include "presence_for_plex/platform/qt/qt_ui_service.hpp"
+#include "presence_for_plex/platform/ui_service.hpp"
+#include "presence_for_plex/platform/system_service.hpp"
 #include "version.h"
 
 #include <QDialog>
@@ -275,37 +279,47 @@ private:
     }
 
     void initialize_media_service() {
-        m_media_service = services::PlexServiceBuilder()
-            .with_configuration_service(std::shared_ptr<ConfigurationService>(
-                m_config_service.get(), [](ConfigurationService*){}))
-            .with_authentication_service(std::shared_ptr<AuthenticationService>(
-                m_auth_service.get(), [](AuthenticationService*){}))
-            .build();
+        const auto& config = m_config_service->get();
 
-        if (m_media_service) {
-            m_media_service->set_event_bus(m_event_bus);
-            PLEX_LOG_INFO("Application", "Plex service initialized");
+        if (!config.media.enabled) {
+            PLEX_LOG_INFO("Application", "Media service disabled in configuration");
+            return;
+        }
+
+        auto service_result = services::MediaServiceFactory::create(
+            config.media.type,
+            std::shared_ptr<ConfigurationService>(m_config_service.get(), [](ConfigurationService*){}),
+            std::shared_ptr<AuthenticationService>(m_auth_service.get(), [](AuthenticationService*){}),
+            m_event_bus
+        );
+
+        if (service_result) {
+            m_media_service = std::move(*service_result);
+            PLEX_LOG_INFO("Application", "Media service initialized");
+        } else {
+            PLEX_LOG_ERROR("Application", "Media service creation failed");
         }
     }
 
     void initialize_presence_service() {
-        auto factory = services::PresenceServiceFactory::create_default_factory();
-        if (!factory) {
-            PLEX_LOG_WARNING("Application", "Presence factory creation failed");
+        const auto& config = m_config_service->get();
+
+        if (!config.presence.enabled) {
+            PLEX_LOG_INFO("Application", "Presence service disabled in configuration");
             return;
         }
 
-        auto service_result = factory->create_service(
-            services::PresenceServiceFactory::ServiceType::Discord,
-            m_config_service->get()
+        auto service_result = services::PresenceServiceFactory::create(
+            config.presence.type,
+            config
         );
 
         if (service_result) {
             m_presence_service = std::move(*service_result);
             m_presence_service->set_event_bus(m_event_bus);
-            PLEX_LOG_INFO("Application", "Discord service initialized");
+            PLEX_LOG_INFO("Application", "Presence service initialized");
         } else {
-            PLEX_LOG_ERROR("Application", "Discord service creation failed");
+            PLEX_LOG_ERROR("Application", "Presence service creation failed");
         }
     }
 
@@ -342,8 +356,11 @@ private:
 
         // Subscribe to configuration updates
         auto config_sub = m_event_bus->subscribe<events::ConfigurationUpdated>(
-            [](const events::ConfigurationUpdated& /* event */) {
+            [this](const events::ConfigurationUpdated& event) {
                 PLEX_LOG_INFO("Application", "Configuration updated");
+
+                // Handle service enable/disable state changes
+                handle_service_config_changes(event.previous_config, event.new_config);
 
                 // Services that need runtime config updates can listen to this event
                 // directly via the event bus, rather than coupling the application
@@ -394,6 +411,58 @@ private:
         // Don't block on futures during shutdown - services are already stopping
         // and waiting here adds unnecessary delay. Just clear the futures.
         m_service_futures.clear();
+    }
+
+    void handle_service_config_changes(const ApplicationConfig& old_config, const ApplicationConfig& new_config) {
+        // Handle media service enable/disable
+        if (old_config.media.enabled != new_config.media.enabled) {
+            if (new_config.media.enabled) {
+                PLEX_LOG_INFO("Application", "Enabling media service");
+                initialize_media_service();
+                if (m_media_service && m_running) {
+                    m_service_futures.push_back(
+                        m_thread_pool->submit([this]() {
+                            if (!m_media_service->start()) {
+                                PLEX_LOG_WARNING("Application", "Media service start failed");
+                            } else {
+                                PLEX_LOG_INFO("Application", "Media service started");
+                            }
+                        })
+                    );
+                }
+            } else {
+                PLEX_LOG_INFO("Application", "Disabling media service");
+                if (m_media_service) {
+                    m_media_service->stop();
+                    m_media_service.reset();
+                }
+            }
+        }
+
+        // Handle presence service enable/disable
+        if (old_config.presence.enabled != new_config.presence.enabled) {
+            if (new_config.presence.enabled) {
+                PLEX_LOG_INFO("Application", "Enabling presence service");
+                initialize_presence_service();
+                if (m_presence_service && m_running) {
+                    m_service_futures.push_back(
+                        m_thread_pool->submit([this]() {
+                            if (!m_presence_service->initialize()) {
+                                PLEX_LOG_WARNING("Application", "Presence service start failed");
+                            } else {
+                                PLEX_LOG_INFO("Application", "Presence service started");
+                            }
+                        })
+                    );
+                }
+            } else {
+                PLEX_LOG_INFO("Application", "Disabling presence service");
+                if (m_presence_service) {
+                    m_presence_service->shutdown();
+                    m_presence_service.reset();
+                }
+            }
+        }
     }
 
     void stop_services() {

@@ -46,11 +46,6 @@ std::expected<void, core::ValidationError> MediaInfo::validate() const {
     return {};
 }
 
-// Legacy compatibility method
-bool MediaInfo::is_valid() const {
-    return validate().has_value();
-}
-
 // DiscordConfig validation
 std::expected<void, core::ValidationError> DiscordConfig::validate() const {
     // Client ID is required
@@ -67,13 +62,18 @@ std::expected<void, core::ValidationError> DiscordConfig::validate() const {
     return {};
 }
 
-// Legacy compatibility method
-bool DiscordConfig::is_valid() const {
-    return validate().has_value();
+// PresenceServiceConfig validation
+std::expected<void, core::ValidationError> PresenceServiceConfig::validate() const {
+    // Validate Discord config if Discord is the selected service
+    if (type == PresenceServiceType::Discord) {
+        return discord.validate();
+    }
+
+    return {};
 }
 
-// PlexConfig validation
-std::expected<void, core::ValidationError> PlexConfig::validate() const {
+// MediaServiceConfig validation
+std::expected<void, core::ValidationError> MediaServiceConfig::validate() const {
     // Poll interval should be within configured limits
     if (poll_interval < ConfigLimits::MIN_POLL_INTERVAL ||
         poll_interval > ConfigLimits::MAX_POLL_INTERVAL) {
@@ -89,31 +89,21 @@ std::expected<void, core::ValidationError> PlexConfig::validate() const {
     return {};
 }
 
-// Legacy compatibility method
-bool PlexConfig::is_valid() const {
-    return validate().has_value();
-}
-
 // ApplicationConfig validation
 std::expected<void, core::ValidationError> ApplicationConfig::validate() const {
     // Validate sub-configs
-    auto discord_result = discord.validate();
-    if (!discord_result) {
-        return discord_result;
+    auto presence_result = presence.validate();
+    if (!presence_result) {
+        return presence_result;
     }
 
-    auto plex_result = plex.validate();
-    if (!plex_result) {
-        return plex_result;
+    auto media_result = media.validate();
+    if (!media_result) {
+        return media_result;
     }
 
     // Log level enum is always valid by design
     return {};
-}
-
-// Legacy compatibility method
-bool ApplicationConfig::is_valid() const {
-    return validate().has_value();
 }
 
 // Version information methods

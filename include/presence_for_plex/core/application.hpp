@@ -1,28 +1,37 @@
 #pragma once
 
 #include "presence_for_plex/core/models.hpp"
-#include "presence_for_plex/core/event_bus.hpp"
-#include "presence_for_plex/core/events.hpp"
-#include "presence_for_plex/core/authentication_service.hpp"
-#include "presence_for_plex/services/media_service.hpp"
-#include "presence_for_plex/services/presence_service.hpp"
-#include "presence_for_plex/platform/ui_service.hpp"
-#include "presence_for_plex/platform/system_service.hpp"
-#include "presence_for_plex/utils/threading.hpp"
-
 #include <memory>
-#include <atomic>
-#include <unordered_map>
 #include <expected>
 #include <functional>
-#include <optional>
 #include <filesystem>
 #include <string>
+
+// Forward declarations
+namespace presence_for_plex {
+namespace core {
+    class EventBus;
+    class AuthenticationService;
+}
+
+namespace services {
+    class MediaService;
+    class PresenceService;
+}
+
+namespace platform {
+    class UiService;
+}
+
+namespace utils {
+    class ThreadPool;
+}
+}
 
 namespace presence_for_plex {
 namespace core {
 
-// Configuration service interface - simplified for clarity
+// Configuration service interface
 class ConfigurationService {
 public:
     virtual ~ConfigurationService() = default;

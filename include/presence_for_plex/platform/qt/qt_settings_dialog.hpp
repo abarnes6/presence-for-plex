@@ -40,6 +40,7 @@ private:
     QCheckBox* m_start_at_boot_check = nullptr;
 
     // Discord settings
+    QCheckBox* m_discord_enabled_check = nullptr;
     QLineEdit* m_discord_client_id_edit = nullptr;
     QCheckBox* m_show_buttons_check = nullptr;
     QCheckBox* m_show_progress_check = nullptr;
@@ -47,6 +48,7 @@ private:
     QCheckBox* m_show_artwork_check = nullptr;
 
     // Plex settings
+    QCheckBox* m_plex_enabled_check = nullptr;
     QCheckBox* m_auto_discover_check = nullptr;
     QSpinBox* m_poll_interval_spin = nullptr;
     QSpinBox* m_timeout_spin = nullptr;

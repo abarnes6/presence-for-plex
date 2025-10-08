@@ -1,4 +1,7 @@
 #include "presence_for_plex/services/media_service.hpp"
+#include "presence_for_plex/services/plex/plex_service_impl.hpp"
+#include "presence_for_plex/core/authentication_service.hpp"
+#include "presence_for_plex/utils/logger.hpp"
 
 namespace presence_for_plex::services {
 
@@ -36,6 +39,32 @@ void MediaService::publish_media_error(PlexError error, const std::string& messa
     if (m_event_bus) {
         m_event_bus->publish(core::events::MediaError{error, message, server_id});
     }
+}
+
+std::expected<std::unique_ptr<MediaService>, core::ConfigError>
+MediaServiceFactory::create(
+    core::MediaServiceType type,
+    std::shared_ptr<core::ConfigurationService> config_service,
+    std::shared_ptr<core::AuthenticationService> auth_service,
+    std::shared_ptr<EventBus> event_bus
+) {
+    if (type == core::MediaServiceType::Plex) {
+        auto service = PlexServiceBuilder()
+            .with_configuration_service(config_service)
+            .with_authentication_service(auth_service)
+            .build();
+
+        if (!service) {
+            PLEX_LOG_ERROR("MediaServiceFactory", "Failed to build Plex service");
+            return std::unexpected(core::ConfigError::InvalidFormat);
+        }
+
+        service->set_event_bus(event_bus);
+        return service;
+    }
+
+    PLEX_LOG_ERROR("MediaServiceFactory", "Unsupported media service type");
+    return std::unexpected(core::ConfigError::InvalidFormat);
 }
 
 }
