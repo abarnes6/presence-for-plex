@@ -183,60 +183,71 @@ endif()
 # Compiler-specific settings
 apply_compiler_flags(PresenceForPlex)
 
-# Installation
-install(TARGETS PresenceForPlex
-    RUNTIME DESTINATION .
-)
-
-install(FILES LICENSE README.md
-    DESTINATION .
-)
-
+# Installation rules
 if(WIN32)
+    # Windows: Install to program files
+    install(TARGETS PresenceForPlex
+        RUNTIME DESTINATION bin
+        COMPONENT application
+    )
+
+    # Install runtime DLLs (Qt, MSVC runtime, etc.)
     install(FILES $<TARGET_RUNTIME_DLLS:PresenceForPlex>
+        DESTINATION bin
+        COMPONENT application
+    )
+
+    # Install documentation
+    install(FILES LICENSE README.md
         DESTINATION .
+        COMPONENT application
+    )
+
+elseif(APPLE)
+    # macOS: Bundle installation
+    install(TARGETS PresenceForPlex
+        BUNDLE DESTINATION .
+        RUNTIME DESTINATION bin
+        COMPONENT application
+    )
+
+    # Install documentation
+    install(FILES LICENSE README.md
+        DESTINATION .
+        COMPONENT application
+    )
+
+else()
+    # Linux: Install to standard locations
+    install(TARGETS PresenceForPlex
+        RUNTIME DESTINATION bin
+        COMPONENT application
+    )
+
+    # Install desktop file
+    install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/assets/presence-for-plex.desktop
+        DESTINATION share/applications
+        COMPONENT desktop
+    )
+
+    # Install icon (convert .ico to .png if needed, or use a proper icon)
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/assets/icon.png")
+        install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/assets/icon.png
+            DESTINATION share/icons/hicolor/256x256/apps
+            RENAME presence-for-plex.png
+            COMPONENT desktop
+        )
+    endif()
+
+    # Install documentation
+    install(FILES LICENSE README.md
+        DESTINATION share/doc/presence-for-plex
+        COMPONENT application
     )
 endif()
 
-# Packaging
-include(CPack)
-
-# Platform-specific packaging
-if(WIN32)
-    set(CPACK_GENERATOR "NSIS")
-    set(CPACK_NSIS_MUI_ICON "${CMAKE_CURRENT_SOURCE_DIR}/assets/icon.ico")
-    set(CPACK_NSIS_MUI_UNIICON "${CMAKE_CURRENT_SOURCE_DIR}/assets/icon.ico")
-
-    set(CPACK_NSIS_EXTRA_INSTALL_COMMANDS "
-        CreateShortCut \\\"$DESKTOP\\\\Presence For Plex.lnk\\\" \\\"$INSTDIR\\\\PresenceForPlex.exe\\\"
-        CreateDirectory \\\"$SMPROGRAMS\\\\Presence For Plex\\\"
-        CreateShortCut \\\"$SMPROGRAMS\\\\Presence For Plex\\\\Presence For Plex.lnk\\\" \\\"$INSTDIR\\\\PresenceForPlex.exe\\\"
-        WriteRegStr HKCU \\\"Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Run\\\" \\\"PresenceForPlex\\\" \\\"$INSTDIR\\\\PresenceForPlex.exe\\\"
-    ")
-    set(CPACK_NSIS_EXTRA_UNINSTALL_COMMANDS "
-        Delete \\\"$DESKTOP\\\\Presence For Plex.lnk\\\"
-        Delete \\\"$SMPROGRAMS\\\\Presence For Plex\\\\Presence For Plex.lnk\\\"
-        RMDir \\\"$SMPROGRAMS\\\\Presence For Plex\\\"
-        DeleteRegValue HKCU \\\"Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Run\\\" \\\"PresenceForPlex\\\"
-    ")
-    set(CPACK_NSIS_ENABLE_UNINSTALL_BEFORE_INSTALL ON)
-    set(CPACK_PACKAGE_INSTALL_DIRECTORY "Presence For Plex")
-elseif(APPLE)
-    set(CPACK_GENERATOR "DragNDrop")
-    set(CPACK_DMG_VOLUME_NAME "PresenceForPlex")
-else()
-    set(CPACK_GENERATOR "TGZ")
-    set(CPACK_PACKAGE_INSTALL_DIRECTORY "PresenceForPlex")
-    set(CPACK_SET_DESTDIR ON)
-    set(CPACK_INSTALL_PREFIX "/usr")
-endif()
-
-set(CPACK_PACKAGE_NAME "PresenceForPlex")
-set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
-set(CPACK_PACKAGE_VENDOR "Andrew Barnes")
-set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Discord Rich Presence for Plex")
-set(CPACK_PACKAGE_EXECUTABLES "PresenceForPlex" "Presence For Plex")
-set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
+# Packaging configuration
+include(cmake/packaging.cmake)
 
 
 # Export compile commands for IDE integration

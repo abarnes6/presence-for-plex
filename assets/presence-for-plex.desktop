@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Presence For Plex
+GenericName=Discord Rich Presence for Plex
+Comment=Display your Plex media activity in Discord
+Exec=PresenceForPlex
+Icon=presence-for-plex
+Terminal=false
+Categories=Network;AudioVideo;Player;
+Keywords=plex;discord;presence;media;
+StartupNotify=false
+StartupWMClass=PresenceForPlex

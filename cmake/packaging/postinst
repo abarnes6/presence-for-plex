@@ -1,0 +1,20 @@
+#!/bin/sh
+# Post-installation script for Debian/RPM packages
+set -e
+
+# Update desktop database if available
+if [ -x /usr/bin/update-desktop-database ]; then
+    /usr/bin/update-desktop-database -q /usr/share/applications || true
+fi
+
+# Update icon cache if available
+if [ -x /usr/bin/gtk-update-icon-cache ]; then
+    /usr/bin/gtk-update-icon-cache -q -t -f /usr/share/icons/hicolor || true
+fi
+
+# Update mime database if available
+if [ -x /usr/bin/update-mime-database ]; then
+    /usr/bin/update-mime-database /usr/share/mime || true
+fi
+
+exit 0

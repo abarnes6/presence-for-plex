@@ -37,10 +37,39 @@ If on Windows, use a Visual Studio terminal with CMake tools and vcpkg component
 ```bash
 git clone https://github.com/abarnes6/presence-for-plex.git
 cd presence-for-plex
-mkdir build && cd build
-cmake --preset=release ..
-cmake --build release
+cmake --preset=release
+cmake --build build/release
 ```
+
+### Creating Packages
+
+Build distributable packages for your platform:
+
+**Quick Method:**
+```bash
+# Linux/macOS
+./scripts/package.sh
+
+# Windows
+scripts\package.bat
+```
+
+**Manual Method:**
+```bash
+# After building, run CPack
+cd build/release
+
+# Windows: NSIS installer + ZIP
+cpack -C Release -G "NSIS;ZIP"
+
+# macOS: DMG + ZIP
+cpack -C Release -G "DragNDrop;ZIP"
+
+# Linux: DEB + RPM + TGZ
+cpack -C Release -G "DEB;RPM;TGZ"
+```
+
+Packages will be generated in `build/release/packages/`. See [PACKAGING.md](PACKAGING.md) for detailed packaging documentation.
 
 ## Troubleshooting
 

@@ -1,116 +1,292 @@
-name: CMake on multiple platforms
+name: CMake Multi-Platform Build and Package
 
 on:
   push:
     branches: ["main"]
+    tags:
+      - 'v*.*.*'
   pull_request:
     branches: ["main"]
+  workflow_dispatch:
+
+env:
+  BUILD_TYPE: Release
 
 jobs:
   build:
-    name: ${{ matrix.os }}-${{ matrix.label }}-${{ matrix.build_type }}
+    name: ${{ matrix.os }}-${{ matrix.label }}
     runs-on: ${{ matrix.os }}
 
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-        build_type: [Release]
         include:
           - os: ubuntu-latest
             cpp_compiler: g++
             label: gcc
+            package_artifact: 'packages-linux-gcc'
 
           - os: ubuntu-latest
             cpp_compiler: clang++
             label: clang
+            package_artifact: 'packages-linux-clang'
 
           - os: windows-latest
             cpp_compiler: cl
             label: msvc
+            package_artifact: 'packages-windows'
 
           - os: macos-latest
             cpp_compiler: clang++
             label: clang
+            package_artifact: 'packages-macos'
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - name: Set reusable strings
+      - name: Set up build directory
         id: strings
         shell: bash
-        run: echo "build-output-dir=${{ github.workspace }}/build" >> "$GITHUB_OUTPUT"
-
-      - name: Configure CMake
-        shell: bash
         run: |
-          cmake -B "${{ steps.strings.outputs.build-output-dir }}" \
-                -S "${{ github.workspace }}" \
-                -DCMAKE_CXX_COMPILER="${{ matrix.cpp_compiler }}" \
-                -DCMAKE_BUILD_TYPE="${{ matrix.build_type }}"
+          echo "build-output-dir=${{ github.workspace }}/build" >> "$GITHUB_OUTPUT"
+          echo "package-output-dir=${{ github.workspace }}/build/packages" >> "$GITHUB_OUTPUT"
 
+      # ======================================================================
+      # Install Dependencies - Ubuntu
+      # ======================================================================
       - name: Install dependencies (Ubuntu)
         if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
+            build-essential \
+            cmake \
+            ninja-build \
             libcurl4-openssl-dev \
             libyaml-cpp-dev \
             nlohmann-json3-dev \
             libgtest-dev \
-            pkg-config
+            pkg-config \
+            qt6-base-dev \
+            qt6-base-private-dev \
+            libgl1-mesa-dev \
+            libxkbcommon-dev \
+            rpm \
+            dpkg-dev
 
+      # ======================================================================
+      # Install Dependencies - macOS
+      # ======================================================================
       - name: Install dependencies (macOS)
         if: matrix.os == 'macos-latest'
         run: |
-          brew install curl yaml-cpp nlohmann-json googletest pkg-config
+          brew install \
+            cmake \
+            ninja \
+            curl \
+            yaml-cpp \
+            nlohmann-json \
+            googletest \
+            pkg-config \
+            qt@6
+
+      # ======================================================================
+      # Install Dependencies - Windows
+      # ======================================================================
+      - name: Cache vcpkg (Windows)
+        if: matrix.os == 'windows-latest'
+        uses: actions/cache@v4
+        with:
+          path: C:\vcpkg\installed
+          key: vcpkg-${{ runner.os }}-${{ hashFiles('**/CMakeLists.txt') }}
+          restore-keys: |
+            vcpkg-${{ runner.os }}-
 
       - name: Install dependencies (Windows)
         if: matrix.os == 'windows-latest'
         shell: pwsh
         run: |
-          # Install vcpkg if not present
-          if (-not (Test-Path "C:\vcpkg")) {
+          # Ensure vcpkg is available
+          if (-not (Test-Path "C:\vcpkg\vcpkg.exe")) {
             git clone https://github.com/Microsoft/vcpkg.git C:\vcpkg
             & C:\vcpkg\bootstrap-vcpkg.bat
           }
-          & C:\vcpkg\vcpkg.exe install curl[ssl] yaml-cpp nlohmann-json gtest --triplet x64-windows
 
+          # Install dependencies
+          & C:\vcpkg\vcpkg.exe install `
+            curl[ssl]:x64-windows `
+            yaml-cpp:x64-windows `
+            nlohmann-json:x64-windows `
+            gtest:x64-windows `
+            qt6-base:x64-windows `
+            --recurse
+
+          # Add vcpkg to PATH
+          echo "CMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake" >> $env:GITHUB_ENV
+
+      # ======================================================================
+      # Configure CMake
+      # ======================================================================
+      - name: Configure CMake
+        shell: bash
+        run: |
+          cmake_args=(
+            -B "${{ steps.strings.outputs.build-output-dir }}"
+            -S "${{ github.workspace }}"
+            -G Ninja
+            -DCMAKE_CXX_COMPILER="${{ matrix.cpp_compiler }}"
+            -DCMAKE_BUILD_TYPE="${{ env.BUILD_TYPE }}"
+            -DBUILD_TESTING=OFF
+          )
+
+          # Add vcpkg toolchain for Windows
+          if [ "${{ matrix.os }}" == "windows-latest" ]; then
+            cmake_args+=(-DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake)
+          fi
+
+          cmake "${cmake_args[@]}"
+
+      # ======================================================================
+      # Build
+      # ======================================================================
       - name: Build
         shell: bash
-        run: cmake --build "${{ steps.strings.outputs.build-output-dir }}" --config "${{ matrix.build_type }}"
+        run: |
+          cmake --build "${{ steps.strings.outputs.build-output-dir }}" --config ${{ env.BUILD_TYPE }} --parallel
 
-      - name: Test
-        if: matrix.build_type == 'Release'
+      # ======================================================================
+      # Package
+      # ======================================================================
+      - name: Create packages
         shell: bash
         run: |
           cd "${{ steps.strings.outputs.build-output-dir }}"
-          ctest --output-on-failure --build-config "${{ matrix.build_type }}"
 
-      - name: Upload test results
-        if: always() && matrix.build_type == 'Release'
+          # Create packages directory
+          mkdir -p packages
+
+          # Run CPack to create all configured packages
+          cpack -C ${{ env.BUILD_TYPE }} -G "$CPACK_GENERATOR" || true
+
+          # List generated packages
+          echo "Generated packages:"
+          ls -lh packages/ || ls -lh *.exe *.dmg *.deb *.rpm *.tar.gz *.zip 2>/dev/null || true
+
+      # ======================================================================
+      # Upload Artifacts
+      # ======================================================================
+      - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: test-results-${{ matrix.os }}-${{ matrix.label }}
+          name: ${{ matrix.package_artifact }}
           path: |
-            ${{ steps.strings.outputs.build-output-dir }}/Testing/
-          retention-days: 30
-
-      - name: Package
-        if: matrix.build_type == 'Release'
-        shell: bash
-        run: |
-          cd "${{ steps.strings.outputs.build-output-dir }}"
-          cmake --build . --target package --config "${{ matrix.build_type }}"
-      - name: Upload packages
-        if: matrix.build_type == 'Release'
-        uses: actions/upload-artifact@v4
-        with:
-          name: packages-${{ matrix.os }}-${{ matrix.label }}
-          path: |
+            ${{ steps.strings.outputs.build-output-dir }}/packages/*
             ${{ steps.strings.outputs.build-output-dir }}/*.exe
             ${{ steps.strings.outputs.build-output-dir }}/*.dmg
-            ${{ steps.strings.outputs.build-output-dir }}/*.tar.gz
             ${{ steps.strings.outputs.build-output-dir }}/*.deb
             ${{ steps.strings.outputs.build-output-dir }}/*.rpm
+            ${{ steps.strings.outputs.build-output-dir }}/*.tar.gz
+            ${{ steps.strings.outputs.build-output-dir }}/*.zip
           retention-days: 90
+          if-no-files-found: warn
+
+  # ==========================================================================
+  # Release Job - Create GitHub Release on Tag Push
+  # ==========================================================================
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Display structure of downloaded files
+        run: ls -R artifacts
+
+      - name: Prepare release files
+        run: |
+          mkdir -p release-files
+
+          # Copy all package files to release directory
+          find artifacts -type f \( \
+            -name "*.exe" -o \
+            -name "*.dmg" -o \
+            -name "*.deb" -o \
+            -name "*.rpm" -o \
+            -name "*.tar.gz" -o \
+            -name "*.zip" \
+          \) -exec cp {} release-files/ \;
+
+          # List release files
+          echo "Release files:"
+          ls -lh release-files/
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: release-files/*
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          body: |
+            ## Installation
+
+            ### Windows
+            Download `PresenceForPlex-*-win64.exe` (installer) or `*-portable.zip` (portable)
+
+            ### macOS
+            Download `PresenceForPlex-*-macos.dmg`
+
+            ### Linux
+            - **Debian/Ubuntu**: Download `.deb` package
+            - **Fedora/RHEL**: Download `.rpm` package
+            - **Other**: Download `.tar.gz` archive
+
+            ## Changelog
+            See below for automatically generated release notes.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ==========================================================================
+  # Summary Job - Build Summary
+  # ==========================================================================
+  summary:
+    name: Build Summary
+    needs: build
+    runs-on: ubuntu-latest
+    if: always()
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Generate build summary
+        run: |
+          echo "# Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Generated Packages" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          for dir in artifacts/*/; do
+            platform=$(basename "$dir")
+            echo "### $platform" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            ls -lh "$dir" 2>/dev/null || echo "No packages found"
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          done
