@@ -195,22 +195,28 @@ void QtSettingsDialog::setup_ui() {
     m_state_format_edit->setPlaceholderText("{state} • S{season}E{episode}");
     format_form->addRow("State Line:", m_state_format_edit);
 
+    m_large_image_text_format_edit = new QLineEdit();
+    m_large_image_text_format_edit->setPlaceholderText("{title}");
+    format_form->addRow("Image Hover Text:", m_large_image_text_format_edit);
+
     format_layout->addWidget(format_group);
 
     m_format_help_text = new QTextEdit();
     m_format_help_text->setReadOnly(true);
-    m_format_help_text->setMaximumHeight(120);
+    m_format_help_text->setMaximumHeight(200);
     m_format_help_text->setPlainText(
-        "Available format tokens:\n"
-        "{title} - Media title\n"
-        "{state} - Playing/Paused/Buffering\n"
-        "{season} - Season number (TV shows)\n"
-        "{episode} - Episode number (TV shows)\n"
-        "{progress} - Current playback position\n"
-        "{duration} - Total media duration\n"
-        "{year} - Release year"
+        "Available Placeholders:\n\n"
+        "Basic: {title} {original_title} {year} {studio} {type} {summary}\n"
+        "TV Shows: {show} {season} {episode} {season_padded} {episode_padded} {se} {SxE}\n"
+        "Music: {artist} {album} {track}\n"
+        "Playback: {state} {progress} {duration} {remaining} {progress_percentage}\n"
+        "Other: {username} {genre} {genres} {rating}\n\n"
+        "Examples:\n"
+        "• TV: \"{show}\" + \"{se} - {title}\"\n"
+        "• Movie: \"{title} ({year})\" + \"{genres}\"\n"
+        "• Music: \"{title}\" + \"{artist} - {album}\""
     );
-    format_layout->addWidget(new QLabel("Available Tokens:"));
+    format_layout->addWidget(new QLabel("Available Placeholders:"));
     format_layout->addWidget(m_format_help_text);
     format_layout->addStretch();
 
@@ -256,6 +262,7 @@ void QtSettingsDialog::load_config(const core::ApplicationConfig& config) {
 
     m_details_format_edit->setText(QString::fromStdString(config.presence.discord.details_format));
     m_state_format_edit->setText(QString::fromStdString(config.presence.discord.state_format));
+    m_large_image_text_format_edit->setText(QString::fromStdString(config.presence.discord.large_image_text_format));
 
     m_plex_enabled_check->setChecked(config.media_services.plex.enabled);
     m_auto_discover_check->setChecked(config.media_services.plex.auto_discover);
@@ -293,6 +300,7 @@ core::ApplicationConfig QtSettingsDialog::get_config() const {
     config.presence.discord.update_interval = std::chrono::seconds(m_update_interval_spin->value());
     config.presence.discord.details_format = m_details_format_edit->text().toStdString();
     config.presence.discord.state_format = m_state_format_edit->text().toStdString();
+    config.presence.discord.large_image_text_format = m_large_image_text_format_edit->text().toStdString();
 
     config.media_services.plex.enabled = m_plex_enabled_check->isChecked();
     config.media_services.plex.auto_discover = m_auto_discover_check->isChecked();

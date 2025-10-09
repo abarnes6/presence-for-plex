@@ -67,6 +67,7 @@ private:
     // Rich presence format
     QLineEdit* m_details_format_edit = nullptr;
     QLineEdit* m_state_format_edit = nullptr;
+    QLineEdit* m_large_image_text_format_edit = nullptr;
     QTextEdit* m_format_help_text = nullptr;
 
     core::ApplicationConfig m_original_config;
