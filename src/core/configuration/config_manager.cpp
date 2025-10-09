@@ -15,16 +15,16 @@ class ConfigurationServiceImpl : public ConfigurationService {
 public:
     explicit ConfigurationServiceImpl(const std::filesystem::path& config_path)
         : m_config_path(config_path.empty() ? get_default_config_path() : config_path) {
-        PLEX_LOG_INFO("ConfigService", "Initializing with path: " + m_config_path.string());
+        LOG_INFO("ConfigService", "Initializing with path: " + m_config_path.string());
         ensure_config_directory();
         m_config_exists = std::filesystem::exists(m_config_path);
     }
 
     std::expected<void, ConfigError> load() override {
-        PLEX_LOG_INFO("ConfigService", "Loading configuration");
+        LOG_INFO("ConfigService", "Loading configuration");
 
         if (!std::filesystem::exists(m_config_path)) {
-            PLEX_LOG_INFO("ConfigService", "Using default configuration");
+            LOG_INFO("ConfigService", "Using default configuration");
             std::unique_lock lock(m_mutex);
             m_config = ApplicationConfig{};
             lock.unlock();
@@ -35,7 +35,7 @@ public:
         if (result) {
             std::unique_lock lock(m_mutex);
             m_config = *result;
-            PLEX_LOG_INFO("ConfigService", "Configuration loaded");
+            LOG_INFO("ConfigService", "Configuration loaded");
             return {};
         }
         return std::unexpected(result.error());
@@ -48,7 +48,7 @@ public:
             config_copy = m_config;
         }
 
-        PLEX_LOG_DEBUG("ConfigService", "Saving configuration");
+        LOG_DEBUG("ConfigService", "Saving configuration");
 
         auto result = utils::YamlConfigHelper::save_to_file(config_copy, m_config_path);
 
@@ -82,11 +82,20 @@ public:
             content << "# update_interval: Seconds between presence updates (1-300)\n";
             content << "# details_format: Custom format for details line (use tokens like {title})\n";
             content << "# state_format: Custom format for state line (use tokens like {state})\n\n";
-            content << "# Plex Media Server Settings\n";
+            content << "# Media Services Configuration\n";
+            content << "# Configure each media service separately under media_services:\n";
+            content << "#\n";
+            content << "# Plex Media Server (media_services.plex)\n";
+            content << "# enabled: Enable/disable Plex media service\n";
             content << "# auto_discover: Automatically find local Plex servers\n";
             content << "# poll_interval: Seconds between server status checks (1-60)\n";
             content << "# timeout: Connection timeout in seconds\n";
-            content << "# server_urls: Manual server URLs (optional)\n\n";
+            content << "# server_urls: Manual server URLs (optional)\n";
+            content << "# enable_movies: Show presence for movies (default: true)\n";
+            content << "# enable_tv_shows: Show presence for TV shows (default: true)\n";
+            content << "# enable_music: Show presence for music (default: true)\n";
+            content << "#\n";
+            content << "# Future services (Jellyfin, Emby, etc.) will be added here\n\n";
             content << "# External Services\n";
             content << "# tmdb.access_token: TMDB API key for enhanced metadata\n";
             content << "# tmdb.enabled: Enable/disable TMDB integration\n";
@@ -101,10 +110,10 @@ public:
             }
 
             out_file << content.str();
-            PLEX_LOG_INFO("ConfigService", "Added documentation to configuration file");
+            LOG_INFO("ConfigService", "Added documentation to configuration file");
             return {};
         } catch (const std::exception& e) {
-            PLEX_LOG_WARNING("ConfigService", "Could not add documentation: " + std::string(e.what()));
+            LOG_WARNING("ConfigService", "Could not add documentation: " + std::string(e.what()));
             return {};
         }
     }
@@ -117,12 +126,12 @@ public:
 
 
     std::expected<void, ConfigError> update(const ApplicationConfig& config) override {
-        PLEX_LOG_INFO("ConfigService", "Updating configuration");
+        LOG_INFO("ConfigService", "Updating configuration");
 
         // Validate configuration first
         auto validation_result = config.validate();
         if (!validation_result) {
-            PLEX_LOG_ERROR("ConfigService", "Invalid configuration provided");
+            LOG_ERROR("ConfigService", "Invalid configuration provided");
             return std::unexpected(ConfigError::ValidationError);
         }
 
@@ -145,7 +154,7 @@ public:
 
 
     void set_event_bus(std::shared_ptr<EventBus> bus) override {
-        PLEX_LOG_DEBUG("ConfigService", "Setting event bus");
+        LOG_DEBUG("ConfigService", "Setting event bus");
         m_event_bus = std::move(bus);
     }
 
@@ -174,7 +183,7 @@ private:
         auto dir = m_config_path.parent_path();
         if (!std::filesystem::exists(dir)) {
             std::filesystem::create_directories(dir);
-            PLEX_LOG_DEBUG("ConfigService", "Created directory: " + dir.string());
+            LOG_DEBUG("ConfigService", "Created directory: " + dir.string());
         }
     }
 

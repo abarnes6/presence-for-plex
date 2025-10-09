@@ -20,11 +20,11 @@ public:
           m_current_version(std::move(current_version)),
           m_http_client(std::move(http_client))
     {
-        PLEX_LOG_DEBUG("UpdateService", "GitHub update service created for " + m_repo_owner + "/" + m_repo_name);
+        LOG_DEBUG("UpdateService", "GitHub update service created for " + m_repo_owner + "/" + m_repo_name);
     }
 
     std::expected<UpdateInfo, UpdateCheckError> check_for_updates() override {
-        PLEX_LOG_INFO("UpdateService", "Checking for updates...");
+        LOG_INFO("UpdateService", "Checking for updates...");
 
         if (m_event_bus) {
             m_event_bus->publish(core::events::UpdateCheckStarted{m_current_version});
@@ -39,7 +39,7 @@ public:
 
         auto response_result = m_http_client->get(api_url, headers);
         if (!response_result) {
-            PLEX_LOG_ERROR("UpdateService", "Failed to connect to GitHub API");
+            LOG_ERROR("UpdateService", "Failed to connect to GitHub API");
             if (m_event_bus) {
                 m_event_bus->publish(core::events::UpdateCheckFailed{"Failed to connect to GitHub"});
             }
@@ -56,7 +56,7 @@ public:
                 latest_version = latest_version.substr(1);
             }
 
-            PLEX_LOG_INFO("UpdateService", "Latest version: " + latest_version);
+            LOG_INFO("UpdateService", "Latest version: " + latest_version);
 
             bool update_available = (latest_version != m_current_version);
 
@@ -84,7 +84,7 @@ public:
             return info;
 
         } catch (const nlohmann::json::exception& e) {
-            PLEX_LOG_ERROR("UpdateService", "Failed to parse GitHub response: " + std::string(e.what()));
+            LOG_ERROR("UpdateService", "Failed to parse GitHub response: " + std::string(e.what()));
             if (m_event_bus) {
                 m_event_bus->publish(core::events::UpdateCheckFailed{"Invalid response from GitHub"});
             }

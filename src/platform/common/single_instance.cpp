@@ -38,7 +38,7 @@ public:
 #endif
 #endif
     {
-        PLEX_LOG_DEBUG("SingleInstance", "Creating single instance manager for: " + instance_name);
+        LOG_DEBUG("SingleInstance", "Creating single instance manager for: " + instance_name);
 
 #ifdef USE_QT_UI
         // Create lock file path in system temp directory
@@ -61,19 +61,19 @@ public:
             return true; // Already acquired
         }
 
-        PLEX_LOG_INFO("SingleInstance", "Attempting to acquire instance: " + instance_name);
+        LOG_INFO("SingleInstance", "Attempting to acquire instance: " + instance_name);
 
 #ifdef USE_QT_UI
         // Qt implementation using QLockFile
         m_acquired = m_lock_file->tryLock(0);
 
         if (m_acquired) {
-            PLEX_LOG_INFO("SingleInstance", "Successfully acquired instance");
+            LOG_INFO("SingleInstance", "Successfully acquired instance");
         } else {
             if (m_lock_file->error() == QLockFile::LockFailedError) {
-                PLEX_LOG_INFO("SingleInstance", "Another instance is already running");
+                LOG_INFO("SingleInstance", "Another instance is already running");
             } else {
-                PLEX_LOG_ERROR("SingleInstance", "Failed to acquire lock: " +
+                LOG_ERROR("SingleInstance", "Failed to acquire lock: " +
                               std::to_string(static_cast<int>(m_lock_file->error())));
                 return std::unexpected<SystemError>(SystemError::OperationFailed);
             }
@@ -92,7 +92,7 @@ public:
                 m_mutex_handle = nullptr;
             }
         } else {
-            PLEX_LOG_ERROR("SingleInstance", "Failed to create mutex");
+            LOG_ERROR("SingleInstance", "Failed to create mutex");
             return std::unexpected<SystemError>(SystemError::OperationFailed);
         }
 #else
@@ -114,16 +114,16 @@ public:
                 m_lock_fd = -1;
             }
         } else {
-            PLEX_LOG_ERROR("SingleInstance", "Failed to create lock file");
+            LOG_ERROR("SingleInstance", "Failed to create lock file");
             return std::unexpected<SystemError>(SystemError::OperationFailed);
         }
 #endif
 #endif
 
         if (m_acquired) {
-            PLEX_LOG_INFO("SingleInstance", "Successfully acquired instance");
+            LOG_INFO("SingleInstance", "Successfully acquired instance");
         } else {
-            PLEX_LOG_INFO("SingleInstance", "Another instance is already running");
+            LOG_INFO("SingleInstance", "Another instance is already running");
         }
 
         return m_acquired;
@@ -134,7 +134,7 @@ public:
             return;
         }
 
-        PLEX_LOG_INFO("SingleInstance", "Releasing instance");
+        LOG_INFO("SingleInstance", "Releasing instance");
 
 #ifdef USE_QT_UI
         if (m_lock_file) {
@@ -188,11 +188,11 @@ class AutostartManagerImpl : public AutostartManager {
 public:
     explicit AutostartManagerImpl(const std::string& app_name)
         : m_app_name(app_name) {
-        PLEX_LOG_DEBUG("Autostart", "Creating autostart manager for: " + app_name);
+        LOG_DEBUG("Autostart", "Creating autostart manager for: " + app_name);
     }
 
     std::expected<void, SystemError> enable_autostart() override {
-        PLEX_LOG_INFO("Autostart", "Enabling autostart");
+        LOG_INFO("Autostart", "Enabling autostart");
 
 #ifdef _WIN32
         // Windows: Add registry key in HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run
@@ -200,14 +200,14 @@ public:
         const std::string registry_path = "Software\\Microsoft\\Windows\\CurrentVersion\\Run";
 
         if (RegOpenKeyExA(HKEY_CURRENT_USER, registry_path.c_str(), 0, KEY_WRITE, &hkey) != ERROR_SUCCESS) {
-            PLEX_LOG_ERROR("Autostart", "Failed to open registry key");
+            LOG_ERROR("Autostart", "Failed to open registry key");
             return std::unexpected(SystemError::OperationFailed);
         }
 
         char exe_path[MAX_PATH];
         if (GetModuleFileNameA(nullptr, exe_path, MAX_PATH) == 0) {
             RegCloseKey(hkey);
-            PLEX_LOG_ERROR("Autostart", "Failed to get executable path");
+            LOG_ERROR("Autostart", "Failed to get executable path");
             return std::unexpected(SystemError::OperationFailed);
         }
 
@@ -215,12 +215,12 @@ public:
                           reinterpret_cast<const BYTE*>(exe_path),
                           static_cast<DWORD>(strlen(exe_path) + 1)) != ERROR_SUCCESS) {
             RegCloseKey(hkey);
-            PLEX_LOG_ERROR("Autostart", "Failed to set registry value");
+            LOG_ERROR("Autostart", "Failed to set registry value");
             return std::unexpected(SystemError::OperationFailed);
         }
 
         RegCloseKey(hkey);
-        PLEX_LOG_INFO("Autostart", "Autostart enabled successfully");
+        LOG_INFO("Autostart", "Autostart enabled successfully");
         return {};
 
 #elif defined(__linux__)
@@ -234,14 +234,14 @@ public:
         } else if (home) {
             autostart_dir = std::filesystem::path(home) / ".config" / "autostart";
         } else {
-            PLEX_LOG_ERROR("Autostart", "Could not determine config directory");
+            LOG_ERROR("Autostart", "Could not determine config directory");
             return std::unexpected(SystemError::OperationFailed);
         }
 
         try {
             std::filesystem::create_directories(autostart_dir);
         } catch (const std::exception& e) {
-            PLEX_LOG_ERROR("Autostart", "Failed to create autostart directory: " + std::string(e.what()));
+            LOG_ERROR("Autostart", "Failed to create autostart directory: " + std::string(e.what()));
             return std::unexpected(SystemError::OperationFailed);
         }
 
@@ -251,14 +251,14 @@ public:
         char exe_path[PATH_MAX];
         ssize_t len = readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1);
         if (len == -1) {
-            PLEX_LOG_ERROR("Autostart", "Failed to get executable path");
+            LOG_ERROR("Autostart", "Failed to get executable path");
             return std::unexpected(SystemError::OperationFailed);
         }
         exe_path[len] = '\0';
 
         std::ofstream file(desktop_file);
         if (!file.is_open()) {
-            PLEX_LOG_ERROR("Autostart", "Failed to create desktop file");
+            LOG_ERROR("Autostart", "Failed to create desktop file");
             return std::unexpected(SystemError::OperationFailed);
         }
 
@@ -271,17 +271,17 @@ public:
              << "X-GNOME-Autostart-enabled=true\n";
 
         file.close();
-        PLEX_LOG_INFO("Autostart", "Autostart enabled successfully");
+        LOG_INFO("Autostart", "Autostart enabled successfully");
         return {};
 
 #else
-        PLEX_LOG_WARNING("Autostart", "Autostart not supported on this platform");
+        LOG_WARNING("Autostart", "Autostart not supported on this platform");
         return std::unexpected(SystemError::NotSupported);
 #endif
     }
 
     std::expected<void, SystemError> disable_autostart() override {
-        PLEX_LOG_INFO("Autostart", "Disabling autostart");
+        LOG_INFO("Autostart", "Disabling autostart");
 
 #ifdef _WIN32
         // Windows: Remove registry key
@@ -289,7 +289,7 @@ public:
         const std::string registry_path = "Software\\Microsoft\\Windows\\CurrentVersion\\Run";
 
         if (RegOpenKeyExA(HKEY_CURRENT_USER, registry_path.c_str(), 0, KEY_WRITE, &hkey) != ERROR_SUCCESS) {
-            PLEX_LOG_ERROR("Autostart", "Failed to open registry key");
+            LOG_ERROR("Autostart", "Failed to open registry key");
             return std::unexpected(SystemError::OperationFailed);
         }
 
@@ -297,11 +297,11 @@ public:
         RegCloseKey(hkey);
 
         if (result != ERROR_SUCCESS && result != ERROR_FILE_NOT_FOUND) {
-            PLEX_LOG_ERROR("Autostart", "Failed to delete registry value");
+            LOG_ERROR("Autostart", "Failed to delete registry value");
             return std::unexpected(SystemError::OperationFailed);
         }
 
-        PLEX_LOG_INFO("Autostart", "Autostart disabled successfully");
+        LOG_INFO("Autostart", "Autostart disabled successfully");
         return {};
 
 #elif defined(__linux__)
@@ -315,7 +315,7 @@ public:
         } else if (home) {
             autostart_dir = std::filesystem::path(home) / ".config" / "autostart";
         } else {
-            PLEX_LOG_ERROR("Autostart", "Could not determine config directory");
+            LOG_ERROR("Autostart", "Could not determine config directory");
             return std::unexpected(SystemError::OperationFailed);
         }
 
@@ -324,17 +324,17 @@ public:
         try {
             if (std::filesystem::exists(desktop_file)) {
                 std::filesystem::remove(desktop_file);
-                PLEX_LOG_INFO("Autostart", "Autostart disabled successfully");
+                LOG_INFO("Autostart", "Autostart disabled successfully");
             }
         } catch (const std::exception& e) {
-            PLEX_LOG_ERROR("Autostart", "Failed to remove desktop file: " + std::string(e.what()));
+            LOG_ERROR("Autostart", "Failed to remove desktop file: " + std::string(e.what()));
             return std::unexpected(SystemError::OperationFailed);
         }
 
         return {};
 
 #else
-        PLEX_LOG_WARNING("Autostart", "Autostart not supported on this platform");
+        LOG_WARNING("Autostart", "Autostart not supported on this platform");
         return std::unexpected(SystemError::NotSupported);
 #endif
     }

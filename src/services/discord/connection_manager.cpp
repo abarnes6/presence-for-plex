@@ -14,13 +14,13 @@ ConnectionManager::ConnectionManager(
     , m_config(std::move(config)) {
 
     if (!m_config.is_valid()) {
-        PLEX_LOG_WARNING("ConnectionManager", "Invalid configuration, using defaults");
+        LOG_WARNING("ConnectionManager", "Invalid configuration, using defaults");
         m_config = ConnectionRetryConfig{};
     }
 
     assert(m_strategy && "Connection strategy cannot be null");
 
-    PLEX_LOG_DEBUG("ConnectionManager",
+    LOG_DEBUG("ConnectionManager",
         "Initialized with backoff " + std::to_string(m_config.initial_delay.count()) +
         "s to " + std::to_string(m_config.max_delay.count()) + "s");
 }
@@ -31,11 +31,11 @@ ConnectionManager::~ConnectionManager() {
 
 bool ConnectionManager::start() {
     if (m_running.exchange(true)) {
-        PLEX_LOG_WARNING("ConnectionManager", "Already running");
+        LOG_WARNING("ConnectionManager", "Already running");
         return is_connected();
     }
 
-    PLEX_LOG_INFO("ConnectionManager", "Starting connection management");
+    LOG_INFO("ConnectionManager", "Starting connection management");
 
     // Try initial connection
     bool initial_success = attempt_connection();
@@ -56,7 +56,7 @@ void ConnectionManager::stop() {
         return;
     }
 
-    PLEX_LOG_INFO("ConnectionManager", "Stopping connection management");
+    LOG_INFO("ConnectionManager", "Stopping connection management");
 
     if (m_management_thread.joinable()) {
         m_management_thread.join();
@@ -75,7 +75,7 @@ bool ConnectionManager::is_connected() const {
 }
 
 void ConnectionManager::force_reconnect() {
-    PLEX_LOG_INFO("ConnectionManager", "Force reconnect requested");
+    LOG_INFO("ConnectionManager", "Force reconnect requested");
     m_force_reconnect = true;
 }
 
@@ -93,7 +93,7 @@ ConnectionManager::RetryStats ConnectionManager::get_retry_stats() const {
 }
 
 void ConnectionManager::management_loop() {
-    PLEX_LOG_DEBUG("ConnectionManager", "Management loop started");
+    LOG_DEBUG("ConnectionManager", "Management loop started");
 
     auto last_health_check = std::chrono::steady_clock::now();
     int failed_health_checks = 0;
@@ -104,7 +104,7 @@ void ConnectionManager::management_loop() {
 
             // Handle force reconnect
             if (m_force_reconnect.exchange(false)) {
-                PLEX_LOG_INFO("ConnectionManager", "Processing force reconnect");
+                LOG_INFO("ConnectionManager", "Processing force reconnect");
                 if (m_strategy) {
                     m_strategy->disconnect();
                 }
@@ -135,7 +135,7 @@ void ConnectionManager::management_loop() {
                         notify_health_check(false);
 
                         if (failed_health_checks >= m_config.max_failed_health_checks) {
-                            PLEX_LOG_WARNING("ConnectionManager",
+                            LOG_WARNING("ConnectionManager",
                                 "Max health check failures (" +
                                 std::to_string(failed_health_checks) + ") reached, disconnecting");
 
@@ -155,13 +155,13 @@ void ConnectionManager::management_loop() {
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
         } catch (const std::exception& e) {
-            PLEX_LOG_ERROR("ConnectionManager",
+            LOG_ERROR("ConnectionManager",
                 "Exception in management loop: " + std::string(e.what()));
             std::this_thread::sleep_for(std::chrono::seconds(1));
         }
     }
 
-    PLEX_LOG_DEBUG("ConnectionManager", "Management loop terminated");
+    LOG_DEBUG("ConnectionManager", "Management loop terminated");
 }
 
 bool ConnectionManager::attempt_connection() {
@@ -169,19 +169,19 @@ bool ConnectionManager::attempt_connection() {
         return false;
     }
 
-    PLEX_LOG_DEBUG("ConnectionManager", "Attempting connection");
+    LOG_DEBUG("ConnectionManager", "Attempting connection");
 
     try {
         bool success = m_strategy->connect();
         if (success) {
-            PLEX_LOG_INFO("ConnectionManager", "Connection successful");
+            LOG_INFO("ConnectionManager", "Connection successful");
             return true;
         } else {
-            PLEX_LOG_DEBUG("ConnectionManager", "Connection failed");
+            LOG_DEBUG("ConnectionManager", "Connection failed");
             return false;
         }
     } catch (const std::exception& e) {
-        PLEX_LOG_ERROR("ConnectionManager",
+        LOG_ERROR("ConnectionManager",
             "Exception during connection: " + std::string(e.what()));
         return false;
     }
@@ -201,7 +201,7 @@ void ConnectionManager::handle_connection_success(bool is_reconnect) {
     m_connected = true;
     notify_connection_state(true);
 
-    PLEX_LOG_INFO("ConnectionManager", "Connection established successfully");
+    LOG_INFO("ConnectionManager", "Connection established successfully");
 }
 
 void ConnectionManager::handle_connection_failure() {
@@ -226,7 +226,7 @@ void ConnectionManager::handle_connection_failure() {
     m_connected = false;
     notify_connection_state(false);
 
-    PLEX_LOG_DEBUG("ConnectionManager",
+    LOG_DEBUG("ConnectionManager",
         "Connection failed (attempt " + std::to_string(attempt_number) +
         "), retrying in " + std::to_string(next_delay.count()) + "s");
 
@@ -249,10 +249,10 @@ bool ConnectionManager::perform_health_check() {
 
     try {
         bool healthy = m_strategy->send_health_check();
-        PLEX_LOG_DEBUG("ConnectionManager", "Health check: " + std::string(healthy ? "OK" : "FAILED"));
+        LOG_DEBUG("ConnectionManager", "Health check: " + std::string(healthy ? "OK" : "FAILED"));
         return healthy;
     } catch (const std::exception& e) {
-        PLEX_LOG_WARNING("ConnectionManager",
+        LOG_WARNING("ConnectionManager",
             "Health check exception: " + std::string(e.what()));
         return false;
     }
@@ -263,7 +263,7 @@ void ConnectionManager::notify_connection_state(bool connected) {
         try {
             m_connection_callback(connected);
         } catch (const std::exception& e) {
-            PLEX_LOG_ERROR("ConnectionManager",
+            LOG_ERROR("ConnectionManager",
                 "Exception in connection callback: " + std::string(e.what()));
         }
     }
@@ -274,7 +274,7 @@ void ConnectionManager::notify_health_check(bool healthy) {
         try {
             m_health_check_callback(healthy);
         } catch (const std::exception& e) {
-            PLEX_LOG_ERROR("ConnectionManager",
+            LOG_ERROR("ConnectionManager",
                 "Exception in health check callback: " + std::string(e.what()));
         }
     }

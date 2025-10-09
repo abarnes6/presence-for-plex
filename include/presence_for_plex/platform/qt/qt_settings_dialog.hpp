@@ -54,6 +54,11 @@ private:
     QSpinBox* m_timeout_spin = nullptr;
     QTextEdit* m_server_urls_edit = nullptr;
 
+    // Media type filters
+    QCheckBox* m_enable_movies_check = nullptr;
+    QCheckBox* m_enable_tv_shows_check = nullptr;
+    QCheckBox* m_enable_music_check = nullptr;
+
     // External services
     QLineEdit* m_tmdb_token_edit = nullptr;
     QCheckBox* m_enable_tmdb_check = nullptr;

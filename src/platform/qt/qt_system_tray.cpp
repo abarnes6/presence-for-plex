@@ -10,11 +10,11 @@
 namespace presence_for_plex::platform::qt {
 
 QtSystemTray::QtSystemTray() {
-    PLEX_LOG_DEBUG(m_component_name, "QtSystemTray constructed");
+    LOG_DEBUG(m_component_name, "QtSystemTray constructed");
 }
 
 QtSystemTray::~QtSystemTray() {
-    PLEX_LOG_DEBUG(m_component_name, "QtSystemTray destructor called");
+    LOG_DEBUG(m_component_name, "QtSystemTray destructor called");
     shutdown();
 }
 
@@ -22,14 +22,14 @@ std::expected<void, UiError> QtSystemTray::initialize() {
     std::lock_guard lock(m_mutex);
 
     if (m_initialized) {
-        PLEX_LOG_DEBUG(m_component_name, "Already initialized");
+        LOG_DEBUG(m_component_name, "Already initialized");
         return {};
     }
 
-    PLEX_LOG_INFO(m_component_name, "Initializing Qt system tray");
+    LOG_INFO(m_component_name, "Initializing Qt system tray");
 
     if (!QSystemTrayIcon::isSystemTrayAvailable()) {
-        PLEX_LOG_ERROR(m_component_name, "System tray is not available on this system");
+        LOG_ERROR(m_component_name, "System tray is not available on this system");
         return std::unexpected(UiError::NotSupported);
     }
 
@@ -53,7 +53,7 @@ std::expected<void, UiError> QtSystemTray::initialize() {
     }
 
     m_initialized = true;
-    PLEX_LOG_INFO(m_component_name, "Qt system tray initialized successfully");
+    LOG_INFO(m_component_name, "Qt system tray initialized successfully");
     return {};
 }
 
@@ -64,7 +64,7 @@ void QtSystemTray::shutdown() {
         return;
     }
 
-    PLEX_LOG_INFO(m_component_name, "Shutting down Qt system tray");
+    LOG_INFO(m_component_name, "Shutting down Qt system tray");
 
     // Disconnect all signals first to prevent any callbacks during cleanup
     if (m_tray_icon) {
@@ -91,7 +91,7 @@ void QtSystemTray::shutdown() {
     m_tray_icon.reset();
 
     m_initialized = false;
-    PLEX_LOG_INFO(m_component_name, "Qt system tray shut down");
+    LOG_INFO(m_component_name, "Qt system tray shut down");
 }
 
 bool QtSystemTray::is_initialized() const {
@@ -111,20 +111,20 @@ std::expected<void, UiError> QtSystemTray::set_icon(const std::string& icon_path
 
     if (icon.isNull()) {
         if (!QFile::exists(path)) {
-            PLEX_LOG_ERROR(m_component_name, "Icon file not found: " + icon_path);
+            LOG_ERROR(m_component_name, "Icon file not found: " + icon_path);
             return std::unexpected(UiError::ResourceNotFound);
         }
 
         QPixmap pixmap(path);
         if (pixmap.isNull()) {
-            PLEX_LOG_ERROR(m_component_name, "Failed to load icon: " + icon_path);
+            LOG_ERROR(m_component_name, "Failed to load icon: " + icon_path);
             return std::unexpected(UiError::ResourceNotFound);
         }
         icon = QIcon(pixmap);
     }
 
     m_tray_icon->setIcon(icon);
-    PLEX_LOG_DEBUG(m_component_name, "Icon set to: " + icon_path);
+    LOG_DEBUG(m_component_name, "Icon set to: " + icon_path);
     return {};
 }
 
@@ -147,7 +147,7 @@ std::expected<void, UiError> QtSystemTray::set_tooltip(const std::string& toolti
     }
 
     m_tray_icon->setToolTip(QString::fromStdString(tooltip));
-    PLEX_LOG_DEBUG(m_component_name, "Tooltip set to: " + tooltip);
+    LOG_DEBUG(m_component_name, "Tooltip set to: " + tooltip);
     return {};
 }
 
@@ -204,7 +204,7 @@ std::expected<void, UiError> QtSystemTray::set_menu(const std::vector<MenuItem>&
         }
     }
 
-    PLEX_LOG_DEBUG(m_component_name, "Menu updated with " + std::to_string(items.size()) + " items");
+    LOG_DEBUG(m_component_name, "Menu updated with " + std::to_string(items.size()) + " items");
     return {};
 }
 
@@ -233,7 +233,7 @@ std::expected<void, UiError> QtSystemTray::update_menu_item(const std::string& i
         action->setChecked(item.checked);
     }
 
-    PLEX_LOG_DEBUG(m_component_name, "Menu item updated: " + id);
+    LOG_DEBUG(m_component_name, "Menu item updated: " + id);
     return {};
 }
 
@@ -246,7 +246,7 @@ std::expected<void, UiError> QtSystemTray::enable_menu_item(const std::string& i
     }
 
     action->setEnabled(enabled);
-    PLEX_LOG_DEBUG(m_component_name, "Menu item " + id + " enabled: " + std::to_string(enabled));
+    LOG_DEBUG(m_component_name, "Menu item " + id + " enabled: " + std::to_string(enabled));
     return {};
 }
 
@@ -259,7 +259,7 @@ std::expected<void, UiError> QtSystemTray::check_menu_item(const std::string& id
     }
 
     action->setChecked(checked);
-    PLEX_LOG_DEBUG(m_component_name, "Menu item " + id + " checked: " + std::to_string(checked));
+    LOG_DEBUG(m_component_name, "Menu item " + id + " checked: " + std::to_string(checked));
     return {};
 }
 
@@ -272,7 +272,7 @@ std::expected<void, UiError> QtSystemTray::set_status_text(const std::string& id
     }
 
     action->setText(QString::fromStdString(text));
-    PLEX_LOG_DEBUG(m_component_name, "Status text updated: " + id + " = " + text);
+    LOG_DEBUG(m_component_name, "Status text updated: " + id + " = " + text);
     return {};
 }
 
@@ -296,7 +296,7 @@ void QtSystemTray::show() {
 
     if (m_initialized && m_tray_icon) {
         m_tray_icon->show();
-        PLEX_LOG_DEBUG(m_component_name, "System tray shown");
+        LOG_DEBUG(m_component_name, "System tray shown");
     }
 }
 
@@ -305,7 +305,7 @@ void QtSystemTray::hide() {
 
     if (m_initialized && m_tray_icon) {
         m_tray_icon->hide();
-        PLEX_LOG_DEBUG(m_component_name, "System tray hidden");
+        LOG_DEBUG(m_component_name, "System tray hidden");
     }
 }
 

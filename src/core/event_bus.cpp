@@ -4,7 +4,7 @@
 namespace presence_for_plex::core {
 
 void EventBus::handle_exception(const std::string& event_type, const std::exception& e) {
-    PLEX_LOG_ERROR("EventBus", "Exception in event handler for " + event_type + ": " + e.what());
+    LOG_ERROR("EventBus", "Exception in event handler for " + event_type + ": " + e.what());
 }
 
 }

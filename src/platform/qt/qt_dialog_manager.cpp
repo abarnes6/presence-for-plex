@@ -9,11 +9,11 @@ namespace presence_for_plex::platform::qt {
 
 QtDialogManager::QtDialogManager(QWidget* parent)
     : m_parent(parent) {
-    PLEX_LOG_DEBUG(m_component_name, "QtDialogManager constructed");
+    LOG_DEBUG(m_component_name, "QtDialogManager constructed");
 }
 
 QtDialogManager::~QtDialogManager() {
-    PLEX_LOG_DEBUG(m_component_name, "QtDialogManager destructor called");
+    LOG_DEBUG(m_component_name, "QtDialogManager destructor called");
 }
 
 std::expected<DialogManager::DialogResult, UiError>

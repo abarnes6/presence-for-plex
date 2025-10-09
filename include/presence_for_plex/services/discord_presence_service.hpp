@@ -62,6 +62,11 @@ public:
     bool is_progress_shown() const override;
     bool are_buttons_shown() const override;
 
+    // Format template configuration
+    void set_details_format(const std::string& format) override;
+    void set_state_format(const std::string& format) override;
+    void set_large_image_text_format(const std::string& format) override;
+
     // Additional functionality
     struct ServiceStats {
         size_t total_presence_updates = 0;

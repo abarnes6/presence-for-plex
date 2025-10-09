@@ -55,7 +55,7 @@ MediaServiceFactory::create(
             .build();
 
         if (!service) {
-            PLEX_LOG_ERROR("MediaServiceFactory", "Failed to build Plex service");
+            LOG_ERROR("MediaServiceFactory", "Failed to build Plex service");
             return std::unexpected(core::ConfigError::InvalidFormat);
         }
 
@@ -63,7 +63,7 @@ MediaServiceFactory::create(
         return service;
     }
 
-    PLEX_LOG_ERROR("MediaServiceFactory", "Unsupported media service type");
+    LOG_ERROR("MediaServiceFactory", "Unsupported media service type");
     return std::unexpected(core::ConfigError::InvalidFormat);
 }
 

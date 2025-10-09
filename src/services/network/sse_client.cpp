@@ -15,12 +15,12 @@ SSEClient::SSEClient(std::shared_ptr<HttpClient> http_client)
     : m_http_client(std::move(http_client))
     , m_last_event_time(std::chrono::system_clock::now()) {
 
-    PLEX_LOG_DEBUG("SSEClient", "Creating SSE client");
+    LOG_DEBUG("SSEClient", "Creating SSE client");
 }
 
 SSEClient::~SSEClient() {
     disconnect();
-    PLEX_LOG_DEBUG("SSEClient", "SSE client destroyed");
+    LOG_DEBUG("SSEClient", "SSE client destroyed");
 }
 
 std::expected<void, core::PlexError> SSEClient::connect(
@@ -29,7 +29,7 @@ std::expected<void, core::PlexError> SSEClient::connect(
     SSEBasicEventCallback callback) {
 
     if (m_running) {
-        PLEX_LOG_WARNING("SSEClient", "SSE client already running");
+        LOG_WARNING("SSEClient", "SSE client already running");
         return {};
     }
 
@@ -37,7 +37,7 @@ std::expected<void, core::PlexError> SSEClient::connect(
     m_headers = headers;
     m_callback = std::move(callback);
 
-    PLEX_LOG_INFO("SSEClient", "Connecting to SSE endpoint: " + url);
+    LOG_INFO("SSEClient", "Connecting to SSE endpoint: " + url);
 
     m_running = true;
     m_event_thread = std::jthread(&SSEClient::event_loop, this);
@@ -50,7 +50,7 @@ void SSEClient::disconnect() {
         return;
     }
 
-    PLEX_LOG_INFO("SSEClient", "Disconnecting SSE client");
+    LOG_INFO("SSEClient", "Disconnecting SSE client");
 
     m_running = false;
     m_connected = false;
@@ -103,20 +103,20 @@ void SSEClient::process_streaming_data(const std::string& data_chunk) {
 
 
 void SSEClient::event_loop() {
-    PLEX_LOG_DEBUG("SSEClient", "Starting SSE event loop");
+    LOG_DEBUG("SSEClient", "Starting SSE event loop");
 
     while (m_running) {
         // Check if we should stop retrying initial connection
         if (!m_initial_connection_succeeded) {
             m_connection_attempts++;
             if (m_connection_attempts > MAX_INITIAL_CONNECTION_ATTEMPTS) {
-                PLEX_LOG_ERROR("SSEClient", "Max initial connection attempts (" +
+                LOG_ERROR("SSEClient", "Max initial connection attempts (" +
                               std::to_string(MAX_INITIAL_CONNECTION_ATTEMPTS) +
                               ") reached for: " + m_url);
                 m_running = false;
                 break;
             }
-            PLEX_LOG_INFO("SSEClient", "Initial connection attempt " + std::to_string(m_connection_attempts) +
+            LOG_INFO("SSEClient", "Initial connection attempt " + std::to_string(m_connection_attempts) +
                          "/" + std::to_string(MAX_INITIAL_CONNECTION_ATTEMPTS) + " for: " + m_url);
         }
 
@@ -126,7 +126,7 @@ void SSEClient::event_loop() {
             sse_headers["Accept"] = "text/event-stream";
             sse_headers["Cache-Control"] = "no-cache";
 
-            PLEX_LOG_DEBUG("SSEClient", "Attempting SSE connection to: " + m_url);
+            LOG_DEBUG("SSEClient", "Attempting SSE connection to: " + m_url);
 
             // Use RequestBuilder for SSE streaming request
             HttpRequest sse_request = RequestBuilder(m_url)
@@ -137,19 +137,19 @@ void SSEClient::event_loop() {
 
             // Set up streaming callback to process data chunks as they arrive
             auto streaming_callback = [this](const std::string& data_chunk) {
-                PLEX_LOG_DEBUG("SSEClient", "Received data chunk of size: " + std::to_string(data_chunk.size()));
+                LOG_DEBUG("SSEClient", "Received data chunk of size: " + std::to_string(data_chunk.size()));
                 if (m_running) {
                     if (!m_initial_connection_succeeded.load()) {
                         m_initial_connection_succeeded.store(true);
                         m_connected.store(true);
-                        PLEX_LOG_INFO("SSEClient", "SSE connection successfully established for: " + m_url);
+                        LOG_INFO("SSEClient", "SSE connection successfully established for: " + m_url);
                     }
                     this->process_streaming_data(data_chunk);
                 }
             };
 
             // Don't mark as connected until we actually establish the stream
-            PLEX_LOG_DEBUG("SSEClient", "Attempting to establish SSE stream...");
+            LOG_DEBUG("SSEClient", "Attempting to establish SSE stream...");
 
             // Start streaming - this will block and call the callback for each chunk
             // Pass the m_running flag as the stop flag so CURL can abort cleanly
@@ -158,17 +158,17 @@ void SSEClient::event_loop() {
             if (!result) {
                 m_connected.store(false);
                 if (m_initial_connection_succeeded.load()) {
-                    PLEX_LOG_WARNING("SSEClient", "SSE streaming failed, will retry");
+                    LOG_WARNING("SSEClient", "SSE streaming failed, will retry");
                 } else {
-                    PLEX_LOG_WARNING("SSEClient", "Initial SSE connection failed for: " + m_url);
+                    LOG_WARNING("SSEClient", "Initial SSE connection failed for: " + m_url);
                 }
             } else {
-                PLEX_LOG_INFO("SSEClient", "SSE streaming completed normally");
+                LOG_INFO("SSEClient", "SSE streaming completed normally");
             }
 
         } catch (const std::exception& e) {
             m_connected.store(false);
-            PLEX_LOG_ERROR("SSEClient", "SSE event loop error: " + std::string(e.what()));
+            LOG_ERROR("SSEClient", "SSE event loop error: " + std::string(e.what()));
         }
 
         m_connected.store(false);
@@ -187,7 +187,7 @@ void SSEClient::event_loop() {
     }
 
     m_connected = false;
-    PLEX_LOG_DEBUG("SSEClient", "SSE event loop finished");
+    LOG_DEBUG("SSEClient", "SSE event loop finished");
 }
 
 void SSEClient::parse_sse_data(const std::string& data) {
@@ -243,7 +243,7 @@ void SSEClient::process_sse_line(const std::string& line) {
             if (!m_initial_connection_succeeded.load()) {
                 m_initial_connection_succeeded.store(true);
                 m_connected.store(true);
-                PLEX_LOG_INFO("SSEClient", "SSE connection successfully established for: " + m_url);
+                LOG_INFO("SSEClient", "SSE connection successfully established for: " + m_url);
             }
         }
         return;
@@ -289,14 +289,14 @@ void SSEClient::handle_event(const std::string& event_data) {
         return;
     }
 
-    PLEX_LOG_DEBUG("SSEClient", "Received SSE event: " + event_data.substr(0, 100) +
+    LOG_DEBUG("SSEClient", "Received SSE event: " + event_data.substr(0, 100) +
                    (event_data.length() > 100 ? "..." : ""));
 
     if (m_callback) {
         try {
             m_callback(event_data);
         } catch (const std::exception& e) {
-            PLEX_LOG_ERROR("SSEClient", "Error in SSE callback: " + std::string(e.what()));
+            LOG_ERROR("SSEClient", "Error in SSE callback: " + std::string(e.what()));
         }
     }
 }

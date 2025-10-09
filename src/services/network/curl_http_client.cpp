@@ -123,16 +123,16 @@ public:
     }
 
     std::expected<HttpResponse, NetworkError> execute(const HttpRequest& request) override {
-        PLEX_LOG_DEBUG("CurlHttpClient", "Starting HTTP request to: " + request.url);
+        LOG_DEBUG("CurlHttpClient", "Starting HTTP request to: " + request.url);
 
         if (!request.is_valid()) {
-            PLEX_LOG_ERROR("CurlHttpClient", "Invalid URL provided: " + request.url);
+            LOG_ERROR("CurlHttpClient", "Invalid URL provided: " + request.url);
             return std::unexpected<NetworkError>(NetworkError::InvalidUrl);
         }
 
         CURL* curl = curl_easy_init();
         if (!curl) {
-            PLEX_LOG_ERROR("CurlHttpClient", "Failed to initialize curl handle");
+            LOG_ERROR("CurlHttpClient", "Failed to initialize curl handle");
             return std::unexpected<NetworkError>(NetworkError::ConnectionFailed);
         }
 
@@ -166,7 +166,7 @@ public:
         curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, request.verify_ssl ? 1L : 0L);
         curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, request.verify_ssl ? 2L : 0L);
 
-        PLEX_LOG_DEBUG("CurlHttpClient", "Performing HTTP request...");
+        LOG_DEBUG("CurlHttpClient", "Performing HTTP request...");
 
         // Perform request
         CURLcode res = curl_easy_perform(curl);
@@ -192,11 +192,11 @@ public:
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
 
         if (res != CURLE_OK) {
-            PLEX_LOG_ERROR("CurlHttpClient", "HTTP request failed: " + std::string(curl_easy_strerror(res)));
+            LOG_ERROR("CurlHttpClient", "HTTP request failed: " + std::string(curl_easy_strerror(res)));
             return std::unexpected<NetworkError>(curl_error_to_network_error(res));
         }
 
-        PLEX_LOG_DEBUG("CurlHttpClient", "HTTP request completed in " + std::to_string(duration.count()) + "ms with status " + std::to_string(response_code));
+        LOG_DEBUG("CurlHttpClient", "HTTP request completed in " + std::to_string(duration.count()) + "ms with status " + std::to_string(response_code));
 
         // Build response
         response.status_code = static_cast<HttpStatus>(response_code);
@@ -272,17 +272,17 @@ public:
         const std::string& url,
         const std::string& file_path,
         ProgressCallback progress) override {
-        PLEX_LOG_DEBUG("CurlHttpClient", "Starting file download from: " + url + " to: " + file_path);
+        LOG_DEBUG("CurlHttpClient", "Starting file download from: " + url + " to: " + file_path);
 
         CURL* curl = curl_easy_init();
         if (!curl) {
-            PLEX_LOG_ERROR("CurlHttpClient", "Failed to initialize curl handle for file download");
+            LOG_ERROR("CurlHttpClient", "Failed to initialize curl handle for file download");
             return std::unexpected<NetworkError>(NetworkError::ConnectionFailed);
         }
 
         std::ofstream file(file_path, std::ios::binary);
         if (!file.is_open()) {
-            PLEX_LOG_ERROR("CurlHttpClient", "Failed to open file for writing: " + file_path);
+            LOG_ERROR("CurlHttpClient", "Failed to open file for writing: " + file_path);
             curl_easy_cleanup(curl);
             return std::unexpected<NetworkError>(NetworkError::BadResponse);
         }
@@ -309,7 +309,7 @@ public:
         
         // Check for file write errors
         if (file.fail() || file.bad()) {
-            PLEX_LOG_ERROR("CurlHttpClient", "File write error during download: " + file_path);
+            LOG_ERROR("CurlHttpClient", "File write error during download: " + file_path);
             curl_easy_cleanup(curl);
             return std::unexpected<NetworkError>(NetworkError::BadResponse);
         }
@@ -317,11 +317,11 @@ public:
         curl_easy_cleanup(curl);
 
         if (res != CURLE_OK) {
-            PLEX_LOG_ERROR("CurlHttpClient", "File download failed: " + std::string(curl_easy_strerror(res)));
+            LOG_ERROR("CurlHttpClient", "File download failed: " + std::string(curl_easy_strerror(res)));
             return std::unexpected<NetworkError>(curl_error_to_network_error(res));
         }
 
-        PLEX_LOG_DEBUG("CurlHttpClient", "File download completed successfully");
+        LOG_DEBUG("CurlHttpClient", "File download completed successfully");
         return {};
     }
 
@@ -330,17 +330,17 @@ public:
         const std::string& file_path,
         const std::string& field_name,
         const HttpHeaders& headers) override {
-        PLEX_LOG_DEBUG("CurlHttpClient", "Starting file upload from: " + file_path + " to: " + url);
+        LOG_DEBUG("CurlHttpClient", "Starting file upload from: " + file_path + " to: " + url);
 
         CURL* curl = curl_easy_init();
         if (!curl) {
-            PLEX_LOG_ERROR("CurlHttpClient", "Failed to initialize curl handle for file upload");
+            LOG_ERROR("CurlHttpClient", "Failed to initialize curl handle for file upload");
             return std::unexpected<NetworkError>(NetworkError::ConnectionFailed);
         }
 
         std::ifstream file(file_path, std::ios::binary);
         if (!file.is_open()) {
-            PLEX_LOG_ERROR("CurlHttpClient", "Failed to open file for reading: " + file_path);
+            LOG_ERROR("CurlHttpClient", "Failed to open file for reading: " + file_path);
             curl_easy_cleanup(curl);
             return std::unexpected<NetworkError>(NetworkError::BadResponse);
         }
@@ -387,11 +387,11 @@ public:
         curl_easy_cleanup(curl);
 
         if (res != CURLE_OK) {
-            PLEX_LOG_ERROR("CurlHttpClient", "File upload failed: " + std::string(curl_easy_strerror(res)));
+            LOG_ERROR("CurlHttpClient", "File upload failed: " + std::string(curl_easy_strerror(res)));
             return std::unexpected<NetworkError>(curl_error_to_network_error(res));
         }
 
-        PLEX_LOG_DEBUG("CurlHttpClient", "File upload completed with status " + std::to_string(response_code));
+        LOG_DEBUG("CurlHttpClient", "File upload completed with status " + std::to_string(response_code));
 
         HttpResponse response;
         response.status_code = static_cast<HttpStatus>(response_code);
@@ -432,22 +432,22 @@ public:
         StreamingCallback callback,
         std::atomic<bool>* stop_flag = nullptr) override {
 
-        PLEX_LOG_DEBUG("CurlHttpClient", "Starting streaming request to: " + request.url);
+        LOG_DEBUG("CurlHttpClient", "Starting streaming request to: " + request.url);
 
         if (!request.is_valid()) {
-            PLEX_LOG_ERROR("CurlHttpClient", "Invalid URL for streaming request: " + request.url);
+            LOG_ERROR("CurlHttpClient", "Invalid URL for streaming request: " + request.url);
             return std::unexpected<NetworkError>(NetworkError::InvalidUrl);
         }
 
         CURL* curl = curl_easy_init();
         if (!curl) {
-            PLEX_LOG_ERROR("CurlHttpClient", "Failed to initialize curl handle for streaming");
+            LOG_ERROR("CurlHttpClient", "Failed to initialize curl handle for streaming");
             return std::unexpected<NetworkError>(NetworkError::ConnectionFailed);
         }
 
         CURLM* multi = curl_multi_init();
         if (!multi) {
-            PLEX_LOG_ERROR("CurlHttpClient", "Failed to initialize curl multi handle");
+            LOG_ERROR("CurlHttpClient", "Failed to initialize curl multi handle");
             curl_easy_cleanup(curl);
             return std::unexpected<NetworkError>(NetworkError::ConnectionFailed);
         }
@@ -498,7 +498,7 @@ public:
         curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, request.verify_ssl ? 1L : 0L);
         curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, request.verify_ssl ? 2L : 0L);
 
-        PLEX_LOG_DEBUG("CurlHttpClient", "Performing streaming request with multi interface...");
+        LOG_DEBUG("CurlHttpClient", "Performing streaming request with multi interface...");
 
         // Add easy handle to multi handle
         curl_multi_add_handle(multi, curl);
@@ -511,13 +511,13 @@ public:
             CURLMcode mc = curl_multi_perform(multi, &still_running);
 
             if (mc != CURLM_OK) {
-                PLEX_LOG_ERROR("CurlHttpClient", "Multi perform failed: " + std::string(curl_multi_strerror(mc)));
+                LOG_ERROR("CurlHttpClient", "Multi perform failed: " + std::string(curl_multi_strerror(mc)));
                 break;
             }
 
             // Check stop flag - this allows instant cancellation
             if (stop_flag && !stop_flag->load()) {
-                PLEX_LOG_DEBUG("CurlHttpClient", "Stop flag detected, aborting streaming request");
+                LOG_DEBUG("CurlHttpClient", "Stop flag detected, aborting streaming request");
                 break;
             }
 
@@ -527,7 +527,7 @@ public:
                 mc = curl_multi_poll(multi, nullptr, 0, 100, &numfds);  // 100ms timeout
 
                 if (mc != CURLM_OK) {
-                    PLEX_LOG_ERROR("CurlHttpClient", "Multi poll failed: " + std::string(curl_multi_strerror(mc)));
+                    LOG_ERROR("CurlHttpClient", "Multi poll failed: " + std::string(curl_multi_strerror(mc)));
                     break;
                 }
             }
@@ -554,16 +554,16 @@ public:
 
         // Check if we stopped due to stop flag
         if (stop_flag && !stop_flag->load()) {
-            PLEX_LOG_DEBUG("CurlHttpClient", "Streaming request cancelled by stop flag");
+            LOG_DEBUG("CurlHttpClient", "Streaming request cancelled by stop flag");
             return std::unexpected<NetworkError>(NetworkError::Cancelled);
         }
 
         if (res != CURLE_OK) {
-            PLEX_LOG_ERROR("CurlHttpClient", "Streaming request failed: " + std::string(curl_easy_strerror(res)));
+            LOG_ERROR("CurlHttpClient", "Streaming request failed: " + std::string(curl_easy_strerror(res)));
             return std::unexpected<NetworkError>(curl_error_to_network_error(res));
         }
 
-        PLEX_LOG_DEBUG("CurlHttpClient", "Streaming request completed");
+        LOG_DEBUG("CurlHttpClient", "Streaming request completed");
         return {};
     }
 
@@ -573,11 +573,11 @@ private:
     void setup_method_and_body(CURL* curl, const HttpRequest& request) {
         switch (request.method) {
             case HttpMethod::GET:
-                PLEX_LOG_DEBUG("CurlHttpClient", "Setting up GET request");
+                LOG_DEBUG("CurlHttpClient", "Setting up GET request");
                 // Default
                 break;
             case HttpMethod::POST:
-                PLEX_LOG_DEBUG("CurlHttpClient", "Setting up POST request with body size: " + std::to_string(request.body.length()));
+                LOG_DEBUG("CurlHttpClient", "Setting up POST request with body size: " + std::to_string(request.body.length()));
                 curl_easy_setopt(curl, CURLOPT_POST, 1L);
                 if (!request.body.empty()) {
                     curl_easy_setopt(curl, CURLOPT_POSTFIELDS, request.body.c_str());
@@ -585,7 +585,7 @@ private:
                 }
                 break;
             case HttpMethod::PUT:
-                PLEX_LOG_DEBUG("CurlHttpClient", "Setting up PUT request with body size: " + std::to_string(request.body.length()));
+                LOG_DEBUG("CurlHttpClient", "Setting up PUT request with body size: " + std::to_string(request.body.length()));
                 curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "PUT");
                 if (!request.body.empty()) {
                     curl_easy_setopt(curl, CURLOPT_POSTFIELDS, request.body.c_str());
@@ -593,11 +593,11 @@ private:
                 }
                 break;
             case HttpMethod::DELETE_:
-                PLEX_LOG_DEBUG("CurlHttpClient", "Setting up DELETE request");
+                LOG_DEBUG("CurlHttpClient", "Setting up DELETE request");
                 curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "DELETE");
                 break;
             case HttpMethod::PATCH:
-                PLEX_LOG_DEBUG("CurlHttpClient", "Setting up PATCH request with body size: " + std::to_string(request.body.length()));
+                LOG_DEBUG("CurlHttpClient", "Setting up PATCH request with body size: " + std::to_string(request.body.length()));
                 curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "PATCH");
                 if (!request.body.empty()) {
                     curl_easy_setopt(curl, CURLOPT_POSTFIELDS, request.body.c_str());
@@ -605,11 +605,11 @@ private:
                 }
                 break;
             case HttpMethod::HEAD:
-                PLEX_LOG_DEBUG("CurlHttpClient", "Setting up HEAD request");
+                LOG_DEBUG("CurlHttpClient", "Setting up HEAD request");
                 curl_easy_setopt(curl, CURLOPT_NOBODY, 1L);
                 break;
             case HttpMethod::OPTIONS:
-                PLEX_LOG_DEBUG("CurlHttpClient", "Setting up OPTIONS request");
+                LOG_DEBUG("CurlHttpClient", "Setting up OPTIONS request");
                 curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "OPTIONS");
                 break;
         }
@@ -621,28 +621,28 @@ private:
         // Add default headers
         for (const auto& [key, value] : m_config.default_headers) {
             std::string header = key + ": " + value;
-            PLEX_LOG_DEBUG("CurlHttpClient", "Adding default header: " + header);
+            LOG_DEBUG("CurlHttpClient", "Adding default header: " + header);
             header_list = curl_slist_append(header_list, header.c_str());
         }
 
         // Add request headers (override defaults)
         for (const auto& [key, value] : request.headers) {
             std::string header = key + ": " + value;
-            PLEX_LOG_DEBUG("CurlHttpClient", "Adding request header: " + header);
+            LOG_DEBUG("CurlHttpClient", "Adding request header: " + header);
             header_list = curl_slist_append(header_list, header.c_str());
         }
 
         // Add authentication headers
         if (request.bearer_token) {
             std::string auth_header = "Authorization: Bearer " + *request.bearer_token;
-            PLEX_LOG_DEBUG("CurlHttpClient", "Adding bearer token authentication header");
+            LOG_DEBUG("CurlHttpClient", "Adding bearer token authentication header");
             header_list = curl_slist_append(header_list, auth_header.c_str());
         }
 
         // Set User-Agent
         if (!m_config.user_agent.empty()) {
             std::string ua_header = "User-Agent: " + m_config.user_agent;
-            PLEX_LOG_DEBUG("CurlHttpClient", "Adding User-Agent header: " + ua_header);
+            LOG_DEBUG("CurlHttpClient", "Adding User-Agent header: " + ua_header);
             header_list = curl_slist_append(header_list, ua_header.c_str());
         }
 

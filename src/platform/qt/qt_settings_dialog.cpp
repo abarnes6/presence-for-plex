@@ -111,6 +111,28 @@ void QtSettingsDialog::setup_ui() {
     plex_form->addRow("Manual Server URLs:", m_server_urls_edit);
 
     plex_layout->addWidget(plex_group);
+
+    auto* filter_group = new QGroupBox("Media Type Filters");
+    auto* filter_layout = new QVBoxLayout(filter_group);
+
+    auto* filter_help = new QLabel("Select which media types to show in Discord Rich Presence:");
+    filter_help->setWordWrap(true);
+    QFont help_font = filter_help->font();
+    help_font.setPointSize(help_font.pointSize() - 1);
+    filter_help->setFont(help_font);
+    filter_help->setStyleSheet("color: gray;");
+    filter_layout->addWidget(filter_help);
+
+    m_enable_movies_check = new QCheckBox("Show Movies");
+    filter_layout->addWidget(m_enable_movies_check);
+
+    m_enable_tv_shows_check = new QCheckBox("Show TV Shows");
+    filter_layout->addWidget(m_enable_tv_shows_check);
+
+    m_enable_music_check = new QCheckBox("Show Music");
+    filter_layout->addWidget(m_enable_music_check);
+
+    plex_layout->addWidget(filter_group);
     plex_layout->addStretch();
 
     tab_widget->addTab(plex_widget, "Plex");
@@ -132,9 +154,9 @@ void QtSettingsDialog::setup_ui() {
 
     auto* tmdb_help = new QLabel("TMDB provides enhanced metadata and artwork for movies and TV shows.");
     tmdb_help->setWordWrap(true);
-    QFont help_font = tmdb_help->font();
-    help_font.setPointSize(help_font.pointSize() - 1);
-    tmdb_help->setFont(help_font);
+    QFont tmdb_help_font = tmdb_help->font();
+    tmdb_help_font.setPointSize(tmdb_help_font.pointSize() - 1);
+    tmdb_help->setFont(tmdb_help_font);
     tmdb_help->setStyleSheet("color: gray;");
     tmdb_layout->addWidget(tmdb_help);
 
@@ -148,7 +170,9 @@ void QtSettingsDialog::setup_ui() {
 
     auto* jikan_help = new QLabel("Jikan provides anime metadata from MyAnimeList. No API key required.");
     jikan_help->setWordWrap(true);
-    jikan_help->setFont(help_font);
+    QFont jikan_help_font = jikan_help->font();
+    jikan_help_font.setPointSize(jikan_help_font.pointSize() - 1);
+    jikan_help->setFont(jikan_help_font);
     jikan_help->setStyleSheet("color: gray;");
     jikan_layout->addWidget(jikan_help);
 
@@ -233,14 +257,18 @@ void QtSettingsDialog::load_config(const core::ApplicationConfig& config) {
     m_details_format_edit->setText(QString::fromStdString(config.presence.discord.details_format));
     m_state_format_edit->setText(QString::fromStdString(config.presence.discord.state_format));
 
-    m_plex_enabled_check->setChecked(config.media.enabled);
-    m_auto_discover_check->setChecked(config.media.auto_discover);
-    m_poll_interval_spin->setValue(static_cast<int>(config.media.poll_interval.count()));
-    m_timeout_spin->setValue(static_cast<int>(config.media.timeout.count()));
+    m_plex_enabled_check->setChecked(config.media_services.plex.enabled);
+    m_auto_discover_check->setChecked(config.media_services.plex.auto_discover);
+    m_poll_interval_spin->setValue(static_cast<int>(config.media_services.plex.poll_interval.count()));
+    m_timeout_spin->setValue(static_cast<int>(config.media_services.plex.timeout.count()));
 
-    if (!config.media.server_urls.empty()) {
+    m_enable_movies_check->setChecked(config.media_services.plex.enable_movies);
+    m_enable_tv_shows_check->setChecked(config.media_services.plex.enable_tv_shows);
+    m_enable_music_check->setChecked(config.media_services.plex.enable_music);
+
+    if (!config.media_services.plex.server_urls.empty()) {
         QString urls;
-        for (const auto& url : config.media.server_urls) {
+        for (const auto& url : config.media_services.plex.server_urls) {
             urls += QString::fromStdString(url) + "\n";
         }
         m_server_urls_edit->setPlainText(urls.trimmed());
@@ -266,19 +294,23 @@ core::ApplicationConfig QtSettingsDialog::get_config() const {
     config.presence.discord.details_format = m_details_format_edit->text().toStdString();
     config.presence.discord.state_format = m_state_format_edit->text().toStdString();
 
-    config.media.enabled = m_plex_enabled_check->isChecked();
-    config.media.auto_discover = m_auto_discover_check->isChecked();
-    config.media.poll_interval = std::chrono::seconds(m_poll_interval_spin->value());
-    config.media.timeout = std::chrono::seconds(m_timeout_spin->value());
+    config.media_services.plex.enabled = m_plex_enabled_check->isChecked();
+    config.media_services.plex.auto_discover = m_auto_discover_check->isChecked();
+    config.media_services.plex.poll_interval = std::chrono::seconds(m_poll_interval_spin->value());
+    config.media_services.plex.timeout = std::chrono::seconds(m_timeout_spin->value());
 
-    config.media.server_urls.clear();
+    config.media_services.plex.enable_movies = m_enable_movies_check->isChecked();
+    config.media_services.plex.enable_tv_shows = m_enable_tv_shows_check->isChecked();
+    config.media_services.plex.enable_music = m_enable_music_check->isChecked();
+
+    config.media_services.plex.server_urls.clear();
     QString urls_text = m_server_urls_edit->toPlainText();
     if (!urls_text.isEmpty()) {
         QStringList urls = urls_text.split('\n', Qt::SkipEmptyParts);
         for (const auto& url : urls) {
             QString trimmed = url.trimmed();
             if (!trimmed.isEmpty()) {
-                config.media.server_urls.push_back(trimmed.toStdString());
+                config.media_services.plex.server_urls.push_back(trimmed.toStdString());
             }
         }
     }
@@ -322,7 +354,7 @@ void QtSettingsDialog::on_reset_defaults() {
 void QtSettingsDialog::validate_inputs() {
     QString client_id = m_discord_client_id_edit->text().trimmed();
     if (client_id.isEmpty()) {
-        PLEX_LOG_WARNING("SettingsDialog", "Discord client ID is empty, using default");
+        LOG_WARNING("SettingsDialog", "Discord client ID is empty, using default");
         m_discord_client_id_edit->setText("1359742002618564618");
     }
 }

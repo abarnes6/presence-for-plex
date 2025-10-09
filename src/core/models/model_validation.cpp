@@ -72,8 +72,8 @@ std::expected<void, core::ValidationError> PresenceServiceConfig::validate() con
     return {};
 }
 
-// MediaServiceConfig validation
-std::expected<void, core::ValidationError> MediaServiceConfig::validate() const {
+// PlexServiceConfig validation
+std::expected<void, core::ValidationError> PlexServiceConfig::validate() const {
     // Poll interval should be within configured limits
     if (poll_interval < ConfigLimits::MIN_POLL_INTERVAL ||
         poll_interval > ConfigLimits::MAX_POLL_INTERVAL) {
@@ -89,20 +89,28 @@ std::expected<void, core::ValidationError> MediaServiceConfig::validate() const 
     return {};
 }
 
+// MediaServicesConfig validation
+std::expected<void, core::ValidationError> MediaServicesConfig::validate() const {
+    auto plex_result = plex.validate();
+    if (!plex_result) {
+        return plex_result;
+    }
+
+    return {};
+}
+
 // ApplicationConfig validation
 std::expected<void, core::ValidationError> ApplicationConfig::validate() const {
-    // Validate sub-configs
     auto presence_result = presence.validate();
     if (!presence_result) {
         return presence_result;
     }
 
-    auto media_result = media.validate();
-    if (!media_result) {
-        return media_result;
+    auto media_services_result = media_services.validate();
+    if (!media_services_result) {
+        return media_services_result;
     }
 
-    // Log level enum is always valid by design
     return {};
 }
 

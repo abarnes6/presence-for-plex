@@ -24,10 +24,10 @@ std::expected<bool, core::PlexError> SessionValidator::validate_session_user(
     const core::SessionKey& session_key,
     const std::string& target_username) {
 
-    PLEX_LOG_DEBUG("SessionValidator", "validate_session_user() called for session: " + session_key.get() + ", target: " + target_username);
+    LOG_DEBUG("SessionValidator", "validate_session_user() called for session: " + session_key.get() + ", target: " + target_username);
 
     if (target_username.empty()) {
-        PLEX_LOG_DEBUG("SessionValidator", "No target username specified, allowing all sessions");
+        LOG_DEBUG("SessionValidator", "No target username specified, allowing all sessions");
         return true; // No filtering required
     }
 
@@ -37,7 +37,7 @@ std::expected<bool, core::PlexError> SessionValidator::validate_session_user(
     }
 
     bool is_valid = username_result.value() == target_username;
-    PLEX_LOG_DEBUG("SessionValidator", "Session " + session_key.get() +
+    LOG_DEBUG("SessionValidator", "Session " + session_key.get() +
                    " user validation: " + (is_valid ? "PASS" : "FAIL") +
                    " (user: " + username_result.value() + ", target: " + target_username + ")");
 
@@ -53,11 +53,11 @@ std::expected<std::string, core::PlexError> SessionValidator::fetch_session_user
     std::string cache_key = server_uri + session_key.get();
     auto cached_username = m_cache_manager->get_cached_session_user(cache_key);
     if (cached_username.has_value()) {
-        PLEX_LOG_DEBUG("SessionValidator", "Using cached username for session: " + session_key.get());
+        LOG_DEBUG("SessionValidator", "Using cached username for session: " + session_key.get());
         return cached_username.value();
     }
 
-    PLEX_LOG_DEBUG("SessionValidator", "Fetching username for session: " + session_key.get());
+    LOG_DEBUG("SessionValidator", "Fetching username for session: " + session_key.get());
 
     std::string url = server_uri + SESSION_ENDPOINT;
     auto headers_map = get_standard_headers(access_token);
@@ -65,7 +65,7 @@ std::expected<std::string, core::PlexError> SessionValidator::fetch_session_user
 
     auto response = m_http_client->get(url, headers);
     if (!response || !response->is_success()) {
-        PLEX_LOG_ERROR("SessionValidator", "Failed to fetch session information");
+        LOG_ERROR("SessionValidator", "Failed to fetch session information");
         return std::unexpected<core::PlexError>(core::PlexError::NetworkError);
     }
 
@@ -73,18 +73,18 @@ std::expected<std::string, core::PlexError> SessionValidator::fetch_session_user
         auto json_response = json::parse(response->body);
 
         if (!json_response.contains("MediaContainer")) {
-            PLEX_LOG_ERROR("SessionValidator", "Invalid session response format");
+            LOG_ERROR("SessionValidator", "Invalid session response format");
             return std::unexpected<core::PlexError>(core::PlexError::InvalidResponse);
         }
 
         if (json_response["MediaContainer"].contains("size") &&
             json_response["MediaContainer"]["size"].get<int>() == 0) {
-            PLEX_LOG_DEBUG("SessionValidator", "No active sessions found");
+            LOG_DEBUG("SessionValidator", "No active sessions found");
             return std::unexpected<core::PlexError>(core::PlexError::InvalidResponse);
         }
 
         if (!json_response["MediaContainer"].contains("Metadata")) {
-            PLEX_LOG_DEBUG("SessionValidator", "No session metadata found");
+            LOG_DEBUG("SessionValidator", "No session metadata found");
             return std::unexpected<core::PlexError>(core::PlexError::InvalidResponse);
         }
 
@@ -96,7 +96,7 @@ std::expected<std::string, core::PlexError> SessionValidator::fetch_session_user
                 // Extract user info
                 if (session.contains("User") && session["User"].contains("title")) {
                     std::string username = session["User"]["title"].get<std::string>();
-                    PLEX_LOG_INFO("SessionValidator", "Found user for session " + session_key.get() + ": " + username);
+                    LOG_INFO("SessionValidator", "Found user for session " + session_key.get() + ": " + username);
 
                     // Cache the result
                     m_cache_manager->cache_session_user(cache_key, username);
@@ -106,11 +106,11 @@ std::expected<std::string, core::PlexError> SessionValidator::fetch_session_user
             }
         }
 
-        PLEX_LOG_WARNING("SessionValidator", "Session not found or no user info: " + session_key.get());
+        LOG_WARNING("SessionValidator", "Session not found or no user info: " + session_key.get());
         return std::unexpected<core::PlexError>(core::PlexError::InvalidResponse);
 
     } catch (const std::exception& e) {
-        PLEX_LOG_ERROR("SessionValidator", "Error parsing session data: " + std::string(e.what()));
+        LOG_ERROR("SessionValidator", "Error parsing session data: " + std::string(e.what()));
         return std::unexpected<core::PlexError>(core::PlexError::ParseError);
     }
 }
@@ -136,7 +136,7 @@ std::map<std::string, std::string> SessionValidator::get_standard_headers(const 
 PlexSessionManager::PlexSessionManager()
     : m_target_username("") {
 
-    PLEX_LOG_INFO("PlexSessionManager", "Creating session manager");
+    LOG_INFO("PlexSessionManager", "Creating session manager");
 }
 
 void PlexSessionManager::set_dependencies(
@@ -150,26 +150,26 @@ void PlexSessionManager::set_dependencies(
 
     m_session_validator = std::make_unique<SessionValidator>(http_client, cache_manager);
 
-    PLEX_LOG_DEBUG("PlexSessionManager", "Dependencies injected");
+    LOG_DEBUG("PlexSessionManager", "Dependencies injected");
 }
 
 void PlexSessionManager::update_server_connection(
     const core::ServerId& server_id,
     const ServerConnectionInfo& connection_info) {
 
-    PLEX_LOG_DEBUG("PlexSessionManager", "update_server_connection() called for server: " + server_id.get() + ", URI: " + connection_info.preferred_uri);
+    LOG_DEBUG("PlexSessionManager", "update_server_connection() called for server: " + server_id.get() + ", URI: " + connection_info.preferred_uri);
 
     std::lock_guard<std::mutex> lock(m_sessions_mutex);
     m_server_connections[server_id] = connection_info;
 
-    PLEX_LOG_DEBUG("PlexSessionManager", "Updated connection info for server: " + server_id.get());
+    LOG_DEBUG("PlexSessionManager", "Updated connection info for server: " + server_id.get());
 }
 
 void PlexSessionManager::process_play_session_notification(
     const core::ServerId& server_id,
     const nlohmann::json& notification) {
 
-    PLEX_LOG_DEBUG("PlexSessionManager", "Processing PlaySessionStateNotification");
+    LOG_DEBUG("PlexSessionManager", "Processing PlaySessionStateNotification");
 
     // Extract essential session information
     std::string session_key_str = notification.value("sessionKey", "");
@@ -178,12 +178,12 @@ void PlexSessionManager::process_play_session_notification(
     int64_t view_offset = notification.value("viewOffset", 0);
 
     if (session_key_str.empty()) {
-        PLEX_LOG_WARNING("PlexSessionManager", "Session notification missing sessionKey");
+        LOG_WARNING("PlexSessionManager", "Session notification missing sessionKey");
         return;
     }
 
     core::SessionKey session_key(session_key_str);
-    PLEX_LOG_DEBUG("PlexSessionManager", "Processing session " + session_key.get() + " state: " + state);
+    LOG_DEBUG("PlexSessionManager", "Processing session " + session_key.get() + " state: " + state);
 
     std::lock_guard<std::mutex> lock(m_sessions_mutex);
 
@@ -193,7 +193,7 @@ void PlexSessionManager::process_play_session_notification(
         // Remove the session if it exists
         auto session_it = m_active_sessions.find(session_key);
         if (session_it != m_active_sessions.end()) {
-            PLEX_LOG_INFO("PlexSessionManager", "Removing stopped session: " + session_key.get());
+            LOG_INFO("PlexSessionManager", "Removing stopped session: " + session_key.get());
             m_active_sessions.erase(session_it);
 
             // Notify callback about state change if this was the current session
@@ -206,11 +206,11 @@ void PlexSessionManager::process_play_session_notification(
 }
 
 std::optional<core::MediaInfo> PlexSessionManager::get_current_playback() const {
-    PLEX_LOG_DEBUG("PlexSessionManager", "get_current_playback() called");
+    LOG_DEBUG("PlexSessionManager", "get_current_playback() called");
     std::lock_guard<std::mutex> lock(m_sessions_mutex);
 
     if (m_active_sessions.empty()) {
-        PLEX_LOG_DEBUG("PlexSessionManager", "No active sessions");
+        LOG_DEBUG("PlexSessionManager", "No active sessions");
         return std::nullopt;
     }
 
@@ -219,14 +219,14 @@ std::optional<core::MediaInfo> PlexSessionManager::get_current_playback() const 
         return std::nullopt;
     }
 
-    PLEX_LOG_DEBUG("PlexSessionManager", "Current playback: " + current.title +
+    LOG_DEBUG("PlexSessionManager", "Current playback: " + current.title +
                    " (state: " + std::to_string(static_cast<int>(current.state)) + ")");
 
     return current;
 }
 
 std::expected<std::vector<core::MediaInfo>, core::PlexError> PlexSessionManager::get_active_sessions() const {
-    PLEX_LOG_DEBUG("PlexSessionManager", "get_active_sessions() called, total sessions in map: " + std::to_string(m_active_sessions.size()));
+    LOG_DEBUG("PlexSessionManager", "get_active_sessions() called, total sessions in map: " + std::to_string(m_active_sessions.size()));
     std::lock_guard<std::mutex> lock(m_sessions_mutex);
 
     std::vector<core::MediaInfo> sessions;
@@ -242,9 +242,9 @@ std::expected<std::vector<core::MediaInfo>, core::PlexError> PlexSessionManager:
 }
 
 void PlexSessionManager::set_target_username(const std::string& username) {
-    PLEX_LOG_DEBUG("PlexSessionManager", "set_target_username() called with: " + username);
+    LOG_DEBUG("PlexSessionManager", "set_target_username() called with: " + username);
     m_target_username = username;
-    PLEX_LOG_INFO("PlexSessionManager", "Target username set to: " + username);
+    LOG_INFO("PlexSessionManager", "Target username set to: " + username);
 }
 
 std::string PlexSessionManager::get_target_username() const {
@@ -263,17 +263,17 @@ void PlexSessionManager::clear_all() {
     m_server_connections.clear();
     m_last_reported_state.reset();
 
-    PLEX_LOG_INFO("PlexSessionManager", "All sessions cleared");
+    LOG_INFO("PlexSessionManager", "All sessions cleared");
 }
 
 void PlexSessionManager::remove_sessions_for_server(const core::ServerId& server_id) {
-    PLEX_LOG_DEBUG("PlexSessionManager", "remove_sessions_for_server() called for: " + server_id.get());
+    LOG_DEBUG("PlexSessionManager", "remove_sessions_for_server() called for: " + server_id.get());
     std::lock_guard<std::mutex> lock(m_sessions_mutex);
 
     auto it = m_active_sessions.begin();
     while (it != m_active_sessions.end()) {
         if (it->second.server_id.get() == server_id.get()) {
-            PLEX_LOG_DEBUG("PlexSessionManager", "Removing session for server " + server_id.get() + ": " + it->first.get());
+            LOG_DEBUG("PlexSessionManager", "Removing session for server " + server_id.get() + ": " + it->first.get());
             it = m_active_sessions.erase(it);
         } else {
             ++it;
@@ -292,14 +292,14 @@ void PlexSessionManager::update_session_info(
 
     // Check if we should process this session (user filtering)
     if (!should_process_session(server_id, session_key)) {
-        PLEX_LOG_DEBUG("PlexSessionManager", "Skipping session (user filter): " + session_key.get());
+        LOG_DEBUG("PlexSessionManager", "Skipping session (user filter): " + session_key.get());
         return;
     }
 
     // Get server connection info
     auto server_it = m_server_connections.find(server_id);
     if (server_it == m_server_connections.end()) {
-        PLEX_LOG_ERROR("PlexSessionManager", "No connection info for server: " + server_id.get());
+        LOG_ERROR("PlexSessionManager", "No connection info for server: " + server_id.get());
         return;
     }
 
@@ -312,7 +312,7 @@ void PlexSessionManager::update_session_info(
     if (has_existing_session) {
         // Update existing session
         info = m_active_sessions[session_key];
-        PLEX_LOG_DEBUG("PlexSessionManager", "Updating existing session: " + session_key.get());
+        LOG_DEBUG("PlexSessionManager", "Updating existing session: " + session_key.get());
     } else if (m_media_fetcher) {
         // Fetch new media details
         auto fetch_result = m_media_fetcher->fetch_media_details(
@@ -322,14 +322,14 @@ void PlexSessionManager::update_session_info(
         );
 
         if (!fetch_result.has_value()) {
-            PLEX_LOG_ERROR("PlexSessionManager", "Failed to fetch media details for session: " + session_key.get());
+            LOG_ERROR("PlexSessionManager", "Failed to fetch media details for session: " + session_key.get());
             return;
         }
 
         info = fetch_result.value();
-        PLEX_LOG_DEBUG("PlexSessionManager", "Fetched new media info for session: " + session_key.get());
+        LOG_DEBUG("PlexSessionManager", "Fetched new media info for session: " + session_key.get());
     } else {
-        PLEX_LOG_ERROR("PlexSessionManager", "No media fetcher available");
+        LOG_ERROR("PlexSessionManager", "No media fetcher available");
         return;
     }
 
@@ -344,7 +344,7 @@ void PlexSessionManager::update_session_info(
     bool is_new_session = !has_existing_session;
     m_active_sessions[session_key] = info;
 
-    PLEX_LOG_INFO("PlexSessionManager",
+    LOG_INFO("PlexSessionManager",
                   (is_new_session ? "Added" : "Updated") + std::string(" session ") + session_key.get() +
                   ": " + info.title + " (" + std::to_string(info.progress) + "/" +
                   std::to_string(info.duration) + "s)");
@@ -382,20 +382,20 @@ bool PlexSessionManager::should_process_session(
     // Get server connection info
     auto server_it = m_server_connections.find(server_id);
     if (server_it == m_server_connections.end()) {
-        PLEX_LOG_WARNING("PlexSessionManager", "No connection info found for server: " + server_id.get());
+        LOG_WARNING("PlexSessionManager", "No connection info found for server: " + server_id.get());
         return false;
     }
 
     const auto& connection_info = server_it->second;
 
-    PLEX_LOG_DEBUG("PlexSessionManager", "Checking session " + session_key.get() +
+    LOG_DEBUG("PlexSessionManager", "Checking session " + session_key.get() +
                    " for server " + server_id.get() +
                    " (owned: " + std::to_string(connection_info.owned) +
                    ", target_user: " + m_target_username + ")");
 
     // For owned servers, validate the user
     if (connection_info.owned && m_session_validator) {
-        PLEX_LOG_DEBUG("PlexSessionManager", "Validating session user for owned server");
+        LOG_DEBUG("PlexSessionManager", "Validating session user for owned server");
         auto validation_result = m_session_validator->validate_session_user(
             connection_info.preferred_uri,
             connection_info.access_token,
@@ -404,7 +404,7 @@ bool PlexSessionManager::should_process_session(
         );
 
         if (!validation_result.has_value()) {
-            PLEX_LOG_DEBUG("PlexSessionManager", "Session validation failed: " + session_key.get());
+            LOG_DEBUG("PlexSessionManager", "Session validation failed: " + session_key.get());
             return false;
         }
 
@@ -413,7 +413,7 @@ bool PlexSessionManager::should_process_session(
     }
 
     // For shared servers, process all sessions
-    PLEX_LOG_DEBUG("PlexSessionManager", "Processing all sessions for shared server");
+    LOG_DEBUG("PlexSessionManager", "Processing all sessions for shared server");
     return true;
 }
 

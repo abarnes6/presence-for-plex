@@ -151,21 +151,20 @@ inline LogLevel log_level_from_string(const std::string& str) {
 }
 
 // Convenience macros
-#define PLEX_LOG_DEBUG(component, message)                                 \
+#define LOG_DEBUG(component, message)                                      \
   presence_for_plex::utils::LoggerManager::get_instance().debug(component, \
                                                                 message)
 
-#define PLEX_LOG_INFO(component, message)                                 \
-  presence_for_plex::utils::LoggerManager::get_instance().info(component, \
+#define LOG_INFO(component, message)                                       \
+  presence_for_plex::utils::LoggerManager::get_instance().info(component,  \
                                                                message)
 
-#define PLEX_LOG_WARNING(component, message)                                 \
+#define LOG_WARNING(component, message)                                    \
   presence_for_plex::utils::LoggerManager::get_instance().warning(component, \
                                                                   message)
 
-#define PLEX_LOG_ERROR(component, message)                                 \
+#define LOG_ERROR(component, message)                                      \
   presence_for_plex::utils::LoggerManager::get_instance().error(component, \
                                                                 message)
-
 
 }  // namespace presence_for_plex::utils

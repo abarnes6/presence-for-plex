@@ -7,11 +7,11 @@
 namespace presence_for_plex::platform::qt {
 
 QtWindowManager::QtWindowManager() {
-    PLEX_LOG_DEBUG(m_component_name, "QtWindowManager constructed");
+    LOG_DEBUG(m_component_name, "QtWindowManager constructed");
 }
 
 QtWindowManager::~QtWindowManager() {
-    PLEX_LOG_DEBUG(m_component_name, "QtWindowManager destructor called");
+    LOG_DEBUG(m_component_name, "QtWindowManager destructor called");
 }
 
 std::vector<std::string> QtWindowManager::find_windows_by_title(const std::string& title) const {
@@ -59,7 +59,7 @@ std::expected<void, UiError> QtWindowManager::bring_to_front(const std::string& 
     window->raise();
     window->requestActivate();
 
-    PLEX_LOG_DEBUG(m_component_name, "Window brought to front: " + window_id);
+    LOG_DEBUG(m_component_name, "Window brought to front: " + window_id);
     return {};
 }
 
@@ -71,7 +71,7 @@ std::expected<void, UiError> QtWindowManager::minimize_window(const std::string&
 
     window->showMinimized();
 
-    PLEX_LOG_DEBUG(m_component_name, "Window minimized: " + window_id);
+    LOG_DEBUG(m_component_name, "Window minimized: " + window_id);
     return {};
 }
 
@@ -83,7 +83,7 @@ std::expected<void, UiError> QtWindowManager::maximize_window(const std::string&
 
     window->showMaximized();
 
-    PLEX_LOG_DEBUG(m_component_name, "Window maximized: " + window_id);
+    LOG_DEBUG(m_component_name, "Window maximized: " + window_id);
     return {};
 }
 
@@ -95,7 +95,7 @@ std::expected<void, UiError> QtWindowManager::close_window(const std::string& wi
 
     window->close();
 
-    PLEX_LOG_DEBUG(m_component_name, "Window closed: " + window_id);
+    LOG_DEBUG(m_component_name, "Window closed: " + window_id);
     return {};
 }
 

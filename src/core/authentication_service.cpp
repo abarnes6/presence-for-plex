@@ -12,7 +12,7 @@ class AuthenticationServiceImpl : public AuthenticationService {
 public:
     explicit AuthenticationServiceImpl(const std::filesystem::path& storage_path)
         : m_storage_path(storage_path.empty() ? get_default_auth_path() : storage_path) {
-        PLEX_LOG_INFO("AuthService", "Initializing authentication service");
+        LOG_INFO("AuthService", "Initializing authentication service");
         ensure_storage_directory();
         load();
     }
@@ -86,12 +86,12 @@ private:
         auto dir = m_storage_path.parent_path();
         if (!std::filesystem::exists(dir)) {
             std::filesystem::create_directories(dir);
-            PLEX_LOG_DEBUG("AuthService", "Created storage directory: " + dir.string());
+            LOG_DEBUG("AuthService", "Created storage directory: " + dir.string());
         }
     }
 
     void generate_client_identifier() {
-        PLEX_LOG_INFO("AuthService", "Generating new Plex client identifier");
+        LOG_INFO("AuthService", "Generating new Plex client identifier");
         std::string id = utils::generate_uuid_v4();
 
         {
@@ -100,7 +100,7 @@ private:
         }
 
         save();
-        PLEX_LOG_INFO("AuthService", "Generated client identifier");
+        LOG_INFO("AuthService", "Generated client identifier");
     }
 
     void save_internal() {
@@ -120,20 +120,20 @@ private:
 
             std::ofstream file(m_storage_path);
             if (!file) {
-                PLEX_LOG_ERROR("AuthService", "Failed to open auth file for writing");
+                LOG_ERROR("AuthService", "Failed to open auth file for writing");
                 return;
             }
 
             file << node;
-            PLEX_LOG_DEBUG("AuthService", "Saved authentication data");
+            LOG_DEBUG("AuthService", "Saved authentication data");
         } catch (const std::exception& e) {
-            PLEX_LOG_ERROR("AuthService", "Error saving auth data: " + std::string(e.what()));
+            LOG_ERROR("AuthService", "Error saving auth data: " + std::string(e.what()));
         }
     }
 
     void load_internal() {
         if (!std::filesystem::exists(m_storage_path)) {
-            PLEX_LOG_DEBUG("AuthService", "Auth file does not exist, using defaults");
+            LOG_DEBUG("AuthService", "Auth file does not exist, using defaults");
             return;
         }
 
@@ -154,9 +154,9 @@ private:
                 }
             }
 
-            PLEX_LOG_DEBUG("AuthService", "Loaded authentication data");
+            LOG_DEBUG("AuthService", "Loaded authentication data");
         } catch (const std::exception& e) {
-            PLEX_LOG_ERROR("AuthService", "Error loading auth data: " + std::string(e.what()));
+            LOG_ERROR("AuthService", "Error loading auth data: " + std::string(e.what()));
         }
     }
 

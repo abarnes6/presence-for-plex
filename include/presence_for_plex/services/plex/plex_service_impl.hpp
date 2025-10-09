@@ -71,6 +71,9 @@ private:
     // Handle SSE events from connection manager
     void handle_sse_event(const core::ServerId& server_id, const std::string& event);
 
+    // Media filtering based on configuration
+    bool is_media_type_enabled(core::MediaType type) const;
+
     // Injected dependencies
     std::shared_ptr<PlexAuthenticator> m_authenticator;
     std::shared_ptr<PlexCacheManager> m_cache_manager;

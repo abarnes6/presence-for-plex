@@ -16,7 +16,7 @@ namespace {
 std::expected<core::ApplicationConfig, core::ConfigError>
 YamlConfigHelper::load_from_file(const std::filesystem::path& path) {
     if (!std::filesystem::exists(path)) {
-        PLEX_LOG_WARNING("YamlConfig", "File not found: " + path.string());
+        LOG_WARNING("YamlConfig", "File not found: " + path.string());
         return std::unexpected(core::ConfigError::FileNotFound);
     }
 
@@ -24,7 +24,7 @@ YamlConfigHelper::load_from_file(const std::filesystem::path& path) {
         YAML::Node node = YAML::LoadFile(path.string());
         return from_yaml(node);
     } catch (const std::exception& e) {
-        PLEX_LOG_ERROR("YamlConfig", "Parse error: " + std::string(e.what()));
+        LOG_ERROR("YamlConfig", "Parse error: " + std::string(e.what()));
         return std::unexpected(core::ConfigError::InvalidFormat);
     }
 }
@@ -42,14 +42,14 @@ YamlConfigHelper::save_to_file(const core::ApplicationConfig& config, const std:
         YAML::Node node = to_yaml(config);
         std::ofstream file(path);
         if (!file) {
-            PLEX_LOG_ERROR("YamlConfig", "Cannot open file for writing: " + path.string());
+            LOG_ERROR("YamlConfig", "Cannot open file for writing: " + path.string());
             return std::unexpected(core::ConfigError::PermissionDenied);
         }
 
         file << node;
         return {};
     } catch (const std::exception& e) {
-        PLEX_LOG_ERROR("YamlConfig", "Save error: " + std::string(e.what()));
+        LOG_ERROR("YamlConfig", "Save error: " + std::string(e.what()));
         return std::unexpected(core::ConfigError::InvalidFormat);
     }
 }
@@ -68,8 +68,10 @@ core::ApplicationConfig YamlConfigHelper::from_yaml(const YAML::Node& node) {
         config.presence = parse_presence_config(node["presence"] ? node["presence"] : node["discord"]);
     }
 
-    if (node["media"] || node["plex"]) {
-        config.media = parse_media_config(node["media"] ? node["media"] : node["plex"]);
+    if (node["media_services"]) {
+        config.media_services = parse_media_services_config(node["media_services"]);
+    } else if (node["plex"]) {
+        config.media_services.plex = parse_plex_config(node["plex"]);
     }
 
     if (node["tmdb"]) {
@@ -95,7 +97,7 @@ YAML::Node YamlConfigHelper::to_yaml(const core::ApplicationConfig& config) {
     node["start_at_boot"] = config.start_at_boot;
 
     merge_presence_config(node, config.presence);
-    merge_media_config(node, config.media);
+    merge_media_services_config(node, config.media_services);
 
     node["tmdb"]["access_token"] = config.tmdb_access_token;
     node["tmdb"]["enabled"] = config.enable_tmdb;
@@ -114,17 +116,7 @@ void YamlConfigHelper::merge_presence_config(YAML::Node& node, const core::Prese
     node["presence"]["discord"]["update_interval"] = config.discord.update_interval.count();
     node["presence"]["discord"]["details_format"] = config.discord.details_format;
     node["presence"]["discord"]["state_format"] = config.discord.state_format;
-}
-
-void YamlConfigHelper::merge_media_config(YAML::Node& node, const core::MediaServiceConfig& config) {
-    node["media"]["enabled"] = config.enabled;
-    node["media"]["auto_discover"] = config.auto_discover;
-    node["media"]["poll_interval"] = config.poll_interval.count();
-    node["media"]["timeout"] = config.timeout.count();
-
-    if (!config.server_urls.empty()) {
-        node["media"]["server_urls"] = config.server_urls;
-    }
+    node["presence"]["discord"]["large_image_text_format"] = config.discord.large_image_text_format;
 }
 
 core::PresenceServiceConfig YamlConfigHelper::parse_presence_config(const YAML::Node& node) {
@@ -165,12 +157,15 @@ core::PresenceServiceConfig YamlConfigHelper::parse_presence_config(const YAML::
     if (discord_node["state_format"]) {
         config.discord.state_format = discord_node["state_format"].as<std::string>();
     }
+    if (discord_node["large_image_text_format"]) {
+        config.discord.large_image_text_format = discord_node["large_image_text_format"].as<std::string>();
+    }
 
     return config;
 }
 
-core::MediaServiceConfig YamlConfigHelper::parse_media_config(const YAML::Node& node) {
-    core::MediaServiceConfig config;
+core::PlexServiceConfig YamlConfigHelper::parse_plex_config(const YAML::Node& node) {
+    core::PlexServiceConfig config;
 
     if (node["enabled"]) {
         config.enabled = node["enabled"].as<bool>();
@@ -196,6 +191,18 @@ core::MediaServiceConfig YamlConfigHelper::parse_media_config(const YAML::Node& 
         config.timeout = std::chrono::seconds(seconds);
     }
 
+    if (node["enable_movies"]) {
+        config.enable_movies = node["enable_movies"].as<bool>();
+    }
+
+    if (node["enable_tv_shows"]) {
+        config.enable_tv_shows = node["enable_tv_shows"].as<bool>();
+    }
+
+    if (node["enable_music"]) {
+        config.enable_music = node["enable_music"].as<bool>();
+    }
+
     if (node["server_urls"]) {
         for (const auto& url : node["server_urls"]) {
             config.server_urls.push_back(url.as<std::string>());
@@ -203,6 +210,40 @@ core::MediaServiceConfig YamlConfigHelper::parse_media_config(const YAML::Node& 
     }
 
     return config;
+}
+
+core::MediaServicesConfig YamlConfigHelper::parse_media_services_config(const YAML::Node& node) {
+    core::MediaServicesConfig config;
+
+    if (node["plex"]) {
+        config.plex = parse_plex_config(node["plex"]);
+    }
+
+    // Future: Parse other service configs here
+    // if (node["jellyfin"]) { config.jellyfin = parse_jellyfin_config(node["jellyfin"]); }
+
+    return config;
+}
+
+void YamlConfigHelper::merge_plex_config(YAML::Node& node, const core::PlexServiceConfig& config) {
+    node["enabled"] = config.enabled;
+    node["auto_discover"] = config.auto_discover;
+    node["poll_interval"] = config.poll_interval.count();
+    node["timeout"] = config.timeout.count();
+
+    node["enable_movies"] = config.enable_movies;
+    node["enable_tv_shows"] = config.enable_tv_shows;
+    node["enable_music"] = config.enable_music;
+
+    if (!config.server_urls.empty()) {
+        node["server_urls"] = config.server_urls;
+    }
+}
+
+void YamlConfigHelper::merge_media_services_config(YAML::Node& node, const core::MediaServicesConfig& config) {
+    YAML::Node plex_node = node["media_services"]["plex"];
+    merge_plex_config(plex_node, config.plex);
+    node["media_services"]["plex"] = plex_node;
 }
 
 } // namespace utils

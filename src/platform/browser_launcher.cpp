@@ -33,7 +33,7 @@ public:
             return std::unexpected(BrowserLaunchError::InvalidUrl);
         }
 
-        PLEX_LOG_INFO("NativeBrowserLauncher", "Opening URL: " + url);
+        LOG_INFO("NativeBrowserLauncher", "Opening URL: " + url);
 
 #ifdef _WIN32
         // Windows: Use ShellExecuteW to avoid shell injection
@@ -42,7 +42,7 @@ public:
         
         HINSTANCE result = ShellExecuteW(NULL, L"open", wurl.c_str(), NULL, NULL, SW_SHOWNORMAL);
         if ((INT_PTR)result <= 32) {
-            PLEX_LOG_ERROR("NativeBrowserLauncher", "Failed to open URL via ShellExecuteW, error code: " + std::to_string((INT_PTR)result));
+            LOG_ERROR("NativeBrowserLauncher", "Failed to open URL via ShellExecuteW, error code: " + std::to_string((INT_PTR)result));
             return std::unexpected(BrowserLaunchError::LaunchFailed);
         }
 #elif defined(__APPLE__)
@@ -62,11 +62,11 @@ public:
             } while (result == -1 && errno == EINTR);
             
             if (result == -1 || !WIFEXITED(status) || WEXITSTATUS(status) != 0) {
-                PLEX_LOG_ERROR("NativeBrowserLauncher", "Failed to open URL via 'open' command");
+                LOG_ERROR("NativeBrowserLauncher", "Failed to open URL via 'open' command");
                 return std::unexpected(BrowserLaunchError::LaunchFailed);
             }
         } else {
-            PLEX_LOG_ERROR("NativeBrowserLauncher", "Failed to fork process for opening URL");
+            LOG_ERROR("NativeBrowserLauncher", "Failed to fork process for opening URL");
             return std::unexpected(BrowserLaunchError::LaunchFailed);
         }
 #else
@@ -86,11 +86,11 @@ public:
             } while (result == -1 && errno == EINTR);
             
             if (result == -1 || !WIFEXITED(status) || WEXITSTATUS(status) != 0) {
-                PLEX_LOG_ERROR("NativeBrowserLauncher", "Failed to open URL via xdg-open");
+                LOG_ERROR("NativeBrowserLauncher", "Failed to open URL via xdg-open");
                 return std::unexpected(BrowserLaunchError::LaunchFailed);
             }
         } else {
-            PLEX_LOG_ERROR("NativeBrowserLauncher", "Failed to fork process for opening URL");
+            LOG_ERROR("NativeBrowserLauncher", "Failed to fork process for opening URL");
             return std::unexpected(BrowserLaunchError::LaunchFailed);
         }
 #endif
@@ -116,11 +116,11 @@ public:
             return std::unexpected(BrowserLaunchError::InvalidUrl);
         }
 
-        PLEX_LOG_INFO("QtBrowserLauncher", "Opening URL: " + url);
+        LOG_INFO("QtBrowserLauncher", "Opening URL: " + url);
 
         bool success = QDesktopServices::openUrl(QUrl(QString::fromStdString(url)));
         if (!success) {
-            PLEX_LOG_ERROR("QtBrowserLauncher", "Failed to open URL via QDesktopServices");
+            LOG_ERROR("QtBrowserLauncher", "Failed to open URL via QDesktopServices");
             return std::unexpected(BrowserLaunchError::LaunchFailed);
         }
 

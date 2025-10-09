@@ -33,7 +33,7 @@ PlexServiceImpl::PlexServiceImpl(
     , m_config_service(std::move(config_service))
     , m_auth_service(std::move(auth_service)) {
 
-    PLEX_LOG_INFO("PlexService", "Creating refactored Plex service with injected dependencies");
+    LOG_INFO("PlexService", "Creating refactored Plex service with injected dependencies");
 
     // Set up SSE event callback
     m_connection_manager->set_sse_event_callback(
@@ -61,7 +61,7 @@ PlexServiceImpl::PlexServiceImpl(
                 }
 
                 m_session_manager->update_server_connection(server_id, conn_info);
-                PLEX_LOG_DEBUG("PlexService", "Updated session manager with connected URI for server: " + server_id.get());
+                LOG_DEBUG("PlexService", "Updated session manager with connected URI for server: " + server_id.get());
             }
         }
     );
@@ -83,21 +83,21 @@ PlexServiceImpl::~PlexServiceImpl() {
     if (m_running) {
         stop();
     }
-    PLEX_LOG_INFO("PlexService", "Plex service destroyed");
+    LOG_INFO("PlexService", "Plex service destroyed");
 }
 
 std::expected<void, core::PlexError> PlexServiceImpl::start() {
-    PLEX_LOG_INFO("PlexService", "Starting Plex service");
+    LOG_INFO("PlexService", "Starting Plex service");
 
     if (m_running) {
-        PLEX_LOG_WARNING("PlexService", "Service already running");
+        LOG_WARNING("PlexService", "Service already running");
         return {};
     }
 
     // Ensure authentication before starting connections
     auto auth_result = m_authenticator->ensure_authenticated();
     if (!auth_result) {
-        PLEX_LOG_ERROR("PlexService", "Failed to authenticate with Plex");
+        LOG_ERROR("PlexService", "Failed to authenticate with Plex");
         return std::unexpected<core::PlexError>(auth_result.error());
     }
 
@@ -107,12 +107,12 @@ std::expected<void, core::PlexError> PlexServiceImpl::start() {
     auto username_result = m_authenticator->fetch_username(token);
     if (username_result) {
         m_plex_username = username_result.value();
-        PLEX_LOG_INFO("PlexService", "Logged in as: " + m_plex_username);
+        LOG_INFO("PlexService", "Logged in as: " + m_plex_username);
 
         // Set the target username in the session manager for filtering
         if (m_session_manager) {
             m_session_manager->set_target_username(m_plex_username);
-            PLEX_LOG_DEBUG("PlexService", "Set target username for session filtering: " + m_plex_username);
+            LOG_DEBUG("PlexService", "Set target username for session filtering: " + m_plex_username);
         }
     }
 
@@ -120,21 +120,21 @@ std::expected<void, core::PlexError> PlexServiceImpl::start() {
     // (no longer loading from config)
     auto discovery_result = discover_servers(token.get());
     if (!discovery_result) {
-        PLEX_LOG_WARNING("PlexService", "Failed to discover servers, continuing anyway");
+        LOG_WARNING("PlexService", "Failed to discover servers, continuing anyway");
     }
 
     // No longer saving server configurations
 
     // Start all connections - servers will self-manage and connect asynchronously
     m_connection_manager->start_all_connections();
-    PLEX_LOG_INFO("PlexService", "Server connections initiated - they will connect asynchronously");
+    LOG_INFO("PlexService", "Server connections initiated - they will connect asynchronously");
 
     m_running = true;
     return {};
 }
 
 void PlexServiceImpl::stop() {
-    PLEX_LOG_INFO("PlexService", "Stopping Plex service");
+    LOG_INFO("PlexService", "Stopping Plex service");
 
     m_running = false;
 
@@ -172,49 +172,70 @@ void PlexServiceImpl::set_event_bus(std::shared_ptr<core::EventBus> bus) {
 
 
 std::expected<core::MediaInfo, core::PlexError> PlexServiceImpl::get_current_media() const {
-    PLEX_LOG_DEBUG("PlexService", "get_current_media() called");
+    LOG_DEBUG("PlexService", "get_current_media() called");
 
     if (!m_running) {
-        PLEX_LOG_DEBUG("PlexService", "get_current_media() failed - service not running");
+        LOG_DEBUG("PlexService", "get_current_media() failed - service not running");
         return std::unexpected<core::PlexError>(core::PlexError::NotInitialized);
     }
 
     auto current = m_session_manager->get_current_playback();
     if (current.has_value()) {
-        PLEX_LOG_DEBUG("PlexService", "get_current_media() returning current playback: " + current.value().title);
+        // Check if this media type is enabled in configuration
+        if (!is_media_type_enabled(current.value().type)) {
+            LOG_DEBUG("PlexService", "get_current_media() media type filtered out: " + current.value().title);
+            core::MediaInfo stopped_info;
+            stopped_info.state = core::PlaybackState::Stopped;
+            return stopped_info;
+        }
+
+        LOG_DEBUG("PlexService", "get_current_media() returning current playback: " + current.value().title);
         return current.value();
     }
 
-    PLEX_LOG_DEBUG("PlexService", "get_current_media() no active playback, returning stopped state");
+    LOG_DEBUG("PlexService", "get_current_media() no active playback, returning stopped state");
     core::MediaInfo stopped_info;
     stopped_info.state = core::PlaybackState::Stopped;
     return stopped_info;
 }
 
 std::expected<std::vector<core::MediaInfo>, core::PlexError> PlexServiceImpl::get_active_sessions() const {
-    PLEX_LOG_DEBUG("PlexService", "get_active_sessions() called");
+    LOG_DEBUG("PlexService", "get_active_sessions() called");
 
     if (!m_running) {
-        PLEX_LOG_DEBUG("PlexService", "get_active_sessions() failed - service not running");
+        LOG_DEBUG("PlexService", "get_active_sessions() failed - service not running");
         return std::unexpected<core::PlexError>(core::PlexError::NotInitialized);
     }
 
     auto sessions = m_session_manager->get_active_sessions();
     if (sessions.has_value()) {
-        PLEX_LOG_DEBUG("PlexService", "get_active_sessions() returning " + std::to_string(sessions.value().size()) + " sessions");
+        // Filter sessions based on media type configuration
+        std::vector<core::MediaInfo> filtered_sessions;
+        for (const auto& session : sessions.value()) {
+            if (is_media_type_enabled(session.type)) {
+                filtered_sessions.push_back(session);
+            } else {
+                LOG_DEBUG("PlexService", "get_active_sessions() filtered out session: " + session.title);
+            }
+        }
+
+        LOG_DEBUG("PlexService", "get_active_sessions() returning " +
+                      std::to_string(filtered_sessions.size()) + " sessions (filtered from " +
+                      std::to_string(sessions.value().size()) + ")");
+        return filtered_sessions;
     } else {
-        PLEX_LOG_DEBUG("PlexService", "get_active_sessions() failed to get sessions from session manager");
+        LOG_DEBUG("PlexService", "get_active_sessions() failed to get sessions from session manager");
     }
     return sessions;
 }
 
 std::expected<void, core::PlexError> PlexServiceImpl::add_server(std::unique_ptr<core::PlexServer> server) {
     if (!server) {
-        PLEX_LOG_ERROR("PlexService", "add_server() called with null server");
+        LOG_ERROR("PlexService", "add_server() called with null server");
         return std::unexpected<core::PlexError>(core::PlexError::InvalidResponse);
     }
 
-    PLEX_LOG_DEBUG("PlexService", "add_server() called for server: " + server->name + " (" + server->client_identifier.get() + ")");
+    LOG_DEBUG("PlexService", "add_server() called for server: " + server->name + " (" + server->client_identifier.get() + ")");
 
     // Store server details before moving ownership
     core::ServerId server_id(server->client_identifier.get());
@@ -230,18 +251,18 @@ std::expected<void, core::PlexError> PlexServiceImpl::add_server(std::unique_ptr
     auto result = m_connection_manager->add_server(std::move(server));
 
     if (result) {
-        PLEX_LOG_DEBUG("PlexService", "add_server() succeeded");
+        LOG_DEBUG("PlexService", "add_server() succeeded");
     } else {
-        PLEX_LOG_DEBUG("PlexService", "add_server() failed");
+        LOG_DEBUG("PlexService", "add_server() failed");
     }
 
     return result;
 }
 
 void PlexServiceImpl::remove_server(const core::ServerId& server_id) {
-    PLEX_LOG_DEBUG("PlexService", "remove_server() called for server: " + server_id.get());
+    LOG_DEBUG("PlexService", "remove_server() called for server: " + server_id.get());
     m_connection_manager->remove_server(server_id);
-    PLEX_LOG_DEBUG("PlexService", "remove_server() completed for server: " + server_id.get());
+    LOG_DEBUG("PlexService", "remove_server() completed for server: " + server_id.get());
 }
 
 std::vector<core::ServerId> PlexServiceImpl::get_connected_servers() const {
@@ -253,7 +274,7 @@ bool PlexServiceImpl::is_server_connected(const core::ServerId& server_id) const
 }
 
 void PlexServiceImpl::on_media_state_changed(const core::MediaInfo& old_state, const core::MediaInfo& new_state) {
-    PLEX_LOG_INFO("PlexService", "Media state changed: " + new_state.title);
+    LOG_INFO("PlexService", "Media state changed: " + new_state.title);
 
     if (m_event_bus) {
         MediaService::publish_media_updated(old_state, new_state);
@@ -263,7 +284,7 @@ void PlexServiceImpl::on_media_state_changed(const core::MediaInfo& old_state, c
 }
 
 void PlexServiceImpl::on_connection_state_changed(const core::ServerId& server_id, bool connected) {
-    PLEX_LOG_INFO("PlexService", "Server " + server_id.get() + " connection state: " +
+    LOG_INFO("PlexService", "Server " + server_id.get() + " connection state: " +
                   (connected ? "connected" : "disconnected"));
 
     if (m_event_bus) {
@@ -276,7 +297,7 @@ void PlexServiceImpl::on_connection_state_changed(const core::ServerId& server_i
 }
 
 void PlexServiceImpl::on_error_occurred(core::PlexError error, const std::string& message) {
-    PLEX_LOG_ERROR("PlexService", "Error occurred: " + message);
+    LOG_ERROR("PlexService", "Error occurred: " + message);
 
     if (m_event_bus) {
         MediaService::publish_media_error(error, message);
@@ -287,22 +308,22 @@ void PlexServiceImpl::handle_sse_event(const core::ServerId& server_id, const st
     try {
         auto json_event = json::parse(event);
 
-        PLEX_LOG_DEBUG("PlexService", "Received event from server " + server_id.get());
+        LOG_DEBUG("PlexService", "Received event from server " + server_id.get());
 
         if (json_event.contains("PlaySessionStateNotification")) {
             m_session_manager->process_play_session_notification(server_id, json_event["PlaySessionStateNotification"]);
         }
     } catch (const std::exception& e) {
-        PLEX_LOG_ERROR("PlexService", "Error parsing SSE event: " + std::string(e.what()));
+        LOG_ERROR("PlexService", "Error parsing SSE event: " + std::string(e.what()));
         on_error_occurred(core::PlexError::ParseError, "Failed to parse SSE event");
     }
 }
 
 std::expected<void, core::PlexError> PlexServiceImpl::discover_servers(const std::string& auth_token) {
-    PLEX_LOG_INFO("PlexService", "Discovering Plex servers");
+    LOG_INFO("PlexService", "Discovering Plex servers");
 
     if (!m_http_client) {
-        PLEX_LOG_ERROR("PlexService", "HTTP client not available for server discovery");
+        LOG_ERROR("PlexService", "HTTP client not available for server discovery");
         return std::unexpected<core::PlexError>(core::PlexError::NetworkError);
     }
 
@@ -315,16 +336,16 @@ std::expected<void, core::PlexError> PlexServiceImpl::discover_servers(const std
     auto response = m_http_client->get(resources_url, headers);
 
     if (!response || !response->is_success()) {
-        PLEX_LOG_ERROR("PlexService", "Failed to fetch servers from Plex.tv");
+        LOG_ERROR("PlexService", "Failed to fetch servers from Plex.tv");
         return std::unexpected<core::PlexError>(core::PlexError::NetworkError);
     }
 
-    PLEX_LOG_DEBUG("PlexService", "Received server response from Plex.tv");
+    LOG_DEBUG("PlexService", "Received server response from Plex.tv");
 
     // Parse the JSON response and add servers
     auto parse_result = parse_server_json(response->body, auth_token);
     if (!parse_result) {
-        PLEX_LOG_ERROR("PlexService", "Failed to parse server response");
+        LOG_ERROR("PlexService", "Failed to parse server response");
         return std::unexpected<core::PlexError>(parse_result.error());
     }
 
@@ -333,7 +354,7 @@ std::expected<void, core::PlexError> PlexServiceImpl::discover_servers(const std
 
 std::expected<void, core::PlexError> PlexServiceImpl::parse_server_json(const std::string& json_response, const std::string& auth_token) {
     (void)auth_token;
-    PLEX_LOG_INFO("PlexService", "Parsing server JSON response");
+    LOG_INFO("PlexService", "Parsing server JSON response");
 
     try {
         auto json = json::parse(json_response);
@@ -354,7 +375,7 @@ std::expected<void, core::PlexError> PlexServiceImpl::parse_server_json(const st
             server->access_token = core::PlexToken(resource.value("accessToken", ""));
             server->owned = resource.value("owned", false);
 
-            PLEX_LOG_INFO("PlexService", "Found server: " + server->name +
+            LOG_INFO("PlexService", "Found server: " + server->name +
                          " (" + server->client_identifier.get() + ")" +
                          (server->owned ? " [owned]" : " [shared]"));
 
@@ -366,10 +387,10 @@ std::expected<void, core::PlexError> PlexServiceImpl::parse_server_json(const st
 
                     if (is_local && !uri.empty()) {
                         server->local_uri = uri;
-                        PLEX_LOG_INFO("PlexService", "  Local URI: " + uri);
+                        LOG_INFO("PlexService", "  Local URI: " + uri);
                     } else if (!is_local && !uri.empty()) {
                         server->public_uri = uri;
-                        PLEX_LOG_INFO("PlexService", "  Public URI: " + uri);
+                        LOG_INFO("PlexService", "  Public URI: " + uri);
                     }
                 }
             }
@@ -380,17 +401,37 @@ std::expected<void, core::PlexError> PlexServiceImpl::parse_server_json(const st
                 if (add_result) {
                     server_count++;
                 } else {
-                    PLEX_LOG_WARNING("PlexService", "Failed to add server: " + server->name);
+                    LOG_WARNING("PlexService", "Failed to add server: " + server->name);
                 }
             }
         }
 
-        PLEX_LOG_INFO("PlexService", "Successfully discovered and added " + std::to_string(server_count) + " Plex servers");
+        LOG_INFO("PlexService", "Successfully discovered and added " + std::to_string(server_count) + " Plex servers");
         return {};
 
     } catch (const std::exception& e) {
-        PLEX_LOG_ERROR("PlexService", "Failed to parse server JSON: " + std::string(e.what()));
+        LOG_ERROR("PlexService", "Failed to parse server JSON: " + std::string(e.what()));
         return std::unexpected<core::PlexError>(core::PlexError::ParseError);
+    }
+}
+
+bool PlexServiceImpl::is_media_type_enabled(core::MediaType type) const {
+    if (!m_config_service) {
+        return true;
+    }
+
+    const auto& config = m_config_service->get();
+
+    switch (type) {
+        case core::MediaType::Movie:
+            return config.media_services.plex.enable_movies;
+        case core::MediaType::TVShow:
+            return config.media_services.plex.enable_tv_shows;
+        case core::MediaType::Music:
+            return config.media_services.plex.enable_music;
+        case core::MediaType::Unknown:
+        default:
+            return true;
     }
 }
 

@@ -12,11 +12,11 @@ QtNotificationManager::QtNotificationManager(QSystemTrayIcon* tray_icon)
         m_owns_tray_icon = true;
     }
 
-    PLEX_LOG_DEBUG(m_component_name, "QtNotificationManager constructed");
+    LOG_DEBUG(m_component_name, "QtNotificationManager constructed");
 }
 
 QtNotificationManager::~QtNotificationManager() {
-    PLEX_LOG_DEBUG(m_component_name, "QtNotificationManager destructor called");
+    LOG_DEBUG(m_component_name, "QtNotificationManager destructor called");
     shutdown();
 }
 
@@ -24,12 +24,12 @@ std::expected<void, UiError> QtNotificationManager::initialize() {
     std::lock_guard lock(m_mutex);
 
     if (m_initialized) {
-        PLEX_LOG_DEBUG(m_component_name, "Already initialized");
+        LOG_DEBUG(m_component_name, "Already initialized");
         return {};
     }
 
     if (!QSystemTrayIcon::supportsMessages()) {
-        PLEX_LOG_WARNING(m_component_name, "System does not support tray notifications");
+        LOG_WARNING(m_component_name, "System does not support tray notifications");
         return std::unexpected(UiError::NotSupported);
     }
 
@@ -67,7 +67,7 @@ std::expected<void, UiError> QtNotificationManager::initialize() {
                      });
 
     m_initialized = true;
-    PLEX_LOG_INFO(m_component_name, "Qt notification manager initialized");
+    LOG_INFO(m_component_name, "Qt notification manager initialized");
     return {};
 }
 
@@ -78,7 +78,7 @@ void QtNotificationManager::shutdown() {
         return;
     }
 
-    PLEX_LOG_INFO(m_component_name, "Shutting down Qt notification manager");
+    LOG_INFO(m_component_name, "Shutting down Qt notification manager");
 
     if (m_owns_tray_icon && m_tray_icon) {
         m_tray_icon->hide();
@@ -88,7 +88,7 @@ void QtNotificationManager::shutdown() {
 
     m_active_notifications.clear();
     m_initialized = false;
-    PLEX_LOG_INFO(m_component_name, "Qt notification manager shut down");
+    LOG_INFO(m_component_name, "Qt notification manager shut down");
 }
 
 bool QtNotificationManager::is_supported() const {
@@ -115,7 +115,7 @@ QtNotificationManager::show_notification(const Notification& notification) {
         static_cast<int>(notification.duration.count() * 1000)
     );
 
-    PLEX_LOG_DEBUG(m_component_name, "Notification shown: " + notification.title);
+    LOG_DEBUG(m_component_name, "Notification shown: " + notification.title);
     return id;
 }
 
@@ -139,7 +139,7 @@ QtNotificationManager::update_notification(const NotificationId& id, const Notif
         static_cast<int>(notification.duration.count() * 1000)
     );
 
-    PLEX_LOG_DEBUG(m_component_name, "Notification updated: " + id);
+    LOG_DEBUG(m_component_name, "Notification updated: " + id);
     return {};
 }
 
@@ -153,14 +153,14 @@ QtNotificationManager::hide_notification(const NotificationId& id) {
     }
 
     m_active_notifications.erase(it);
-    PLEX_LOG_DEBUG(m_component_name, "Notification hidden: " + id);
+    LOG_DEBUG(m_component_name, "Notification hidden: " + id);
     return {};
 }
 
 void QtNotificationManager::clear_all_notifications() {
     std::lock_guard lock(m_mutex);
     m_active_notifications.clear();
-    PLEX_LOG_DEBUG(m_component_name, "All notifications cleared");
+    LOG_DEBUG(m_component_name, "All notifications cleared");
 }
 
 void QtNotificationManager::set_click_callback(NotificationCallback callback) {

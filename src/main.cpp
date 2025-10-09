@@ -19,7 +19,7 @@ namespace {
     presence_for_plex::core::Application* g_app_instance = nullptr;
 
     void handle_shutdown_signal(int signal) {
-        PLEX_LOG_INFO("Main", "Shutdown signal received: " + std::to_string(signal));
+        LOG_INFO("Main", "Shutdown signal received: " + std::to_string(signal));
         g_shutdown_requested = true;
 
         if (g_app_instance) {
@@ -90,7 +90,7 @@ namespace {
 
         if (!result || !*result) {
             const std::string message = "Another instance of PresenceForPlex is already running.";
-            PLEX_LOG_WARNING("Main", message);
+            LOG_WARNING("Main", message);
 
 #ifdef USE_QT_UI
             QMessageBox::warning(nullptr, "PresenceForPlex", QString::fromStdString(message));
@@ -100,7 +100,7 @@ namespace {
             return false;
         }
 
-        PLEX_LOG_INFO("Main", "Single instance lock acquired");
+        LOG_INFO("Main", "Single instance lock acquired");
         return true;
     }
 
@@ -144,8 +144,8 @@ int main(int argc, char* argv[]) {
     auto logger = setup_logging(presence_for_plex::utils::to_string(config.log_level));
     presence_for_plex::utils::LoggerManager::set_instance(std::move(logger));
 
-    PLEX_LOG_INFO("Main", "PresenceForPlex v0.4.0 starting...");
-    PLEX_LOG_INFO("Main", "Log level: " + presence_for_plex::utils::to_string(config.log_level));
+    LOG_INFO("Main", "PresenceForPlex v0.4.0 starting...");
+    LOG_INFO("Main", "Log level: " + presence_for_plex::utils::to_string(config.log_level));
 
     register_signal_handlers();
 
@@ -157,10 +157,10 @@ int main(int argc, char* argv[]) {
         auto single_instance = presence_for_plex::platform::SingleInstanceManager::create("PresenceForPlex");
         (void)single_instance->try_acquire_instance("PresenceForPlex");
 
-        PLEX_LOG_INFO("Main", "Creating application...");
+        LOG_INFO("Main", "Creating application...");
         auto app_result = presence_for_plex::core::ApplicationFactory::create_default_application();
         if (!app_result) {
-            PLEX_LOG_ERROR("Main", "Application creation failed");
+            LOG_ERROR("Main", "Application creation failed");
             return 1;
         }
 
@@ -168,12 +168,12 @@ int main(int argc, char* argv[]) {
         g_app_instance = app.get();
 
         if (!app->initialize()) {
-            PLEX_LOG_ERROR("Main", "Application initialization failed");
+            LOG_ERROR("Main", "Application initialization failed");
             return 1;
         }
 
         if (!app->start()) {
-            PLEX_LOG_ERROR("Main", "Application start failed");
+            LOG_ERROR("Main", "Application start failed");
             return 1;
         }
 
@@ -199,21 +199,21 @@ int main(int argc, char* argv[]) {
         }
 #endif
 
-        PLEX_LOG_INFO("Main", "Shutting down...");
+        LOG_INFO("Main", "Shutting down...");
         app->stop();
         app->shutdown();
         single_instance->release_instance();
         g_app_instance = nullptr;
 
-        PLEX_LOG_INFO("Main", "Shutdown complete");
+        LOG_INFO("Main", "Shutdown complete");
         return 0;
 
     } catch (const std::exception& e) {
-        PLEX_LOG_ERROR("Main", "Fatal: " + std::string(e.what()));
+        LOG_ERROR("Main", "Fatal: " + std::string(e.what()));
         std::cerr << "Fatal error: " << e.what() << std::endl;
         return 1;
     } catch (...) {
-        PLEX_LOG_ERROR("Main", "Unknown fatal error");
+        LOG_ERROR("Main", "Unknown fatal error");
         std::cerr << "Unknown fatal error" << std::endl;
         return 1;
     }

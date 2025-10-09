@@ -285,6 +285,7 @@ struct DiscordConfig {
     std::chrono::seconds update_interval{15};
     std::string details_format = "{title}";
     std::string state_format = "{state}";
+    std::string large_image_text_format = "{title}";
 
     std::expected<void, ValidationError> validate() const;
 };
@@ -297,22 +298,33 @@ struct PresenceServiceConfig {
     std::expected<void, ValidationError> validate() const;
 };
 
-struct MediaServiceConfig {
-    MediaServiceType type = MediaServiceType::Plex;
+// Plex-specific configuration
+struct PlexServiceConfig {
     bool enabled = true;
-
-    // Plex-specific settings
     std::vector<std::string> server_urls;
     std::chrono::seconds poll_interval{5};
     std::chrono::seconds timeout{30};
     bool auto_discover = true;
+
+    // Media type filters
+    bool enable_movies = true;
+    bool enable_tv_shows = true;
+    bool enable_music = true;
+
+    std::expected<void, ValidationError> validate() const;
+};
+
+// Container for all media service configurations
+struct MediaServicesConfig {
+    PlexServiceConfig plex;
 
     std::expected<void, ValidationError> validate() const;
 };
 
 struct ApplicationConfig {
     PresenceServiceConfig presence;
-    MediaServiceConfig media;
+    MediaServicesConfig media_services;
+
     presence_for_plex::utils::LogLevel log_level = presence_for_plex::utils::LogLevel::Info;
     bool start_at_boot = false;
 

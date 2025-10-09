@@ -70,7 +70,7 @@ DiscordPresenceService::DiscordPresenceService(Config config)
 
     m_stats.service_start_time = std::chrono::system_clock::now();
 
-    PLEX_LOG_INFO("DiscordPresenceService",
+    LOG_INFO("DiscordPresenceService",
         "Initialized with client ID: " + m_config.client_id);
 }
 
@@ -80,15 +80,15 @@ DiscordPresenceService::~DiscordPresenceService() {
 
 std::expected<void, core::DiscordError> DiscordPresenceService::initialize() {
     if (m_initialized.exchange(true)) {
-        PLEX_LOG_WARNING("DiscordPresenceService", "Already initialized");
+        LOG_WARNING("DiscordPresenceService", "Already initialized");
         return {};
     }
 
-    PLEX_LOG_INFO("DiscordPresenceService", "Initializing Discord presence service");
+    LOG_INFO("DiscordPresenceService", "Initializing Discord presence service");
 
     // Start connection manager
     if (!m_connection_manager->start()) {
-        PLEX_LOG_ERROR("DiscordPresenceService", "Failed to start connection manager");
+        LOG_ERROR("DiscordPresenceService", "Failed to start connection manager");
         m_initialized = false;
         return std::unexpected<core::DiscordError>(core::DiscordError::IpcError);
     }
@@ -96,7 +96,7 @@ std::expected<void, core::DiscordError> DiscordPresenceService::initialize() {
     // Start update thread
     m_update_thread = std::jthread([this](std::stop_token) { update_loop(); });
 
-    PLEX_LOG_INFO("DiscordPresenceService", "Discord presence service initialized");
+    LOG_INFO("DiscordPresenceService", "Discord presence service initialized");
     return {};
 }
 
@@ -105,7 +105,7 @@ void DiscordPresenceService::shutdown() {
         return;
     }
 
-    PLEX_LOG_INFO("DiscordPresenceService", "Shutting down Discord presence service");
+    LOG_INFO("DiscordPresenceService", "Shutting down Discord presence service");
 
     m_initialized = false;
 
@@ -124,7 +124,7 @@ void DiscordPresenceService::shutdown() {
         m_pending_frame.reset();
     }
 
-    PLEX_LOG_INFO("DiscordPresenceService", "Discord presence service shut down");
+    LOG_INFO("DiscordPresenceService", "Discord presence service shut down");
 }
 
 bool DiscordPresenceService::is_connected() const {
@@ -152,9 +152,9 @@ std::expected<void, core::DiscordError> DiscordPresenceService::update_presence(
 
     if (state_changed) {
         m_update_cv.notify_one();
-        PLEX_LOG_DEBUG("DiscordPresenceService", "Presence update requested (state changed)");
+        LOG_DEBUG("DiscordPresenceService", "Presence update requested (state changed)");
     } else {
-        PLEX_LOG_DEBUG("DiscordPresenceService", "Presence update skipped (no state change)");
+        LOG_DEBUG("DiscordPresenceService", "Presence update skipped (no state change)");
     }
 
     return {};
@@ -178,9 +178,9 @@ std::expected<void, core::DiscordError> DiscordPresenceService::clear_presence()
 
     if (state_changed) {
         m_update_cv.notify_one();
-        PLEX_LOG_DEBUG("DiscordPresenceService", "Presence clear requested");
+        LOG_DEBUG("DiscordPresenceService", "Presence clear requested");
     } else {
-        PLEX_LOG_DEBUG("DiscordPresenceService", "Presence clear skipped (already cleared)");
+        LOG_DEBUG("DiscordPresenceService", "Presence clear skipped (already cleared)");
     }
 
     return {};
@@ -204,7 +204,12 @@ void DiscordPresenceService::set_event_bus(std::shared_ptr<core::EventBus> bus) 
                     set_update_interval(event.new_config.presence.discord.update_interval);
                 }
 
-                PLEX_LOG_INFO("DiscordPresenceService", "Configuration updated from event");
+                // Update format templates
+                set_details_format(event.new_config.presence.discord.details_format);
+                set_state_format(event.new_config.presence.discord.state_format);
+                set_large_image_text_format(event.new_config.presence.discord.large_image_text_format);
+
+                LOG_INFO("DiscordPresenceService", "Configuration updated from event");
             }
         );
     }
@@ -213,7 +218,7 @@ void DiscordPresenceService::set_event_bus(std::shared_ptr<core::EventBus> bus) 
 void DiscordPresenceService::set_update_interval(std::chrono::seconds interval) {
     if (interval > std::chrono::seconds{0}) {
         m_config.update_interval = interval;
-        PLEX_LOG_DEBUG("DiscordPresenceService",
+        LOG_DEBUG("DiscordPresenceService",
             "Update interval changed to " + std::to_string(interval.count()) + "s");
     }
 }
@@ -238,19 +243,31 @@ bool DiscordPresenceService::are_buttons_shown() const {
     return m_show_buttons;
 }
 
+void DiscordPresenceService::set_details_format(const std::string& format) {
+    m_details_format = format;
+}
+
+void DiscordPresenceService::set_state_format(const std::string& format) {
+    m_state_format = format;
+}
+
+void DiscordPresenceService::set_large_image_text_format(const std::string& format) {
+    m_large_image_text_format = format;
+}
+
 void DiscordPresenceService::update_config(const Config& config) {
-    PLEX_LOG_INFO("DiscordPresenceService", "Updating configuration");
+    LOG_INFO("DiscordPresenceService", "Updating configuration");
 
     // Update interval can be changed on the fly
     if (config.update_interval != m_config.update_interval) {
         m_config.update_interval = config.update_interval;
-        PLEX_LOG_INFO("DiscordPresenceService",
+        LOG_INFO("DiscordPresenceService",
             "Update interval changed to " + std::to_string(config.update_interval.count()) + "s");
     }
 
     // Client ID change requires reconnection
     if (config.client_id != m_config.client_id) {
-        PLEX_LOG_INFO("DiscordPresenceService",
+        LOG_INFO("DiscordPresenceService",
             "Client ID changed from " + m_config.client_id + " to " + config.client_id);
         m_config.client_id = config.client_id;
 
@@ -280,7 +297,7 @@ DiscordPresenceService::ServiceStats DiscordPresenceService::get_service_stats()
 
 void DiscordPresenceService::force_reconnect() {
     if (m_connection_manager) {
-        PLEX_LOG_INFO("DiscordPresenceService", "Forcing reconnection");
+        LOG_INFO("DiscordPresenceService", "Forcing reconnection");
         m_connection_manager->force_reconnect();
     }
 }
@@ -288,7 +305,7 @@ void DiscordPresenceService::force_reconnect() {
 
 
 void DiscordPresenceService::update_loop() {
-    PLEX_LOG_DEBUG("DiscordPresenceService", "Update loop started");
+    LOG_DEBUG("DiscordPresenceService", "Update loop started");
 
     while (!m_shutting_down) {
         try {
@@ -339,13 +356,13 @@ void DiscordPresenceService::update_loop() {
                 [this] { return m_shutting_down.load() || m_update_requested.load(); });
 
         } catch (const std::exception& e) {
-            PLEX_LOG_ERROR("DiscordPresenceService",
+            LOG_ERROR("DiscordPresenceService",
                 "Exception in update loop: " + std::string(e.what()));
             std::this_thread::sleep_for(std::chrono::seconds(1));
         }
     }
 
-    PLEX_LOG_DEBUG("DiscordPresenceService", "Update loop terminated");
+    LOG_DEBUG("DiscordPresenceService", "Update loop terminated");
 }
 
 void DiscordPresenceService::process_pending_frame() {
@@ -385,7 +402,7 @@ bool DiscordPresenceService::send_presence_frame(const json& frame) {
 
     auto* ipc = m_connection_manager->get_strategy<DiscordIPC>();
     if (!ipc) {
-        PLEX_LOG_WARNING("DiscordPresenceService", "Cannot access Discord IPC");
+        LOG_WARNING("DiscordPresenceService", "Cannot access Discord IPC");
         return false;
     }
 
@@ -399,16 +416,16 @@ bool DiscordPresenceService::send_presence_frame(const json& frame) {
 
         if (success) {
             increment_stat_counter(&ServiceStats::total_presence_updates);
-            PLEX_LOG_DEBUG("DiscordPresenceService", "Successfully sent presence frame");
+            LOG_DEBUG("DiscordPresenceService", "Successfully sent presence frame");
         } else {
             increment_stat_counter(&ServiceStats::failed_presence_updates);
-            PLEX_LOG_WARNING("DiscordPresenceService", "Failed to send presence frame");
+            LOG_WARNING("DiscordPresenceService", "Failed to send presence frame");
         }
 
         return success;
     } catch (const std::exception& e) {
         increment_stat_counter(&ServiceStats::failed_presence_updates);
-        PLEX_LOG_ERROR("DiscordPresenceService",
+        LOG_ERROR("DiscordPresenceService",
             "Exception sending presence frame: " + std::string(e.what()));
         return false;
     }
@@ -512,14 +529,14 @@ void DiscordPresenceService::handle_connection_changed(bool connected) {
     on_connection_state_changed(connected);
 
     if (connected) {
-        PLEX_LOG_INFO("DiscordPresenceService", "Connection established, will process pending frame");
+        LOG_INFO("DiscordPresenceService", "Connection established, will process pending frame");
         m_update_cv.notify_one();
     }
 }
 
 void DiscordPresenceService::handle_health_check_result(bool healthy) {
     if (!healthy) {
-        PLEX_LOG_WARNING("DiscordPresenceService", "Health check failed");
+        LOG_WARNING("DiscordPresenceService", "Health check failed");
         on_error_occurred(core::DiscordError::IpcError, "Discord health check failed");
     }
 }
@@ -569,7 +586,7 @@ DiscordPresenceService::create(const core::ApplicationConfig& app_config) {
     try {
         return std::make_unique<DiscordPresenceService>(std::move(config));
     } catch (const std::exception& e) {
-        PLEX_LOG_ERROR("DiscordPresenceService",
+        LOG_ERROR("DiscordPresenceService",
             "Failed to create service: " + std::string(e.what()));
         return std::unexpected(core::ConfigError::InvalidFormat);
     }

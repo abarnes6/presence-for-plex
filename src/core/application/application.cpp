@@ -27,7 +27,7 @@ public:
           m_running(false),
           m_shutdown_requested(false),
           m_event_bus(std::make_shared<EventBus>()) {
-        PLEX_LOG_DEBUG("Application", "Application created");
+        LOG_DEBUG("Application", "Application created");
     }
 
     ~ApplicationImpl() override {
@@ -35,14 +35,14 @@ public:
             stop();
             shutdown();
         }
-        PLEX_LOG_DEBUG("Application", "Application destroyed");
+        LOG_DEBUG("Application", "Application destroyed");
     }
 
     std::expected<void, ApplicationError> initialize() override {
-        PLEX_LOG_INFO("Application", "Initializing...");
+        LOG_INFO("Application", "Initializing...");
 
         if (m_state != ApplicationState::NotInitialized) {
-            PLEX_LOG_WARNING("Application", "Already initialized");
+            LOG_WARNING("Application", "Already initialized");
             return std::unexpected(ApplicationError::AlreadyRunning);
         }
 
@@ -61,21 +61,21 @@ public:
             connect_services();
 
             m_state = ApplicationState::Running;
-            PLEX_LOG_INFO("Application", "Initialization complete");
+            LOG_INFO("Application", "Initialization complete");
             return {};
 
         } catch (const std::exception& e) {
-            PLEX_LOG_ERROR("Application", "Initialization failed: " + std::string(e.what()));
+            LOG_ERROR("Application", "Initialization failed: " + std::string(e.what()));
             m_state = ApplicationState::Error;
             return std::unexpected(ApplicationError::InitializationFailed);
         }
     }
 
     std::expected<void, ApplicationError> start() override {
-        PLEX_LOG_INFO("Application", "Starting services...");
+        LOG_INFO("Application", "Starting services...");
 
         if (m_state != ApplicationState::Running) {
-            PLEX_LOG_ERROR("Application", "Not initialized");
+            LOG_ERROR("Application", "Not initialized");
             return std::unexpected(ApplicationError::InitializationFailed);
         }
 
@@ -86,24 +86,24 @@ public:
             initialize_system_tray();
             start_services();
 
-            PLEX_LOG_INFO("Application", "Services started");
+            LOG_INFO("Application", "Services started");
             return {};
 
         } catch (const std::exception& e) {
-            PLEX_LOG_ERROR("Application", "Start failed: " + std::string(e.what()));
+            LOG_ERROR("Application", "Start failed: " + std::string(e.what()));
             return std::unexpected(ApplicationError::InitializationFailed);
         }
     }
 
     void stop() override {
-        PLEX_LOG_INFO("Application", "Stopping...");
+        LOG_INFO("Application", "Stopping...");
         m_state = ApplicationState::Stopping;
         m_running = false;
         m_shutdown_requested = true;
     }
 
     void shutdown() override {
-        PLEX_LOG_INFO("Application", "Shutting down...");
+        LOG_INFO("Application", "Shutting down...");
 
         cleanup_event_subscriptions();
         wait_for_service_tasks();
@@ -114,7 +114,7 @@ public:
         }
 
         m_state = ApplicationState::Stopped;
-        PLEX_LOG_INFO("Application", "Shutdown complete");
+        LOG_INFO("Application", "Shutdown complete");
     }
 
     ApplicationState get_state() const override {
@@ -126,12 +126,12 @@ public:
     }
 
     void run() override {
-        PLEX_LOG_INFO("Application", "Main loop started");
+        LOG_INFO("Application", "Main loop started");
         while (is_running()) {
             run_once();
             std::this_thread::sleep_for(std::chrono::milliseconds(16));
         }
-        PLEX_LOG_INFO("Application", "Main loop ended");
+        LOG_INFO("Application", "Main loop ended");
     }
 
     void run_once() override {
@@ -141,7 +141,7 @@ public:
     }
 
     void quit() override {
-        PLEX_LOG_INFO("Application", "Quitting");
+        LOG_INFO("Application", "Quitting");
         stop();
         shutdown();
     }
@@ -211,24 +211,24 @@ public:
 
     void check_for_updates() override {
         if (!m_update_service) {
-            PLEX_LOG_WARNING("Application", "Update service not available");
+            LOG_WARNING("Application", "Update service not available");
             return;
         }
 
-        PLEX_LOG_INFO("Application", "Checking for updates...");
+        LOG_INFO("Application", "Checking for updates...");
 
         m_thread_pool->submit([this]() {
             auto result = m_update_service->check_for_updates();
             if (!result) {
-                PLEX_LOG_ERROR("Application", "Update check failed");
+                LOG_ERROR("Application", "Update check failed");
                 return;
             }
 
             const auto& update_info = *result;
             if (update_info.update_available) {
-                PLEX_LOG_INFO("Application", "Update available: " + update_info.latest_version);
+                LOG_INFO("Application", "Update available: " + update_info.latest_version);
             } else {
-                PLEX_LOG_INFO("Application", "No updates available");
+                LOG_INFO("Application", "No updates available");
             }
         });
     }
@@ -238,19 +238,19 @@ private:
         // Initialize configuration service
         m_config_service = ConfigurationService::create("", m_event_bus);
         if (!m_config_service) {
-            PLEX_LOG_ERROR("Application", "Failed to create configuration service");
+            LOG_ERROR("Application", "Failed to create configuration service");
             m_state = ApplicationState::Error;
             return false;
         }
 
         if (!m_config_service->load()) {
-            PLEX_LOG_WARNING("Application", "Using default configuration");
+            LOG_WARNING("Application", "Using default configuration");
         }
 
         // Initialize authentication service
         m_auth_service = AuthenticationService::create();
         if (!m_auth_service) {
-            PLEX_LOG_ERROR("Application", "Failed to create authentication service");
+            LOG_ERROR("Application", "Failed to create authentication service");
             m_state = ApplicationState::Error;
             return false;
         }
@@ -265,47 +265,54 @@ private:
     void initialize_ui_service() {
         m_ui_service = std::make_unique<platform::qt::QtUiService>();
         if (!m_ui_service) {
-            PLEX_LOG_WARNING("Application", "UI service creation failed");
+            LOG_WARNING("Application", "UI service creation failed");
             return;
         }
 
         if (!m_ui_service->initialize()) {
-            PLEX_LOG_WARNING("Application", "UI initialization failed");
+            LOG_WARNING("Application", "UI initialization failed");
             m_ui_service.reset();
             return;
         }
 
-        PLEX_LOG_INFO("Application", "UI service initialized");
+        LOG_INFO("Application", "UI service initialized");
     }
 
     void initialize_media_service() {
         const auto& config = m_config_service->get();
 
-        if (!config.media.enabled) {
-            PLEX_LOG_INFO("Application", "Media service disabled in configuration");
+        // Check if any media service is enabled
+        if (!config.media_services.plex.enabled) {
+            LOG_INFO("Application", "No media services enabled in configuration");
             return;
         }
 
-        auto service_result = services::MediaServiceFactory::create(
-            config.media.type,
-            std::shared_ptr<ConfigurationService>(m_config_service.get(), [](ConfigurationService*){}),
-            std::shared_ptr<AuthenticationService>(m_auth_service.get(), [](AuthenticationService*){}),
-            m_event_bus
-        );
+        // Initialize Plex if enabled
+        if (config.media_services.plex.enabled) {
+            LOG_INFO("Application", "Initializing Plex media service");
+            auto service_result = services::MediaServiceFactory::create(
+                core::MediaServiceType::Plex,
+                std::shared_ptr<ConfigurationService>(m_config_service.get(), [](ConfigurationService*){}),
+                std::shared_ptr<AuthenticationService>(m_auth_service.get(), [](AuthenticationService*){}),
+                m_event_bus
+            );
 
-        if (service_result) {
-            m_media_service = std::move(*service_result);
-            PLEX_LOG_INFO("Application", "Media service initialized");
-        } else {
-            PLEX_LOG_ERROR("Application", "Media service creation failed");
+            if (service_result) {
+                m_media_service = std::move(*service_result);
+                LOG_INFO("Application", "Plex media service initialized");
+            } else {
+                LOG_ERROR("Application", "Plex media service creation failed");
+            }
         }
+
+        // Future: Initialize other media services here (Jellyfin, Emby, etc.)
     }
 
     void initialize_presence_service() {
         const auto& config = m_config_service->get();
 
         if (!config.presence.enabled) {
-            PLEX_LOG_INFO("Application", "Presence service disabled in configuration");
+            LOG_INFO("Application", "Presence service disabled in configuration");
             return;
         }
 
@@ -317,9 +324,9 @@ private:
         if (service_result) {
             m_presence_service = std::move(*service_result);
             m_presence_service->set_event_bus(m_event_bus);
-            PLEX_LOG_INFO("Application", "Presence service initialized");
+            LOG_INFO("Application", "Presence service initialized");
         } else {
-            PLEX_LOG_ERROR("Application", "Presence service creation failed");
+            LOG_ERROR("Application", "Presence service creation failed");
         }
     }
 
@@ -332,9 +339,9 @@ private:
 
         if (m_update_service) {
             m_update_service->set_event_bus(m_event_bus);
-            PLEX_LOG_INFO("Application", "Update service initialized");
+            LOG_INFO("Application", "Update service initialized");
         } else {
-            PLEX_LOG_WARNING("Application", "Update service creation failed");
+            LOG_WARNING("Application", "Update service creation failed");
         }
     }
 
@@ -346,9 +353,9 @@ private:
         // Subscribe to media session updates
         auto media_sub = m_event_bus->subscribe<events::MediaSessionUpdated>(
             [this](const events::MediaSessionUpdated& event) {
-                PLEX_LOG_DEBUG("Application", "Updating Discord presence");
+                LOG_DEBUG("Application", "Updating Discord presence");
                 if (!m_presence_service->update_from_media(event.current_info)) {
-                    PLEX_LOG_WARNING("Application", "Discord update failed");
+                    LOG_WARNING("Application", "Discord update failed");
                 }
             }
         );
@@ -357,7 +364,7 @@ private:
         // Subscribe to configuration updates
         auto config_sub = m_event_bus->subscribe<events::ConfigurationUpdated>(
             [this](const events::ConfigurationUpdated& event) {
-                PLEX_LOG_INFO("Application", "Configuration updated");
+                LOG_INFO("Application", "Configuration updated");
 
                 // Handle service enable/disable state changes
                 handle_service_config_changes(event.previous_config, event.new_config);
@@ -369,7 +376,7 @@ private:
         );
         m_event_subscriptions.push_back(config_sub);
 
-        PLEX_LOG_INFO("Application", "Services connected");
+        LOG_INFO("Application", "Services connected");
     }
 
     void start_services() {
@@ -377,9 +384,9 @@ private:
             m_service_futures.push_back(
                 m_thread_pool->submit([this]() {
                     if (!m_media_service->start()) {
-                        PLEX_LOG_WARNING("Application", "Media service start failed");
+                        LOG_WARNING("Application", "Media service start failed");
                     } else {
-                        PLEX_LOG_INFO("Application", "Media service started");
+                        LOG_INFO("Application", "Media service started");
                     }
                 })
             );
@@ -389,9 +396,9 @@ private:
             m_service_futures.push_back(
                 m_thread_pool->submit([this]() {
                     if (!m_presence_service->initialize()) {
-                        PLEX_LOG_WARNING("Application", "Presence service start failed");
+                        LOG_WARNING("Application", "Presence service start failed");
                     } else {
-                        PLEX_LOG_INFO("Application", "Presence service started");
+                        LOG_INFO("Application", "Presence service started");
                     }
                 })
             );
@@ -414,24 +421,24 @@ private:
     }
 
     void handle_service_config_changes(const ApplicationConfig& old_config, const ApplicationConfig& new_config) {
-        // Handle media service enable/disable
-        if (old_config.media.enabled != new_config.media.enabled) {
-            if (new_config.media.enabled) {
-                PLEX_LOG_INFO("Application", "Enabling media service");
+        // Handle Plex media service enable/disable
+        if (old_config.media_services.plex.enabled != new_config.media_services.plex.enabled) {
+            if (new_config.media_services.plex.enabled) {
+                LOG_INFO("Application", "Enabling Plex media service");
                 initialize_media_service();
                 if (m_media_service && m_running) {
                     m_service_futures.push_back(
                         m_thread_pool->submit([this]() {
                             if (!m_media_service->start()) {
-                                PLEX_LOG_WARNING("Application", "Media service start failed");
+                                LOG_WARNING("Application", "Plex service start failed");
                             } else {
-                                PLEX_LOG_INFO("Application", "Media service started");
+                                LOG_INFO("Application", "Plex service started");
                             }
                         })
                     );
                 }
             } else {
-                PLEX_LOG_INFO("Application", "Disabling media service");
+                LOG_INFO("Application", "Disabling Plex media service");
                 if (m_media_service) {
                     m_media_service->stop();
                     m_media_service.reset();
@@ -439,24 +446,26 @@ private:
             }
         }
 
+        // Future: Handle other media services here (Jellyfin, Emby, etc.)
+
         // Handle presence service enable/disable
         if (old_config.presence.enabled != new_config.presence.enabled) {
             if (new_config.presence.enabled) {
-                PLEX_LOG_INFO("Application", "Enabling presence service");
+                LOG_INFO("Application", "Enabling presence service");
                 initialize_presence_service();
                 if (m_presence_service && m_running) {
                     m_service_futures.push_back(
                         m_thread_pool->submit([this]() {
                             if (!m_presence_service->initialize()) {
-                                PLEX_LOG_WARNING("Application", "Presence service start failed");
+                                LOG_WARNING("Application", "Presence service start failed");
                             } else {
-                                PLEX_LOG_INFO("Application", "Presence service started");
+                                LOG_INFO("Application", "Presence service started");
                             }
                         })
                     );
                 }
             } else {
-                PLEX_LOG_INFO("Application", "Disabling presence service");
+                LOG_INFO("Application", "Disabling presence service");
                 if (m_presence_service) {
                     m_presence_service->shutdown();
                     m_presence_service.reset();
@@ -468,24 +477,24 @@ private:
     void stop_services() {
         if (m_media_service) {
             m_media_service->stop();
-            PLEX_LOG_INFO("Application", "Media service stopped");
+            LOG_INFO("Application", "Media service stopped");
         }
 
         if (m_presence_service) {
             m_presence_service->shutdown();
-            PLEX_LOG_INFO("Application", "Presence service stopped");
+            LOG_INFO("Application", "Presence service stopped");
         }
 
         if (m_system_tray) {
             m_system_tray->hide();
             m_system_tray->shutdown();
             m_system_tray.reset();
-            PLEX_LOG_INFO("Application", "System tray stopped");
+            LOG_INFO("Application", "System tray stopped");
         }
 
         if (m_ui_service) {
             m_ui_service->shutdown();
-            PLEX_LOG_INFO("Application", "UI service stopped");
+            LOG_INFO("Application", "UI service stopped");
         }
     }
 
@@ -496,7 +505,7 @@ private:
 
         m_system_tray = m_ui_service->create_system_tray();
         if (!m_system_tray || !m_system_tray->initialize()) {
-            PLEX_LOG_WARNING("Application", "System tray initialization failed");
+            LOG_WARNING("Application", "System tray initialization failed");
             return;
         }
 
@@ -504,12 +513,12 @@ private:
         (void)m_system_tray->set_tooltip("Presence for Plex");
         setup_tray_menu();
         m_system_tray->show();
-        PLEX_LOG_INFO("Application", "System tray created");
+        LOG_INFO("Application", "System tray created");
     }
 
     void show_settings_dialog() {
         if (!m_config_service) {
-            PLEX_LOG_ERROR("Application", "Config service not available");
+            LOG_ERROR("Application", "Config service not available");
             return;
         }
 
@@ -528,21 +537,21 @@ private:
                 if (new_config.start_at_boot) {
                     auto autostart_result = autostart_manager->enable_autostart();
                     if (!autostart_result) {
-                        PLEX_LOG_ERROR("Application", "Failed to enable autostart");
+                        LOG_ERROR("Application", "Failed to enable autostart");
                     }
                 } else {
                     auto autostart_result = autostart_manager->disable_autostart();
                     if (!autostart_result) {
-                        PLEX_LOG_ERROR("Application", "Failed to disable autostart");
+                        LOG_ERROR("Application", "Failed to disable autostart");
                     }
                 }
             }
 
             auto update_result = m_config_service->update(new_config);
             if (update_result) {
-                PLEX_LOG_INFO("Application", "Configuration updated successfully");
+                LOG_INFO("Application", "Configuration updated successfully");
             } else {
-                PLEX_LOG_ERROR("Application", "Failed to update configuration");
+                LOG_ERROR("Application", "Failed to update configuration");
             }
         }
 
@@ -569,7 +578,7 @@ private:
         settings_item.label = "Settings...";
         settings_item.enabled = true;
         settings_item.action = [this]() {
-            PLEX_LOG_INFO("Application", "Opening settings dialog");
+            LOG_INFO("Application", "Opening settings dialog");
             show_settings_dialog();
         };
         menu_items.push_back(settings_item);
@@ -578,7 +587,7 @@ private:
         update_item.id = "check_update";
         update_item.label = "Check for Updates";
         update_item.action = [this]() {
-            PLEX_LOG_INFO("Application", "Update check from tray");
+            LOG_INFO("Application", "Update check from tray");
             check_for_updates();
         };
         menu_items.push_back(update_item);
@@ -589,13 +598,13 @@ private:
         exit_item.id = "exit";
         exit_item.label = "Exit";
         exit_item.action = [this]() {
-            PLEX_LOG_INFO("Application", "Exit from tray");
+            LOG_INFO("Application", "Exit from tray");
             quit();
         };
         menu_items.push_back(exit_item);
 
         if (!m_system_tray->set_menu(menu_items)) {
-            PLEX_LOG_WARNING("Application", "Tray menu setup failed");
+            LOG_WARNING("Application", "Tray menu setup failed");
         }
     }
 
@@ -619,12 +628,12 @@ private:
 std::expected<std::unique_ptr<Application>, ApplicationError>
 ApplicationFactory::create_default_application(const std::filesystem::path& config_path) {
     (void)config_path;
-    PLEX_LOG_INFO("ApplicationFactory", "Creating application");
+    LOG_INFO("ApplicationFactory", "Creating application");
 
     try {
         return std::make_unique<ApplicationImpl>();
     } catch (const std::exception& e) {
-        PLEX_LOG_ERROR("ApplicationFactory", "Creation failed: " + std::string(e.what()));
+        LOG_ERROR("ApplicationFactory", "Creation failed: " + std::string(e.what()));
         return std::unexpected(ApplicationError::InitializationFailed);
     }
 }
@@ -632,12 +641,12 @@ ApplicationFactory::create_default_application(const std::filesystem::path& conf
 std::expected<std::unique_ptr<Application>, ApplicationError>
 ApplicationFactory::create_application_with_config(const ApplicationConfig& config) {
     (void)config;
-    PLEX_LOG_INFO("ApplicationFactory", "Creating configured application");
+    LOG_INFO("ApplicationFactory", "Creating configured application");
 
     try {
         return std::make_unique<ApplicationImpl>();
     } catch (const std::exception& e) {
-        PLEX_LOG_ERROR("ApplicationFactory", "Creation failed: " + std::string(e.what()));
+        LOG_ERROR("ApplicationFactory", "Creation failed: " + std::string(e.what()));
         return std::unexpected(ApplicationError::InitializationFailed);
     }
 }

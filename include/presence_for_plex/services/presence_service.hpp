@@ -110,6 +110,11 @@ public:
     virtual bool is_progress_shown() const = 0;
     virtual bool are_buttons_shown() const = 0;
 
+    // Format template configuration
+    virtual void set_details_format(const std::string& format) = 0;
+    virtual void set_state_format(const std::string& format) = 0;
+    virtual void set_large_image_text_format(const std::string& format) = 0;
+
 protected:
     std::shared_ptr<EventBus> m_event_bus;
 
@@ -118,6 +123,11 @@ protected:
 
     bool m_show_progress = true;
     bool m_show_buttons = true;
+
+    // Format templates
+    std::string m_details_format = "{title}";
+    std::string m_state_format;
+    std::string m_large_image_text_format = "{title}";
 };
 
 // Factory for creating presence service implementations

@@ -8,7 +8,7 @@ DiscordRateLimiter::DiscordRateLimiter(DiscordRateLimitConfig config)
     : m_config(std::move(config)) {
 
     if (!m_config.is_valid()) {
-        PLEX_LOG_WARNING("RateLimiter", "Invalid rate limit configuration, using defaults");
+        LOG_WARNING("RateLimiter", "Invalid rate limit configuration, using defaults");
         m_config = DiscordRateLimitConfig{};
     }
 
@@ -18,7 +18,7 @@ DiscordRateLimiter::DiscordRateLimiter(DiscordRateLimitConfig config)
     m_config.max_burst_operations = static_cast<int>(
         m_config.max_burst_operations * m_config.safety_factor);
 
-    PLEX_LOG_DEBUG("RateLimiter",
+    LOG_DEBUG("RateLimiter",
         "Initialized with " + std::to_string(m_config.max_operations_per_window) +
         " ops/" + std::to_string(m_config.primary_window_duration.count()) + "s, " +
         std::to_string(m_config.max_burst_operations) +
@@ -31,17 +31,17 @@ bool DiscordRateLimiter::can_proceed() {
     cleanup_expired_operations();
 
     if (!check_minimum_interval()) {
-        PLEX_LOG_DEBUG("RateLimiter", "Blocked by minimum interval");
+        LOG_DEBUG("RateLimiter", "Blocked by minimum interval");
         return false;
     }
 
     if (!check_primary_window()) {
-        PLEX_LOG_DEBUG("RateLimiter", "Blocked by primary window limit");
+        LOG_DEBUG("RateLimiter", "Blocked by primary window limit");
         return false;
     }
 
     if (!check_burst_window()) {
-        PLEX_LOG_DEBUG("RateLimiter", "Blocked by burst window limit");
+        LOG_DEBUG("RateLimiter", "Blocked by burst window limit");
         return false;
     }
 
@@ -55,7 +55,7 @@ void DiscordRateLimiter::record_operation() {
     m_operation_times.push_back(now);
     m_last_operation = now;
 
-    PLEX_LOG_DEBUG("RateLimiter",
+    LOG_DEBUG("RateLimiter",
         "Operation recorded. Current window: " + std::to_string(m_operation_times.size()) +
         "/" + std::to_string(m_config.max_operations_per_window));
 }
@@ -66,7 +66,7 @@ void DiscordRateLimiter::reset() {
     m_operation_times.clear();
     m_last_operation = {};
 
-    PLEX_LOG_DEBUG("RateLimiter", "Rate limiter reset");
+    LOG_DEBUG("RateLimiter", "Rate limiter reset");
 }
 
 std::chrono::milliseconds DiscordRateLimiter::time_until_next_allowed() const {
