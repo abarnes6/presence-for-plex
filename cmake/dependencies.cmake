@@ -1,10 +1,6 @@
 # Dependency management for PresenceForPlex
 
-include(FetchContent)
-
-# Set common fetch content options
-set(FETCHCONTENT_QUIET OFF)
-set(FETCHCONTENT_UPDATES_DISCONNECTED ON)
+include(cmake/CPM.cmake)
 
 # Use system libraries if requested
 if(USE_DYNAMIC_LINKS)
@@ -18,9 +14,8 @@ if(USE_DYNAMIC_LINKS)
         find_package(GTest REQUIRED)
     endif()
 else()
-    message(STATUS "Using static libraries via FetchContent")
+    message(STATUS "Using static libraries via CPM")
 
-    # Disable building tests and examples for dependencies
     set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 
     # Platform-specific SSL/TLS backend selection
@@ -50,61 +45,42 @@ else()
     set(CURL_DISABLE_SMTP ON CACHE BOOL "" FORCE)
     set(CURL_DISABLE_GOPHER ON CACHE BOOL "" FORCE)
 
-    # yaml-cpp
-    message(STATUS "Fetching yaml-cpp...")
-    FetchContent_Declare(
-        yaml-cpp
-        GIT_REPOSITORY https://github.com/jbeder/yaml-cpp.git
+    set(CMAKE_WARN_DEPRECATED OFF CACHE BOOL "" FORCE)
+    CPMAddPackage(
+        NAME yaml-cpp
+        GITHUB_REPOSITORY jbeder/yaml-cpp
         GIT_TAG 0.8.0
-        GIT_SHALLOW ON
+        OPTIONS
+            "YAML_CPP_BUILD_TESTS OFF"
+            "YAML_CPP_BUILD_TOOLS OFF"
+            "YAML_CPP_BUILD_CONTRIB OFF"
+    )
+    set(CMAKE_WARN_DEPRECATED ON CACHE BOOL "" FORCE)
+
+    CPMAddPackage(
+        NAME nlohmann_json
+        GITHUB_REPOSITORY nlohmann/json
+        VERSION 3.11.3
+        OPTIONS
+            "JSON_BuildTests OFF"
+            "JSON_Install OFF"
     )
 
-    set(YAML_CPP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-    set(YAML_CPP_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
-    set(YAML_CPP_BUILD_CONTRIB OFF CACHE BOOL "" FORCE)
-    FetchContent_MakeAvailable(yaml-cpp)
-
-    # nlohmann/json
-    message(STATUS "Fetching nlohmann/json...")
-    FetchContent_Declare(
-        json
-        GIT_REPOSITORY https://github.com/nlohmann/json.git
-        GIT_TAG v3.11.3
-        GIT_SHALLOW ON
-    )
-
-    set(JSON_BuildTests OFF CACHE BOOL "" FORCE)
-    set(JSON_Install OFF CACHE BOOL "" FORCE)
-    FetchContent_MakeAvailable(json)
-
-    # curl
-    message(STATUS "Fetching curl...")
-    FetchContent_Declare(
-        curl
-        GIT_REPOSITORY https://github.com/curl/curl.git
+    CPMAddPackage(
+        NAME curl
+        GITHUB_REPOSITORY curl/curl
         GIT_TAG curl-8_4_0
-        GIT_SHALLOW ON
     )
-    FetchContent_MakeAvailable(curl)
 
-
-    # Google Test (if building tests)
     if(BUILD_TESTING)
-        message(STATUS "Fetching Google Test...")
-        FetchContent_Declare(
-            googletest
-            GIT_REPOSITORY https://github.com/google/googletest.git
-            GIT_TAG v1.14.0
-            GIT_SHALLOW ON
+        CPMAddPackage(
+            NAME googletest
+            GITHUB_REPOSITORY google/googletest
+            VERSION 1.14.0
+            OPTIONS
+                "gtest_force_shared_crt ON"
+                "INSTALL_GTEST OFF"
         )
-
-        # For Windows: Prevent overriding the parent project's compiler/linker settings
-        set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
-
-        # Disable installation of gtest
-        set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
-
-        FetchContent_MakeAvailable(googletest)
     endif()
 endif()
 
@@ -113,7 +89,6 @@ find_package(Qt6 QUIET COMPONENTS Core Widgets Network)
 
 # Create interface targets for easier linking
 if(NOT USE_DYNAMIC_LINKS)
-    # Create aliases that match the system package names (only if they don't exist)
     if(NOT TARGET CURL::libcurl)
         add_library(CURL::libcurl ALIAS libcurl)
     endif()
@@ -122,13 +97,6 @@ if(NOT USE_DYNAMIC_LINKS)
     endif()
     if(NOT TARGET nlohmann_json::nlohmann_json)
         add_library(nlohmann_json::nlohmann_json ALIAS nlohmann_json)
-    endif()
-endif()
-    
-if(NOT USE_DYNAMIC_LINKS)
-    # Create aliases that match the system package names (only if they don't exist)
-    if(NOT TARGET CURL::libcurl)
-        add_library(CURL::libcurl ALIAS libcurl)
     endif()
 endif()
 
