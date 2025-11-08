@@ -107,13 +107,21 @@ public:
     // Formatting configuration
     virtual void set_show_progress(bool show) = 0;
     virtual void set_show_buttons(bool show) = 0;
+    virtual void set_show_artwork(bool show) = 0;
     virtual bool is_progress_shown() const = 0;
     virtual bool are_buttons_shown() const = 0;
+    virtual bool is_artwork_shown() const = 0;
 
     // Format template configuration
-    virtual void set_details_format(const std::string& format) = 0;
-    virtual void set_state_format(const std::string& format) = 0;
-    virtual void set_large_image_text_format(const std::string& format) = 0;
+    virtual void set_tv_details_format(const std::string& format) = 0;
+    virtual void set_tv_state_format(const std::string& format) = 0;
+    virtual void set_tv_large_image_text_format(const std::string& format) = 0;
+    virtual void set_movie_details_format(const std::string& format) = 0;
+    virtual void set_movie_state_format(const std::string& format) = 0;
+    virtual void set_movie_large_image_text_format(const std::string& format) = 0;
+    virtual void set_music_details_format(const std::string& format) = 0;
+    virtual void set_music_state_format(const std::string& format) = 0;
+    virtual void set_music_large_image_text_format(const std::string& format) = 0;
 
 protected:
     std::shared_ptr<EventBus> m_event_bus;
@@ -123,11 +131,22 @@ protected:
 
     bool m_show_progress = true;
     bool m_show_buttons = true;
+    bool m_show_artwork = true;
 
-    // Format templates
-    std::string m_details_format = "{title}";
-    std::string m_state_format;
-    std::string m_large_image_text_format = "{title}";
+    // Format templates - TV Shows
+    std::string m_tv_details_format = "{show}";
+    std::string m_tv_state_format = "{se} - {title}";
+    std::string m_tv_large_image_text_format = "{title}";
+
+    // Format templates - Movies
+    std::string m_movie_details_format = "{title} ({year})";
+    std::string m_movie_state_format = "{genres}";
+    std::string m_movie_large_image_text_format = "{title}";
+
+    // Format templates - Music
+    std::string m_music_details_format = "{title}";
+    std::string m_music_state_format = "{artist} - {album}";
+    std::string m_music_large_image_text_format = "{title}";
 };
 
 // Factory for creating presence service implementations

@@ -327,6 +327,8 @@ void PlexSessionManager::update_session_info(
         }
 
         info = fetch_result.value();
+        // Set session creation time for new sessions
+        info.session_created_at = std::chrono::system_clock::now();
         LOG_DEBUG("PlexSessionManager", "Fetched new media info for session: " + session_key.get());
     } else {
         LOG_ERROR("PlexSessionManager", "No media fetcher available");

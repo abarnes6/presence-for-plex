@@ -59,13 +59,21 @@ public:
     // Formatting configuration
     void set_show_progress(bool show) override;
     void set_show_buttons(bool show) override;
+    void set_show_artwork(bool show) override;
     bool is_progress_shown() const override;
     bool are_buttons_shown() const override;
+    bool is_artwork_shown() const override;
 
     // Format template configuration
-    void set_details_format(const std::string& format) override;
-    void set_state_format(const std::string& format) override;
-    void set_large_image_text_format(const std::string& format) override;
+    void set_tv_details_format(const std::string& format) override;
+    void set_tv_state_format(const std::string& format) override;
+    void set_tv_large_image_text_format(const std::string& format) override;
+    void set_movie_details_format(const std::string& format) override;
+    void set_movie_state_format(const std::string& format) override;
+    void set_movie_large_image_text_format(const std::string& format) override;
+    void set_music_details_format(const std::string& format) override;
+    void set_music_state_format(const std::string& format) override;
+    void set_music_large_image_text_format(const std::string& format) override;
 
     // Additional functionality
     struct ServiceStats {

@@ -109,7 +109,7 @@ namespace {
         app.setApplicationName("Presence for Plex");
         app.setApplicationDisplayName("Presence for Plex");
         app.setOrganizationName("Andrew Barnes");
-        app.setOrganizationDomain("presence-for-plex.github.io");
+        app.setOrganizationDomain("abarnes.dev");
         app.setQuitOnLastWindowClosed(false);
 
         QIcon icon(":/icons/app_icon");

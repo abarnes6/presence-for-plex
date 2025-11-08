@@ -151,9 +151,11 @@ PresenceData PresenceService::format_media(const MediaInfo& media) const {
 
     // Default large image
     data.large_image_key = "plex_logo";
-    if (!media.art_path.empty()) {
+    if (m_show_artwork && !media.art_path.empty()) {
         data.large_image_key = media.art_path;
         LOG_DEBUG("PresenceService", "Using art_path for large_image: " + media.art_path);
+    } else if (!media.art_path.empty()) {
+        LOG_DEBUG("PresenceService", "Artwork disabled, using default plex_logo");
     } else {
         LOG_DEBUG("PresenceService", "art_path is empty, using default plex_logo");
     }
@@ -167,33 +169,28 @@ PresenceData PresenceService::format_media(const MediaInfo& media) const {
         data.activity_type = 0; // Playing (generic)
     }
 
-    // Apply format templates with placeholders
-    std::string details_format = m_details_format;
-    std::string state_format = m_state_format;
+    // Select format templates based on media type
+    std::string details_format;
+    std::string state_format;
+    std::string large_image_text_format;
 
-    // Use default formats if not configured
-    if (details_format.empty()) {
-        if (media.type == core::MediaType::TVShow) {
-            details_format = "{show}";
-        } else if (media.type == core::MediaType::Movie) {
-            details_format = "{title}";
-        } else if (media.type == core::MediaType::Music) {
-            details_format = "{title}";
-        } else {
-            details_format = "{title}";
-        }
-    }
-
-    if (state_format.empty()) {
-        if (media.type == core::MediaType::TVShow) {
-            state_format = "{se} - {title}";
-        } else if (media.type == core::MediaType::Movie) {
-            state_format = "{genres}";
-        } else if (media.type == core::MediaType::Music) {
-            state_format = "{artist} - {album}";
-        } else {
-            state_format = "Playing media";
-        }
+    if (media.type == core::MediaType::TVShow) {
+        details_format = m_tv_details_format;
+        state_format = m_tv_state_format;
+        large_image_text_format = m_tv_large_image_text_format;
+    } else if (media.type == core::MediaType::Movie) {
+        details_format = m_movie_details_format;
+        state_format = m_movie_state_format;
+        large_image_text_format = m_movie_large_image_text_format;
+    } else if (media.type == core::MediaType::Music) {
+        details_format = m_music_details_format;
+        state_format = m_music_state_format;
+        large_image_text_format = m_music_large_image_text_format;
+    } else {
+        // Fallback for unknown media types
+        details_format = "{title}";
+        state_format = "Playing media";
+        large_image_text_format = "{title}";
     }
 
     // Replace placeholders
@@ -201,8 +198,8 @@ PresenceData PresenceService::format_media(const MediaInfo& media) const {
     data.state = replace_placeholders(state_format, media);
 
     // Large image text
-    if (!m_large_image_text_format.empty()) {
-        data.large_image_text = replace_placeholders(m_large_image_text_format, media);
+    if (!large_image_text_format.empty()) {
+        data.large_image_text = replace_placeholders(large_image_text_format, media);
     } else {
         data.large_image_text = media.title;
     }
@@ -219,27 +216,37 @@ PresenceData PresenceService::format_media(const MediaInfo& media) const {
         data.state = "Stopped";
     }
 
-    // Calculate timestamps for progress bar if enabled and playing
-    if (m_show_progress && media.state == core::PlaybackState::Playing) {
-        auto now = std::chrono::system_clock::now();
+    // Handle timestamps based on show_progress setting
+    if (m_show_progress) {
+        // Show progress bar with elapsed/remaining time
+        if (media.state == core::PlaybackState::Playing) {
+            auto now = std::chrono::system_clock::now();
 
-        // Calculate when playback started and will end
-        auto progress_sec = static_cast<int64_t>(media.progress);
-        auto duration_sec = static_cast<int64_t>(media.duration);
+            // Calculate when playback started and will end
+            auto progress_sec = static_cast<int64_t>(media.progress);
+            auto duration_sec = static_cast<int64_t>(media.duration);
 
-        data.start_timestamp = now - std::chrono::seconds(progress_sec);
-        data.end_timestamp = now + std::chrono::seconds(duration_sec - progress_sec);
-    }
-    else if (media.state == core::PlaybackState::Paused ||
-             media.state == core::PlaybackState::Buffering) {
-        // For paused/buffering, set far future timestamps to show static progress
-        constexpr int MAX_PAUSED_DURATION = 9999;
-        auto now = std::chrono::system_clock::now();
-        auto max_duration = std::chrono::hours(MAX_PAUSED_DURATION);
+            data.start_timestamp = now - std::chrono::seconds(progress_sec);
+            data.end_timestamp = now + std::chrono::seconds(duration_sec - progress_sec);
+        }
+        else if (media.state == core::PlaybackState::Paused ||
+                 media.state == core::PlaybackState::Buffering) {
+            // For paused/buffering, set far future timestamps to show static progress
+            constexpr int MAX_PAUSED_DURATION = 9999;
+            auto now = std::chrono::system_clock::now();
+            auto max_duration = std::chrono::hours(MAX_PAUSED_DURATION);
 
-        data.start_timestamp = now + max_duration;
-        auto duration_sec = static_cast<int64_t>(media.duration);
-        data.end_timestamp = now + max_duration + std::chrono::seconds(duration_sec);
+            data.start_timestamp = now + max_duration;
+            auto duration_sec = static_cast<int64_t>(media.duration);
+            data.end_timestamp = now + max_duration + std::chrono::seconds(duration_sec);
+        }
+    } else {
+        // Show elapsed time since session started (keeps increasing even when paused)
+        // Only set if session_created_at has been initialized (not epoch)
+        if (media.session_created_at != std::chrono::system_clock::time_point{}) {
+            data.start_timestamp = media.session_created_at;
+            // No end timestamp - this shows elapsed time since session creation
+        }
     }
 
     // Add buttons if enabled
@@ -281,11 +288,18 @@ PresenceServiceFactory::create(core::PresenceServiceType type, const core::Appli
 
         service->set_show_buttons(config.presence.discord.show_buttons);
         service->set_show_progress(config.presence.discord.show_progress);
+        service->set_show_artwork(config.presence.discord.show_artwork);
 
         // Set format templates
-        service->set_details_format(config.presence.discord.details_format);
-        service->set_state_format(config.presence.discord.state_format);
-        service->set_large_image_text_format(config.presence.discord.large_image_text_format);
+        service->set_tv_details_format(config.presence.discord.tv_details_format);
+        service->set_tv_state_format(config.presence.discord.tv_state_format);
+        service->set_tv_large_image_text_format(config.presence.discord.tv_large_image_text_format);
+        service->set_movie_details_format(config.presence.discord.movie_details_format);
+        service->set_movie_state_format(config.presence.discord.movie_state_format);
+        service->set_movie_large_image_text_format(config.presence.discord.movie_large_image_text_format);
+        service->set_music_details_format(config.presence.discord.music_details_format);
+        service->set_music_state_format(config.presence.discord.music_state_format);
+        service->set_music_large_image_text_format(config.presence.discord.music_large_image_text_format);
 
         return service;
     }

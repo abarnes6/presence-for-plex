@@ -176,7 +176,13 @@ std::expected<void, core::PlexError> JikanService::enrich_media_info(core::Media
 
     // If we don't have MAL ID, try to search for it
     if (info.mal_id.empty()) {
-        auto search_result = search_anime_by_title(info.title, info.year);
+        // For TV shows, use the show title (grandparent_title) instead of episode title
+        std::string search_title = (info.type == core::MediaType::TVShow && !info.grandparent_title.empty())
+            ? info.grandparent_title
+            : info.title;
+
+        LOG_DEBUG("Jikan", "Searching for anime with title: " + search_title);
+        auto search_result = search_anime_by_title(search_title, info.year);
         if (search_result.has_value()) {
             info.mal_id = search_result.value();
         }

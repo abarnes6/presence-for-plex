@@ -67,6 +67,7 @@ private:
     // Server discovery and configuration
     std::expected<void, core::PlexError> discover_servers(const std::string& auth_token);
     std::expected<void, core::PlexError> parse_server_json(const std::string& json_response, const std::string& auth_token);
+    std::expected<void, core::PlexError> add_manual_server(const std::string& server_url, const core::PlexToken& auth_token);
 
     // Handle SSE events from connection manager
     void handle_sse_event(const core::ServerId& server_id, const std::string& event);

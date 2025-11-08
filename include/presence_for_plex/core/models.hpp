@@ -266,7 +266,8 @@ struct MediaInfo {
     PlaybackState state = PlaybackState::Stopped;
     double progress = 0.0;           // Current progress in seconds
     double duration = 0.0;           // Total duration in seconds
-    std::chrono::system_clock::time_point start_time;
+    std::chrono::system_clock::time_point start_time;       // Calculated start based on progress (for progress bar)
+    std::chrono::system_clock::time_point session_created_at; // Actual time session was created (never changes)
 
     // Metadata
     SessionKey session_key;          // Plex session key
@@ -283,9 +284,21 @@ struct DiscordConfig {
     bool show_progress = true;
     bool show_artwork = true;
     std::chrono::seconds update_interval{15};
-    std::string details_format = "{title}";
-    std::string state_format = "{state}";
-    std::string large_image_text_format = "{title}";
+
+    // TV Show format defaults
+    std::string tv_details_format = "{show}";
+    std::string tv_state_format = "{se} - {title}";
+    std::string tv_large_image_text_format = "{title}";
+
+    // Movie format defaults
+    std::string movie_details_format = "{title} ({year})";
+    std::string movie_state_format = "{genres}";
+    std::string movie_large_image_text_format = "{title}";
+
+    // Music format defaults
+    std::string music_details_format = "{title}";
+    std::string music_state_format = "{artist} - {album}";
+    std::string music_large_image_text_format = "{title}";
 
     std::expected<void, ValidationError> validate() const;
 };

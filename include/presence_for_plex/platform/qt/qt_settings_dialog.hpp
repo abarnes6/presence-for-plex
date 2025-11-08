@@ -33,6 +33,7 @@ private:
     void on_reject();
     void on_reset_defaults();
     void validate_inputs();
+    void open_logs_folder();
 
 private:
     // General settings
@@ -44,14 +45,11 @@ private:
     QLineEdit* m_discord_client_id_edit = nullptr;
     QCheckBox* m_show_buttons_check = nullptr;
     QCheckBox* m_show_progress_check = nullptr;
-    QSpinBox* m_update_interval_spin = nullptr;
     QCheckBox* m_show_artwork_check = nullptr;
 
     // Plex settings
     QCheckBox* m_plex_enabled_check = nullptr;
     QCheckBox* m_auto_discover_check = nullptr;
-    QSpinBox* m_poll_interval_spin = nullptr;
-    QSpinBox* m_timeout_spin = nullptr;
     QTextEdit* m_server_urls_edit = nullptr;
 
     // Media type filters
@@ -64,10 +62,22 @@ private:
     QCheckBox* m_enable_tmdb_check = nullptr;
     QCheckBox* m_enable_jikan_check = nullptr;
 
-    // Rich presence format
-    QLineEdit* m_details_format_edit = nullptr;
-    QLineEdit* m_state_format_edit = nullptr;
-    QLineEdit* m_large_image_text_format_edit = nullptr;
+    // Rich presence format - TV Shows
+    QLineEdit* m_tv_details_format_edit = nullptr;
+    QLineEdit* m_tv_state_format_edit = nullptr;
+    QLineEdit* m_tv_large_image_text_format_edit = nullptr;
+
+    // Rich presence format - Movies
+    QLineEdit* m_movie_details_format_edit = nullptr;
+    QLineEdit* m_movie_state_format_edit = nullptr;
+    QLineEdit* m_movie_large_image_text_format_edit = nullptr;
+
+    // Rich presence format - Music
+    QLineEdit* m_music_details_format_edit = nullptr;
+    QLineEdit* m_music_state_format_edit = nullptr;
+    QLineEdit* m_music_large_image_text_format_edit = nullptr;
+
+    // Help text
     QTextEdit* m_format_help_text = nullptr;
 
     core::ApplicationConfig m_original_config;

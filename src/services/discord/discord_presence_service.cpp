@@ -187,6 +187,12 @@ std::expected<void, core::DiscordError> DiscordPresenceService::clear_presence()
 }
 
 std::expected<void, core::DiscordError> DiscordPresenceService::update_from_media(const core::MediaInfo& media) {
+    // Clear presence when playback is stopped
+    if (media.state == core::PlaybackState::Stopped) {
+        LOG_DEBUG("DiscordPresenceService", "Playback stopped, clearing presence");
+        return clear_presence();
+    }
+
     PresenceData presence = format_media(media);
     return update_presence(presence);
 }
@@ -199,15 +205,18 @@ void DiscordPresenceService::set_event_bus(std::shared_ptr<core::EventBus> bus) 
             [this](const core::events::ConfigurationUpdated& event) {
                 set_show_buttons(event.new_config.presence.discord.show_buttons);
                 set_show_progress(event.new_config.presence.discord.show_progress);
-
-                if (event.new_config.presence.discord.update_interval != m_config.update_interval) {
-                    set_update_interval(event.new_config.presence.discord.update_interval);
-                }
+                set_show_artwork(event.new_config.presence.discord.show_artwork);
 
                 // Update format templates
-                set_details_format(event.new_config.presence.discord.details_format);
-                set_state_format(event.new_config.presence.discord.state_format);
-                set_large_image_text_format(event.new_config.presence.discord.large_image_text_format);
+                set_tv_details_format(event.new_config.presence.discord.tv_details_format);
+                set_tv_state_format(event.new_config.presence.discord.tv_state_format);
+                set_tv_large_image_text_format(event.new_config.presence.discord.tv_large_image_text_format);
+                set_movie_details_format(event.new_config.presence.discord.movie_details_format);
+                set_movie_state_format(event.new_config.presence.discord.movie_state_format);
+                set_movie_large_image_text_format(event.new_config.presence.discord.movie_large_image_text_format);
+                set_music_details_format(event.new_config.presence.discord.music_details_format);
+                set_music_state_format(event.new_config.presence.discord.music_state_format);
+                set_music_large_image_text_format(event.new_config.presence.discord.music_large_image_text_format);
 
                 LOG_INFO("DiscordPresenceService", "Configuration updated from event");
             }
@@ -235,6 +244,10 @@ void DiscordPresenceService::set_show_buttons(bool show) {
     m_show_buttons = show;
 }
 
+void DiscordPresenceService::set_show_artwork(bool show) {
+    m_show_artwork = show;
+}
+
 bool DiscordPresenceService::is_progress_shown() const {
     return m_show_progress;
 }
@@ -243,16 +256,44 @@ bool DiscordPresenceService::are_buttons_shown() const {
     return m_show_buttons;
 }
 
-void DiscordPresenceService::set_details_format(const std::string& format) {
-    m_details_format = format;
+bool DiscordPresenceService::is_artwork_shown() const {
+    return m_show_artwork;
 }
 
-void DiscordPresenceService::set_state_format(const std::string& format) {
-    m_state_format = format;
+void DiscordPresenceService::set_tv_details_format(const std::string& format) {
+    m_tv_details_format = format;
 }
 
-void DiscordPresenceService::set_large_image_text_format(const std::string& format) {
-    m_large_image_text_format = format;
+void DiscordPresenceService::set_tv_state_format(const std::string& format) {
+    m_tv_state_format = format;
+}
+
+void DiscordPresenceService::set_tv_large_image_text_format(const std::string& format) {
+    m_tv_large_image_text_format = format;
+}
+
+void DiscordPresenceService::set_movie_details_format(const std::string& format) {
+    m_movie_details_format = format;
+}
+
+void DiscordPresenceService::set_movie_state_format(const std::string& format) {
+    m_movie_state_format = format;
+}
+
+void DiscordPresenceService::set_movie_large_image_text_format(const std::string& format) {
+    m_movie_large_image_text_format = format;
+}
+
+void DiscordPresenceService::set_music_details_format(const std::string& format) {
+    m_music_details_format = format;
+}
+
+void DiscordPresenceService::set_music_state_format(const std::string& format) {
+    m_music_state_format = format;
+}
+
+void DiscordPresenceService::set_music_large_image_text_format(const std::string& format) {
+    m_music_large_image_text_format = format;
 }
 
 void DiscordPresenceService::update_config(const Config& config) {

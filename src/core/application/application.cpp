@@ -7,13 +7,15 @@
 #include "presence_for_plex/services/update_service.hpp"
 #include "presence_for_plex/utils/logger.hpp"
 #include "presence_for_plex/utils/threading.hpp"
+#ifdef USE_QT_UI
 #include "presence_for_plex/platform/qt/qt_settings_dialog.hpp"
 #include "presence_for_plex/platform/qt/qt_ui_service.hpp"
+#include <QDialog>
+#endif
 #include "presence_for_plex/platform/ui_service.hpp"
 #include "presence_for_plex/platform/system_service.hpp"
 #include "version.h"
 
-#include <QDialog>
 #include <chrono>
 #include <thread>
 

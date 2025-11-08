@@ -113,10 +113,21 @@ void YamlConfigHelper::merge_presence_config(YAML::Node& node, const core::Prese
     node["presence"]["discord"]["show_buttons"] = config.discord.show_buttons;
     node["presence"]["discord"]["show_progress"] = config.discord.show_progress;
     node["presence"]["discord"]["show_artwork"] = config.discord.show_artwork;
-    node["presence"]["discord"]["update_interval"] = config.discord.update_interval.count();
-    node["presence"]["discord"]["details_format"] = config.discord.details_format;
-    node["presence"]["discord"]["state_format"] = config.discord.state_format;
-    node["presence"]["discord"]["large_image_text_format"] = config.discord.large_image_text_format;
+
+    // TV Show formats
+    node["presence"]["discord"]["tv_details_format"] = config.discord.tv_details_format;
+    node["presence"]["discord"]["tv_state_format"] = config.discord.tv_state_format;
+    node["presence"]["discord"]["tv_large_image_text_format"] = config.discord.tv_large_image_text_format;
+
+    // Movie formats
+    node["presence"]["discord"]["movie_details_format"] = config.discord.movie_details_format;
+    node["presence"]["discord"]["movie_state_format"] = config.discord.movie_state_format;
+    node["presence"]["discord"]["movie_large_image_text_format"] = config.discord.movie_large_image_text_format;
+
+    // Music formats
+    node["presence"]["discord"]["music_details_format"] = config.discord.music_details_format;
+    node["presence"]["discord"]["music_state_format"] = config.discord.music_state_format;
+    node["presence"]["discord"]["music_large_image_text_format"] = config.discord.music_large_image_text_format;
 }
 
 core::PresenceServiceConfig YamlConfigHelper::parse_presence_config(const YAML::Node& node) {
@@ -143,22 +154,57 @@ core::PresenceServiceConfig YamlConfigHelper::parse_presence_config(const YAML::
         config.discord.show_artwork = discord_node["show_artwork"].as<bool>();
     }
 
-    if (discord_node["update_interval"]) {
-        auto seconds = clamp_to_limits(
-            discord_node["update_interval"].as<int>(),
-            static_cast<int>(core::ConfigLimits::MIN_UPDATE_INTERVAL.count()),
-            static_cast<int>(core::ConfigLimits::MAX_UPDATE_INTERVAL.count()));
-        config.discord.update_interval = std::chrono::seconds(seconds);
+    // TV Show formats
+    if (discord_node["tv_details_format"]) {
+        config.discord.tv_details_format = discord_node["tv_details_format"].as<std::string>();
+    }
+    if (discord_node["tv_state_format"]) {
+        config.discord.tv_state_format = discord_node["tv_state_format"].as<std::string>();
+    }
+    if (discord_node["tv_large_image_text_format"]) {
+        config.discord.tv_large_image_text_format = discord_node["tv_large_image_text_format"].as<std::string>();
     }
 
+    // Movie formats
+    if (discord_node["movie_details_format"]) {
+        config.discord.movie_details_format = discord_node["movie_details_format"].as<std::string>();
+    }
+    if (discord_node["movie_state_format"]) {
+        config.discord.movie_state_format = discord_node["movie_state_format"].as<std::string>();
+    }
+    if (discord_node["movie_large_image_text_format"]) {
+        config.discord.movie_large_image_text_format = discord_node["movie_large_image_text_format"].as<std::string>();
+    }
+
+    // Music formats
+    if (discord_node["music_details_format"]) {
+        config.discord.music_details_format = discord_node["music_details_format"].as<std::string>();
+    }
+    if (discord_node["music_state_format"]) {
+        config.discord.music_state_format = discord_node["music_state_format"].as<std::string>();
+    }
+    if (discord_node["music_large_image_text_format"]) {
+        config.discord.music_large_image_text_format = discord_node["music_large_image_text_format"].as<std::string>();
+    }
+
+    // Backward compatibility: if old format fields exist, use them as defaults for all media types
     if (discord_node["details_format"]) {
-        config.discord.details_format = discord_node["details_format"].as<std::string>();
+        auto details = discord_node["details_format"].as<std::string>();
+        if (config.discord.tv_details_format.empty()) config.discord.tv_details_format = details;
+        if (config.discord.movie_details_format.empty()) config.discord.movie_details_format = details;
+        if (config.discord.music_details_format.empty()) config.discord.music_details_format = details;
     }
     if (discord_node["state_format"]) {
-        config.discord.state_format = discord_node["state_format"].as<std::string>();
+        auto state = discord_node["state_format"].as<std::string>();
+        if (config.discord.tv_state_format.empty()) config.discord.tv_state_format = state;
+        if (config.discord.movie_state_format.empty()) config.discord.movie_state_format = state;
+        if (config.discord.music_state_format.empty()) config.discord.music_state_format = state;
     }
     if (discord_node["large_image_text_format"]) {
-        config.discord.large_image_text_format = discord_node["large_image_text_format"].as<std::string>();
+        auto large_image_text = discord_node["large_image_text_format"].as<std::string>();
+        if (config.discord.tv_large_image_text_format.empty()) config.discord.tv_large_image_text_format = large_image_text;
+        if (config.discord.movie_large_image_text_format.empty()) config.discord.movie_large_image_text_format = large_image_text;
+        if (config.discord.music_large_image_text_format.empty()) config.discord.music_large_image_text_format = large_image_text;
     }
 
     return config;
@@ -173,22 +219,6 @@ core::PlexServiceConfig YamlConfigHelper::parse_plex_config(const YAML::Node& no
 
     if (node["auto_discover"]) {
         config.auto_discover = node["auto_discover"].as<bool>();
-    }
-
-    if (node["poll_interval"]) {
-        auto seconds = clamp_to_limits(
-            node["poll_interval"].as<int>(),
-            static_cast<int>(core::ConfigLimits::MIN_POLL_INTERVAL.count()),
-            static_cast<int>(core::ConfigLimits::MAX_POLL_INTERVAL.count()));
-        config.poll_interval = std::chrono::seconds(seconds);
-    }
-
-    if (node["timeout"]) {
-        auto seconds = clamp_to_limits(
-            node["timeout"].as<int>(),
-            static_cast<int>(core::ConfigLimits::MIN_TIMEOUT.count()),
-            static_cast<int>(core::ConfigLimits::MAX_TIMEOUT.count()));
-        config.timeout = std::chrono::seconds(seconds);
     }
 
     if (node["enable_movies"]) {
@@ -228,8 +258,6 @@ core::MediaServicesConfig YamlConfigHelper::parse_media_services_config(const YA
 void YamlConfigHelper::merge_plex_config(YAML::Node& node, const core::PlexServiceConfig& config) {
     node["enabled"] = config.enabled;
     node["auto_discover"] = config.auto_discover;
-    node["poll_interval"] = config.poll_interval.count();
-    node["timeout"] = config.timeout.count();
 
     node["enable_movies"] = config.enable_movies;
     node["enable_tv_shows"] = config.enable_tv_shows;

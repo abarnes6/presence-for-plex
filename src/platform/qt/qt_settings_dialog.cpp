@@ -11,6 +11,9 @@
 #include <QDialogButtonBox>
 #include <QMessageBox>
 #include <QFont>
+#include <QDesktopServices>
+#include <QUrl>
+#include <filesystem>
 
 namespace presence_for_plex::platform::qt {
 
@@ -46,6 +49,10 @@ void QtSettingsDialog::setup_ui() {
     m_start_at_boot_check = new QCheckBox("Start at boot");
     general_form->addRow(m_start_at_boot_check);
 
+    auto* logs_button = new QPushButton("Open Logs Folder");
+    connect(logs_button, &QPushButton::clicked, this, &QtSettingsDialog::open_logs_folder);
+    general_form->addRow("Logs:", logs_button);
+
     general_layout->addWidget(general_group);
     general_layout->addStretch();
 
@@ -73,11 +80,6 @@ void QtSettingsDialog::setup_ui() {
     m_show_artwork_check = new QCheckBox("Show movie/TV artwork as image");
     discord_form->addRow(m_show_artwork_check);
 
-    m_update_interval_spin = new QSpinBox();
-    m_update_interval_spin->setRange(1, 300);
-    m_update_interval_spin->setSuffix(" seconds");
-    discord_form->addRow("Update Interval:", m_update_interval_spin);
-
     discord_layout->addWidget(discord_group);
     discord_layout->addStretch();
 
@@ -94,16 +96,6 @@ void QtSettingsDialog::setup_ui() {
 
     m_auto_discover_check = new QCheckBox("Auto-discover local servers");
     plex_form->addRow(m_auto_discover_check);
-
-    m_poll_interval_spin = new QSpinBox();
-    m_poll_interval_spin->setRange(1, 60);
-    m_poll_interval_spin->setSuffix(" seconds");
-    plex_form->addRow("Poll Interval:", m_poll_interval_spin);
-
-    m_timeout_spin = new QSpinBox();
-    m_timeout_spin->setRange(5, 300);
-    m_timeout_spin->setSuffix(" seconds");
-    plex_form->addRow("Connection Timeout:", m_timeout_spin);
 
     m_server_urls_edit = new QTextEdit();
     m_server_urls_edit->setPlaceholderText("One URL per line\nExample: http://192.168.1.100:32400");
@@ -184,34 +176,71 @@ void QtSettingsDialog::setup_ui() {
     auto* format_widget = new QWidget();
     auto* format_layout = new QVBoxLayout(format_widget);
 
-    auto* format_group = new QGroupBox("Rich Presence Format");
-    auto* format_form = new QFormLayout(format_group);
+    // TV Shows format group
+    auto* tv_format_group = new QGroupBox("TV Shows Format");
+    auto* tv_format_form = new QFormLayout(tv_format_group);
 
-    m_details_format_edit = new QLineEdit();
-    m_details_format_edit->setPlaceholderText("{title}");
-    format_form->addRow("Details Line:", m_details_format_edit);
+    m_tv_details_format_edit = new QLineEdit();
+    m_tv_details_format_edit->setPlaceholderText("{show}");
+    tv_format_form->addRow("Details Line:", m_tv_details_format_edit);
 
-    m_state_format_edit = new QLineEdit();
-    m_state_format_edit->setPlaceholderText("{state} • S{season}E{episode}");
-    format_form->addRow("State Line:", m_state_format_edit);
+    m_tv_state_format_edit = new QLineEdit();
+    m_tv_state_format_edit->setPlaceholderText("{se} - {title}");
+    tv_format_form->addRow("State Line:", m_tv_state_format_edit);
 
-    m_large_image_text_format_edit = new QLineEdit();
-    m_large_image_text_format_edit->setPlaceholderText("{title}");
-    format_form->addRow("Image Hover Text:", m_large_image_text_format_edit);
+    m_tv_large_image_text_format_edit = new QLineEdit();
+    m_tv_large_image_text_format_edit->setPlaceholderText("{title}");
+    tv_format_form->addRow("Image Hover Text:", m_tv_large_image_text_format_edit);
 
-    format_layout->addWidget(format_group);
+    format_layout->addWidget(tv_format_group);
 
+    // Movies format group
+    auto* movie_format_group = new QGroupBox("Movies Format");
+    auto* movie_format_form = new QFormLayout(movie_format_group);
+
+    m_movie_details_format_edit = new QLineEdit();
+    m_movie_details_format_edit->setPlaceholderText("{title} ({year})");
+    movie_format_form->addRow("Details Line:", m_movie_details_format_edit);
+
+    m_movie_state_format_edit = new QLineEdit();
+    m_movie_state_format_edit->setPlaceholderText("{genres}");
+    movie_format_form->addRow("State Line:", m_movie_state_format_edit);
+
+    m_movie_large_image_text_format_edit = new QLineEdit();
+    m_movie_large_image_text_format_edit->setPlaceholderText("{title}");
+    movie_format_form->addRow("Image Hover Text:", m_movie_large_image_text_format_edit);
+
+    format_layout->addWidget(movie_format_group);
+
+    // Music format group
+    auto* music_format_group = new QGroupBox("Music Format");
+    auto* music_format_form = new QFormLayout(music_format_group);
+
+    m_music_details_format_edit = new QLineEdit();
+    m_music_details_format_edit->setPlaceholderText("{title}");
+    music_format_form->addRow("Details Line:", m_music_details_format_edit);
+
+    m_music_state_format_edit = new QLineEdit();
+    m_music_state_format_edit->setPlaceholderText("{artist} - {album}");
+    music_format_form->addRow("State Line:", m_music_state_format_edit);
+
+    m_music_large_image_text_format_edit = new QLineEdit();
+    m_music_large_image_text_format_edit->setPlaceholderText("{title}");
+    music_format_form->addRow("Image Hover Text:", m_music_large_image_text_format_edit);
+
+    format_layout->addWidget(music_format_group);
+
+    // Help text
     m_format_help_text = new QTextEdit();
     m_format_help_text->setReadOnly(true);
     m_format_help_text->setMaximumHeight(200);
     m_format_help_text->setPlainText(
-        "Available Placeholders:\n\n"
         "Basic: {title} {original_title} {year} {studio} {type} {summary}\n"
         "TV Shows: {show} {season} {episode} {season_padded} {episode_padded} {se} {SxE}\n"
         "Music: {artist} {album} {track}\n"
         "Playback: {state} {progress} {duration} {remaining} {progress_percentage}\n"
         "Other: {username} {genre} {genres} {rating}\n\n"
-        "Examples:\n"
+        "Defaults:\n"
         "• TV: \"{show}\" + \"{se} - {title}\"\n"
         "• Movie: \"{title} ({year})\" + \"{genres}\"\n"
         "• Music: \"{title}\" + \"{artist} - {album}\""
@@ -258,16 +287,24 @@ void QtSettingsDialog::load_config(const core::ApplicationConfig& config) {
     m_show_buttons_check->setChecked(config.presence.discord.show_buttons);
     m_show_progress_check->setChecked(config.presence.discord.show_progress);
     m_show_artwork_check->setChecked(config.presence.discord.show_artwork);
-    m_update_interval_spin->setValue(static_cast<int>(config.presence.discord.update_interval.count()));
 
-    m_details_format_edit->setText(QString::fromStdString(config.presence.discord.details_format));
-    m_state_format_edit->setText(QString::fromStdString(config.presence.discord.state_format));
-    m_large_image_text_format_edit->setText(QString::fromStdString(config.presence.discord.large_image_text_format));
+    // TV Shows format
+    m_tv_details_format_edit->setText(QString::fromStdString(config.presence.discord.tv_details_format));
+    m_tv_state_format_edit->setText(QString::fromStdString(config.presence.discord.tv_state_format));
+    m_tv_large_image_text_format_edit->setText(QString::fromStdString(config.presence.discord.tv_large_image_text_format));
+
+    // Movies format
+    m_movie_details_format_edit->setText(QString::fromStdString(config.presence.discord.movie_details_format));
+    m_movie_state_format_edit->setText(QString::fromStdString(config.presence.discord.movie_state_format));
+    m_movie_large_image_text_format_edit->setText(QString::fromStdString(config.presence.discord.movie_large_image_text_format));
+
+    // Music format
+    m_music_details_format_edit->setText(QString::fromStdString(config.presence.discord.music_details_format));
+    m_music_state_format_edit->setText(QString::fromStdString(config.presence.discord.music_state_format));
+    m_music_large_image_text_format_edit->setText(QString::fromStdString(config.presence.discord.music_large_image_text_format));
 
     m_plex_enabled_check->setChecked(config.media_services.plex.enabled);
     m_auto_discover_check->setChecked(config.media_services.plex.auto_discover);
-    m_poll_interval_spin->setValue(static_cast<int>(config.media_services.plex.poll_interval.count()));
-    m_timeout_spin->setValue(static_cast<int>(config.media_services.plex.timeout.count()));
 
     m_enable_movies_check->setChecked(config.media_services.plex.enable_movies);
     m_enable_tv_shows_check->setChecked(config.media_services.plex.enable_tv_shows);
@@ -297,15 +334,23 @@ core::ApplicationConfig QtSettingsDialog::get_config() const {
     config.presence.discord.show_buttons = m_show_buttons_check->isChecked();
     config.presence.discord.show_progress = m_show_progress_check->isChecked();
     config.presence.discord.show_artwork = m_show_artwork_check->isChecked();
-    config.presence.discord.update_interval = std::chrono::seconds(m_update_interval_spin->value());
-    config.presence.discord.details_format = m_details_format_edit->text().toStdString();
-    config.presence.discord.state_format = m_state_format_edit->text().toStdString();
-    config.presence.discord.large_image_text_format = m_large_image_text_format_edit->text().toStdString();
+    // TV Shows format
+    config.presence.discord.tv_details_format = m_tv_details_format_edit->text().toStdString();
+    config.presence.discord.tv_state_format = m_tv_state_format_edit->text().toStdString();
+    config.presence.discord.tv_large_image_text_format = m_tv_large_image_text_format_edit->text().toStdString();
+
+    // Movies format
+    config.presence.discord.movie_details_format = m_movie_details_format_edit->text().toStdString();
+    config.presence.discord.movie_state_format = m_movie_state_format_edit->text().toStdString();
+    config.presence.discord.movie_large_image_text_format = m_movie_large_image_text_format_edit->text().toStdString();
+
+    // Music format
+    config.presence.discord.music_details_format = m_music_details_format_edit->text().toStdString();
+    config.presence.discord.music_state_format = m_music_state_format_edit->text().toStdString();
+    config.presence.discord.music_large_image_text_format = m_music_large_image_text_format_edit->text().toStdString();
 
     config.media_services.plex.enabled = m_plex_enabled_check->isChecked();
     config.media_services.plex.auto_discover = m_auto_discover_check->isChecked();
-    config.media_services.plex.poll_interval = std::chrono::seconds(m_poll_interval_spin->value());
-    config.media_services.plex.timeout = std::chrono::seconds(m_timeout_spin->value());
 
     config.media_services.plex.enable_movies = m_enable_movies_check->isChecked();
     config.media_services.plex.enable_tv_shows = m_enable_tv_shows_check->isChecked();
@@ -364,6 +409,33 @@ void QtSettingsDialog::validate_inputs() {
     if (client_id.isEmpty()) {
         LOG_WARNING("SettingsDialog", "Discord client ID is empty, using default");
         m_discord_client_id_edit->setText("1359742002618564618");
+    }
+}
+
+void QtSettingsDialog::open_logs_folder() {
+    std::filesystem::path log_dir;
+
+#ifdef _WIN32
+    if (const char* appdata = std::getenv("APPDATA")) {
+        log_dir = std::filesystem::path(appdata) / "Presence For Plex";
+    }
+#else
+    if (const char* xdg = std::getenv("XDG_CONFIG_HOME")) {
+        log_dir = std::filesystem::path(xdg) / "presence-for-plex";
+    } else if (const char* home = std::getenv("HOME")) {
+        log_dir = std::filesystem::path(home) / ".config" / "presence-for-plex";
+    }
+#endif
+
+    if (log_dir.empty()) {
+        QMessageBox::warning(this, "Error", "Could not determine logs folder location.");
+        return;
+    }
+
+    // Convert to QString and open with file explorer
+    QString dir_path = QString::fromStdString(log_dir.string());
+    if (!QDesktopServices::openUrl(QUrl::fromLocalFile(dir_path))) {
+        QMessageBox::warning(this, "Error", "Could not open logs folder: " + dir_path);
     }
 }
 
