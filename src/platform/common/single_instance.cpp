@@ -61,17 +61,17 @@ public:
             return true; // Already acquired
         }
 
-        LOG_INFO("SingleInstance", "Attempting to acquire instance: " + instance_name);
+        LOG_DEBUG("SingleInstance", "Attempting to acquire instance: " + instance_name);
 
 #ifdef USE_QT_UI
         // Qt implementation using QLockFile
         m_acquired = m_lock_file->tryLock(0);
 
         if (m_acquired) {
-            LOG_INFO("SingleInstance", "Successfully acquired instance");
+            LOG_DEBUG("SingleInstance", "Successfully acquired instance");
         } else {
             if (m_lock_file->error() == QLockFile::LockFailedError) {
-                LOG_INFO("SingleInstance", "Another instance is already running");
+                LOG_DEBUG("SingleInstance", "Another instance is already running");
             } else {
                 LOG_ERROR("SingleInstance", "Failed to acquire lock: " +
                               std::to_string(static_cast<int>(m_lock_file->error())));
@@ -121,9 +121,9 @@ public:
 #endif
 
         if (m_acquired) {
-            LOG_INFO("SingleInstance", "Successfully acquired instance");
+            LOG_DEBUG("SingleInstance", "Successfully acquired instance");
         } else {
-            LOG_INFO("SingleInstance", "Another instance is already running");
+            LOG_DEBUG("SingleInstance", "Another instance is already running");
         }
 
         return m_acquired;
@@ -134,7 +134,7 @@ public:
             return;
         }
 
-        LOG_INFO("SingleInstance", "Releasing instance");
+        LOG_DEBUG("SingleInstance", "Releasing instance");
 
 #ifdef USE_QT_UI
         if (m_lock_file) {

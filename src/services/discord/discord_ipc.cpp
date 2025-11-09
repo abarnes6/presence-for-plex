@@ -62,7 +62,7 @@ bool DiscordIPC::connect() {
       return true;
     }
 
-    LOG_INFO("DiscordIPC", "Attempting to connect to Discord");
+    LOG_DEBUG("DiscordIPC", "Attempting to connect to Discord");
 
 #ifdef _WIN32
     return connect_windows();
@@ -186,7 +186,7 @@ bool DiscordIPC::connect_windows() {
           LOG_DEBUG("DiscordIPC", "Warning: Failed to set pipe mode. Using default mode. Error: " + std::to_string(error));
         }
 
-        LOG_INFO("DiscordIPC", "Connected to pipe: " + pipe_name);
+        LOG_DEBUG("DiscordIPC", "Connected to pipe: " + pipe_name);
         m_connected = true;  // Set connected before handshake
 
         if (!perform_handshake()) {
@@ -424,7 +424,7 @@ bool DiscordIPC::perform_handshake() {
     const Json handshake = {{"v", DISCORD_VERSION}, {"client_id", m_client_id}};
     const std::string handshake_str = handshake.dump();
 
-    LOG_INFO("DiscordIPC", "Sending handshake with client ID: " + m_client_id);
+    LOG_DEBUG("DiscordIPC", "Sending handshake with client ID: " + m_client_id);
     LOG_DEBUG("DiscordIPC", "Handshake payload: " + handshake_str);
 
     if (!write_frame(static_cast<uint32_t>(OpCode::HANDSHAKE), handshake_str)) {
@@ -450,7 +450,7 @@ bool DiscordIPC::perform_handshake() {
       LOG_DEBUG("DiscordIPC", "Handshake response: " + response_data);
 
       if (response_json.contains("evt") && response_json["evt"] == "READY") {
-        LOG_INFO("DiscordIPC", "Handshake successful");
+        LOG_DEBUG("DiscordIPC", "Handshake successful");
         return true;
       } else {
         LOG_ERROR("DiscordIPC", "Handshake failed - not ready");

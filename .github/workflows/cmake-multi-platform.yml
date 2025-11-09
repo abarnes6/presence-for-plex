@@ -11,6 +11,7 @@ on:
 
 env:
   BUILD_TYPE: Release
+  QT_VERSION: 6.6.3
 
 jobs:
   build:
@@ -26,21 +27,29 @@ jobs:
             cpp_compiler: g++
             label: gcc
             package_artifact: 'packages-linux-gcc'
+            cpack_generator: 'DEB;RPM;TGZ'
+            qt_arch: 'gcc_64'
 
           - os: ubuntu-latest
             cpp_compiler: clang++
             label: clang
             package_artifact: 'packages-linux-clang'
+            cpack_generator: 'DEB;RPM;TGZ'
+            qt_arch: 'gcc_64'
 
           - os: windows-latest
             cpp_compiler: cl
             label: msvc
             package_artifact: 'packages-windows'
+            cpack_generator: 'NSIS;ZIP'
+            qt_arch: 'win64_msvc2019_64'
 
           - os: macos-latest
             cpp_compiler: clang++
             label: clang
             package_artifact: 'packages-macos'
+            cpack_generator: 'DragNDrop;ZIP'
+            qt_arch: 'clang_64'
 
     steps:
       - name: Checkout repository
@@ -51,12 +60,22 @@ jobs:
         shell: bash
         run: |
           echo "build-output-dir=${{ github.workspace }}/build" >> "$GITHUB_OUTPUT"
-          echo "package-output-dir=${{ github.workspace }}/build/packages" >> "$GITHUB_OUTPUT"
 
       # ======================================================================
-      # Install Dependencies - Ubuntu
+      # Install Qt6
       # ======================================================================
-      - name: Install dependencies (Ubuntu)
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          arch: ${{ matrix.qt_arch }}
+          cache: true
+          modules: 'qtbase'
+
+      # ======================================================================
+      # Install Build Tools - Ubuntu
+      # ======================================================================
+      - name: Install build tools (Ubuntu)
         if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
@@ -64,67 +83,31 @@ jobs:
             build-essential \
             cmake \
             ninja-build \
-            libcurl4-openssl-dev \
-            libyaml-cpp-dev \
-            nlohmann-json3-dev \
-            libgtest-dev \
             pkg-config \
-            qt6-base-dev \
-            qt6-base-private-dev \
             libgl1-mesa-dev \
             libxkbcommon-dev \
+            libxcb-cursor0 \
             rpm \
             dpkg-dev
 
       # ======================================================================
-      # Install Dependencies - macOS
+      # Install Build Tools - macOS
       # ======================================================================
-      - name: Install dependencies (macOS)
+      - name: Install build tools (macOS)
         if: matrix.os == 'macos-latest'
         run: |
           brew install \
             cmake \
             ninja \
-            curl \
-            yaml-cpp \
-            nlohmann-json \
-            googletest \
-            pkg-config \
-            qt@6
+            pkg-config
 
       # ======================================================================
-      # Install Dependencies - Windows
+      # Install Build Tools - Windows
       # ======================================================================
-      - name: Cache vcpkg (Windows)
+      - name: Install build tools (Windows)
         if: matrix.os == 'windows-latest'
-        uses: actions/cache@v4
-        with:
-          path: C:\vcpkg\installed
-          key: vcpkg-${{ runner.os }}-${{ hashFiles('**/CMakeLists.txt') }}
-          restore-keys: |
-            vcpkg-${{ runner.os }}-
-
-      - name: Install dependencies (Windows)
-        if: matrix.os == 'windows-latest'
-        shell: pwsh
         run: |
-          # Ensure vcpkg is available
-          if (-not (Test-Path "C:\vcpkg\vcpkg.exe")) {
-            git clone https://github.com/Microsoft/vcpkg.git C:\vcpkg
-            & C:\vcpkg\bootstrap-vcpkg.bat
-          }
-
-          # Install dependencies
-          & C:\vcpkg\vcpkg.exe install `
-            curl[ssl]:x64-windows `
-            yaml-cpp:x64-windows `
-            nlohmann-json:x64-windows `
-            gtest:x64-windows `
-            qt6-base:x64-windows `
-            --recurse
-
-          # Add vcpkg to PATH
-          echo "CMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake" >> $env:GITHUB_ENV
+          choco install cmake ninja nsis -y
 
       # ======================================================================
       # Configure CMake
@@ -140,11 +123,6 @@ jobs:
             -DCMAKE_BUILD_TYPE="${{ env.BUILD_TYPE }}"
             -DBUILD_TESTING=OFF
           )
-
-          # Add vcpkg toolchain for Windows
-          if [ "${{ matrix.os }}" == "windows-latest" ]; then
-            cmake_args+=(-DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake)
-          fi
 
           cmake "${cmake_args[@]}"
 
@@ -164,15 +142,12 @@ jobs:
         run: |
           cd "${{ steps.strings.outputs.build-output-dir }}"
 
-          # Create packages directory
-          mkdir -p packages
-
-          # Run CPack to create all configured packages
-          cpack -C ${{ env.BUILD_TYPE }} -G "$CPACK_GENERATOR" || true
+          # Run CPack to create platform-specific packages
+          cpack -C ${{ env.BUILD_TYPE }} -G "${{ matrix.cpack_generator }}" --verbose
 
           # List generated packages
           echo "Generated packages:"
-          ls -lh packages/ || ls -lh *.exe *.dmg *.deb *.rpm *.tar.gz *.zip 2>/dev/null || true
+          ls -lh *.exe *.dmg *.deb *.rpm *.tar.gz *.zip 2>/dev/null || true
 
       # ======================================================================
       # Upload Artifacts
@@ -182,7 +157,6 @@ jobs:
         with:
           name: ${{ matrix.package_artifact }}
           path: |
-            ${{ steps.strings.outputs.build-output-dir }}/packages/*
             ${{ steps.strings.outputs.build-output-dir }}/*.exe
             ${{ steps.strings.outputs.build-output-dir }}/*.dmg
             ${{ steps.strings.outputs.build-output-dir }}/*.deb
@@ -235,7 +209,7 @@ jobs:
           ls -lh release-files/
 
       - name: Create Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           files: release-files/*
           draft: false
@@ -245,15 +219,15 @@ jobs:
             ## Installation
 
             ### Windows
-            Download `PresenceForPlex-*-win64.exe` (installer) or `*-portable.zip` (portable)
+            Download `PresenceForPlex-*-win64.exe` (installer) or `PresenceForPlex-*-win64.zip` (portable)
 
             ### macOS
-            Download `PresenceForPlex-*-macos.dmg`
+            Download `PresenceForPlex-*-Darwin.dmg` (drag-and-drop installer) or `*-Darwin.zip` (portable)
 
             ### Linux
-            - **Debian/Ubuntu**: Download `.deb` package
-            - **Fedora/RHEL**: Download `.rpm` package
-            - **Other**: Download `.tar.gz` archive
+            - **Debian/Ubuntu**: Download `.deb` package and install with `sudo dpkg -i PresenceForPlex-*.deb`
+            - **Fedora/RHEL/openSUSE**: Download `.rpm` package and install with `sudo rpm -i PresenceForPlex-*.rpm`
+            - **Other distros**: Download `.tar.gz` archive and extract
 
             ## Changelog
             See below for automatically generated release notes.

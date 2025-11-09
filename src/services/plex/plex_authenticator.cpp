@@ -3,6 +3,8 @@
 #include "presence_for_plex/services/plex/plex_auth_storage.hpp"
 #include "presence_for_plex/platform/browser_launcher.hpp"
 #include "presence_for_plex/utils/logger.hpp"
+#include "presence_for_plex/utils/json_helper.hpp"
+#include "presence_for_plex/utils/plex_headers_builder.hpp"
 #include <nlohmann/json.hpp>
 
 namespace presence_for_plex {
@@ -64,56 +66,57 @@ std::expected<std::string, core::PlexError> PlexAuthenticator::fetch_username(co
     }
 
     // Check if response looks like JSON before parsing
-    if (response->body.empty() || response->body[0] == '<') {
-        LOG_ERROR("PlexAuthenticator", "Received XML/HTML instead of JSON for user info. Response: " +
-                      response->body.substr(0, std::min(response->body.length(), size_t(200))));
+    auto json_result = utils::JsonHelper::safe_parse(response->body);
+    if (!json_result) {
+        LOG_ERROR("PlexAuthenticator", "Failed to parse user info: " + json_result.error());
+        LOG_DEBUG("PlexAuthenticator", "Raw user response: " + response->body.substr(0, std::min(response->body.length(), size_t(200))));
         return std::unexpected<core::PlexError>(core::PlexError::ParseError);
     }
 
-    try {
-        auto json_response = json::parse(response->body);
-
-        if (!json_response.contains("username")) {
-            LOG_ERROR("PlexAuthenticator", "User response missing username field");
-            return std::unexpected<core::PlexError>(core::PlexError::ParseError);
-        }
-
-        std::string username = json_response["username"].get<std::string>();
-        LOG_INFO("PlexAuthenticator", "Fetched username: " + username);
-        return username;
-    } catch (const std::exception& e) {
-        LOG_ERROR("PlexAuthenticator", "Error parsing user response: " + std::string(e.what()));
-        LOG_DEBUG("PlexAuthenticator", "Raw user response: " + response->body);
+    auto username_result = utils::JsonHelper::get_required<std::string>(json_result.value(), "username");
+    if (!username_result) {
+        LOG_ERROR("PlexAuthenticator", username_result.error());
         return std::unexpected<core::PlexError>(core::PlexError::ParseError);
     }
+
+    LOG_INFO("PlexAuthenticator", "Fetched username: " + username_result.value());
+    return username_result.value();
 }
 
-std::expected<void, core::PlexError> PlexAuthenticator::validate_token(const core::PlexToken& token) {
+std::expected<std::string, core::PlexError> PlexAuthenticator::validate_token(const core::PlexToken& token) {
     LOG_DEBUG("PlexAuthenticator", "validate_token() called");
     auto result = fetch_username(token);
     if (!result) {
         LOG_DEBUG("PlexAuthenticator", "Token validation failed: " + std::to_string(static_cast<int>(result.error())));
         return std::unexpected(result.error());
     }
-    LOG_DEBUG("PlexAuthenticator", "Token validation succeeded");
-    return {};
+    LOG_DEBUG("PlexAuthenticator", "Token validation succeeded for user: " + result.value());
+    return result.value();
 }
 
-std::expected<core::PlexToken, core::PlexError> PlexAuthenticator::ensure_authenticated() {
-    LOG_DEBUG("PlexAuthenticator", "ensure_authenticated() called");
+std::expected<std::pair<core::PlexToken, std::string>, core::PlexError> PlexAuthenticator::ensure_authenticated(bool skip_validation) {
+    LOG_DEBUG("PlexAuthenticator", "ensure_authenticated() called (skip_validation=" + std::string(skip_validation ? "true" : "false") + ")");
+
     // Load stored token from configuration
     std::string stored_token_value = m_auth_service->get_plex_token();
     core::PlexToken stored_token(stored_token_value);
     LOG_DEBUG("PlexAuthenticator", "Loaded stored token from config (length: " + std::to_string(stored_token_value.length()) + ")");
 
-    // Check if we have a stored token and if it's valid
+    // Check if we have a stored token
     if (!stored_token.empty()) {
-        auto validation_result = validate_token(stored_token);
-        if (validation_result) {
-            LOG_INFO("PlexAuthenticator", "Using stored valid token");
-            return stored_token;
+        if (skip_validation) {
+            // Optimistic approach: assume token is valid, skip validation
+            LOG_INFO("PlexAuthenticator", "Using stored token optimistically");
+            return std::make_pair(stored_token, std::string{});  // Empty username for now
         } else {
-            LOG_DEBUG("PlexAuthenticator", "Stored token validation failed: " + std::to_string(static_cast<int>(validation_result.error())));
+            // Validate the token
+            auto validation_result = validate_token(stored_token);
+            if (validation_result) {
+                LOG_INFO("PlexAuthenticator", "Using stored valid token for user: " + validation_result.value());
+                return std::make_pair(stored_token, validation_result.value());
+            } else {
+                LOG_DEBUG("PlexAuthenticator", "Stored token validation failed: " + std::to_string(static_cast<int>(validation_result.error())));
+            }
         }
     }
 
@@ -125,27 +128,31 @@ std::expected<core::PlexToken, core::PlexError> PlexAuthenticator::ensure_authen
     if (new_token.has_value()) {
         m_auth_service->set_plex_token(new_token.value());
         m_auth_service->save();
+
+        // Fetch username for the new token
+        auto username_result = fetch_username(new_token.value());
+        if (username_result) {
+            return std::make_pair(new_token.value(), username_result.value());
+        } else {
+            // Token acquired but couldn't fetch username - still return token with empty username
+            LOG_WARNING("PlexAuthenticator", "Token acquired but couldn't fetch username");
+            return std::make_pair(new_token.value(), std::string{});
+        }
     }
 
-    return new_token;
+    return std::unexpected(new_token.error());
 }
 
 std::map<std::string, std::string> PlexAuthenticator::get_standard_headers(const core::PlexToken& token) const {
     LOG_DEBUG("PlexAuthenticator", "get_standard_headers() called with token length: " + std::to_string(token.length()));
-    std::map<std::string, std::string> headers;
-    headers["X-Plex-Product"] = "Presence For Plex";
-    headers["X-Plex-Version"] = "1.0.0";
-    headers["X-Plex-Client-Identifier"] = m_auth_service->get_plex_client_identifier();
-    headers["X-Plex-Platform"] = "Linux";
-    headers["X-Plex-Platform-Version"] = "1.0";
-    headers["X-Plex-Device"] = "PC";
-    headers["X-Plex-Device-Name"] = "Presence For Plex";
-    headers["Accept"] = "application/json";
-    headers["Content-Type"] = "application/x-www-form-urlencoded";
 
-    if (!token.empty()) {
-        headers["X-Plex-Token"] = token;
-    }
+    auto headers = utils::PlexHeadersBuilder::create_authenticated_headers(
+        m_auth_service->get_plex_client_identifier(),
+        token
+    );
+
+    // Add auth-specific headers
+    headers["Content-Type"] = "application/x-www-form-urlencoded";
 
     return headers;
 }
@@ -174,32 +181,32 @@ std::expected<std::pair<std::string, std::string>, core::PlexError> PlexAuthenti
 
     LOG_DEBUG("PlexAuthenticator", "PIN response: " + response->body);
 
-    // Check if response looks like JSON before parsing
-    if (response->body.empty() || response->body[0] == '<') {
-        LOG_ERROR("PlexAuthenticator", "Received XML/HTML instead of JSON. Response: " +
-                      response->body.substr(0, std::min(response->body.length(), size_t(200))));
+    auto json_result = utils::JsonHelper::safe_parse(response->body);
+    if (!json_result) {
+        LOG_ERROR("PlexAuthenticator", "Failed to parse PIN response: " + json_result.error());
+        LOG_DEBUG("PlexAuthenticator", "Raw response: " + response->body.substr(0, std::min(response->body.length(), size_t(200))));
         return std::unexpected<core::PlexError>(core::PlexError::ParseError);
     }
 
-    try {
-        auto json_response = json::parse(response->body);
+    auto json_response = json_result.value();
 
-        // Check if the required fields exist
-        if (!json_response.contains("code") || !json_response.contains("id")) {
-            LOG_ERROR("PlexAuthenticator", "PIN response missing required fields");
-            return std::unexpected<core::PlexError>(core::PlexError::ParseError);
-        }
-
-        std::string pin = json_response["code"].get<std::string>();
-        std::string pin_id = std::to_string(json_response["id"].get<int>());
-
-        LOG_INFO("PlexAuthenticator", "Got PIN: " + pin + " (ID: " + pin_id + ")");
-        return std::make_pair(pin_id, pin);
-    } catch (const std::exception& e) {
-        LOG_ERROR("PlexAuthenticator", "Error parsing PIN response: " + std::string(e.what()));
-        LOG_DEBUG("PlexAuthenticator", "Raw response: " + response->body);
+    auto code_result = utils::JsonHelper::get_required<std::string>(json_response, "code");
+    if (!code_result) {
+        LOG_ERROR("PlexAuthenticator", "PIN response missing code field: " + code_result.error());
         return std::unexpected<core::PlexError>(core::PlexError::ParseError);
     }
+
+    auto id_result = utils::JsonHelper::get_required<int>(json_response, "id");
+    if (!id_result) {
+        LOG_ERROR("PlexAuthenticator", "PIN response missing id field: " + id_result.error());
+        return std::unexpected<core::PlexError>(core::PlexError::ParseError);
+    }
+
+    std::string pin = code_result.value();
+    std::string pin_id = std::to_string(id_result.value());
+
+    LOG_INFO("PlexAuthenticator", "Got PIN: " + pin + " (ID: " + pin_id + ")");
+    return std::make_pair(pin_id, pin);
 }
 
 void PlexAuthenticator::open_authorization_url(const std::string& pin, const std::string& client_id) {
@@ -265,23 +272,19 @@ std::expected<core::PlexToken, core::PlexError> PlexAuthenticator::poll_for_pin_
             continue;
         }
 
-        // Check if response looks like JSON before parsing
-        if (response->body.empty() || response->body[0] == '<') {
-            LOG_DEBUG("PlexAuthenticator", "Received XML/HTML instead of JSON during PIN polling, retrying...");
+        auto json_result = utils::JsonHelper::safe_parse(response->body);
+        if (!json_result) {
+            LOG_DEBUG("PlexAuthenticator", "Failed to parse PIN status: " + json_result.error() + ", retrying...");
+            LOG_DEBUG("PlexAuthenticator", "Raw polling response: " + response->body.substr(0, std::min(response->body.length(), size_t(200))));
             continue;
         }
 
-        try {
-            auto json_response = json::parse(response->body);
-            std::string auth_token = json_response.value("authToken", "");
+        auto json_response = json_result.value();
+        std::string auth_token = utils::JsonHelper::get_optional<std::string>(json_response, "authToken", "");
 
-            if (!auth_token.empty()) {
-                LOG_INFO("PlexAuthenticator", "PIN authorized successfully!");
-                return core::PlexToken{auth_token};
-            }
-        } catch (const std::exception& e) {
-            LOG_DEBUG("PlexAuthenticator", "Error parsing PIN status: " + std::string(e.what()));
-            LOG_DEBUG("PlexAuthenticator", "Raw polling response: " + response->body.substr(0, std::min(response->body.length(), size_t(200))));
+        if (!auth_token.empty()) {
+            LOG_INFO("PlexAuthenticator", "PIN authorized successfully!");
+            return core::PlexToken{auth_token};
         }
     }
 

@@ -2,6 +2,7 @@
 #include "presence_for_plex/services/network/http_client.hpp"
 #include "presence_for_plex/core/events.hpp"
 #include "presence_for_plex/utils/logger.hpp"
+#include "presence_for_plex/utils/json_helper.hpp"
 #include <nlohmann/json.hpp>
 #include <map>
 
@@ -46,48 +47,57 @@ std::expected<UpdateInfo, UpdateCheckError> GitHubUpdateService::check_for_updat
 
         const auto& response = response_result->body;
 
-        try {
-            auto release_info = nlohmann::json::parse(response);
-
-            std::string latest_version = release_info["tag_name"];
-            if (!latest_version.empty() && latest_version[0] == 'v') {
-                latest_version = latest_version.substr(1);
-            }
-
-            LOG_INFO("UpdateService", "Latest version: " + latest_version);
-
-            bool update_available = (latest_version != m_current_version);
-
-            UpdateInfo info{
-                .current_version = m_current_version,
-                .latest_version = latest_version,
-                .download_url = release_info.value("html_url", ""),
-                .release_notes = release_info.value("body", ""),
-                .update_available = update_available
-            };
-
-            if (m_event_bus) {
-                if (update_available) {
-                    m_event_bus->publish(core::events::UpdateAvailable{
-                        m_current_version,
-                        latest_version,
-                        info.download_url,
-                        info.release_notes
-                    });
-                } else {
-                    m_event_bus->publish(core::events::NoUpdateAvailable{m_current_version});
-                }
-            }
-
-            return info;
-
-        } catch (const nlohmann::json::exception& e) {
-            LOG_ERROR("UpdateService", "Failed to parse GitHub response: " + std::string(e.what()));
+        auto json_result = utils::JsonHelper::safe_parse(response);
+        if (!json_result) {
+            LOG_ERROR("UpdateService", "Failed to parse GitHub response: " + json_result.error());
             if (m_event_bus) {
                 m_event_bus->publish(core::events::UpdateCheckFailed{"Invalid response from GitHub"});
             }
             return std::unexpected(UpdateCheckError::ParseError);
         }
+
+        auto release_info = json_result.value();
+
+        auto version_result = utils::JsonHelper::get_required<std::string>(release_info, "tag_name");
+        if (!version_result) {
+            LOG_ERROR("UpdateService", "Missing tag_name in GitHub response: " + version_result.error());
+            if (m_event_bus) {
+                m_event_bus->publish(core::events::UpdateCheckFailed{"Invalid response from GitHub"});
+            }
+            return std::unexpected(UpdateCheckError::ParseError);
+        }
+
+        std::string latest_version = version_result.value();
+        if (!latest_version.empty() && latest_version[0] == 'v') {
+            latest_version = latest_version.substr(1);
+        }
+
+        LOG_INFO("UpdateService", "Latest version: " + latest_version);
+
+        bool update_available = (latest_version != m_current_version);
+
+        UpdateInfo info{
+            .current_version = m_current_version,
+            .latest_version = latest_version,
+            .download_url = utils::JsonHelper::get_optional<std::string>(release_info, "html_url", ""),
+            .release_notes = utils::JsonHelper::get_optional<std::string>(release_info, "body", ""),
+            .update_available = update_available
+        };
+
+        if (m_event_bus) {
+            if (update_available) {
+                m_event_bus->publish(core::events::UpdateAvailable{
+                    m_current_version,
+                    latest_version,
+                    info.download_url,
+                    info.release_notes
+                });
+            } else {
+                m_event_bus->publish(core::events::NoUpdateAvailable{m_current_version});
+            }
+        }
+
+        return info;
     }
 
 void GitHubUpdateService::set_event_bus(std::shared_ptr<core::EventBus> bus) {

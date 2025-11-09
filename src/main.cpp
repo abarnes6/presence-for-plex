@@ -89,7 +89,7 @@ namespace {
             return false;
         }
 
-        LOG_INFO("Main", "Single instance lock acquired");
+        LOG_DEBUG("Main", "Single instance lock acquired");
         return true;
     }
 
@@ -134,7 +134,7 @@ int main(int argc, char* argv[]) {
     presence_for_plex::utils::LoggerManager::set_instance(std::move(logger));
 
     LOG_INFO("Main", "PresenceForPlex v0.4.0 starting...");
-    LOG_INFO("Main", "Log level: " + presence_for_plex::utils::to_string(config.log_level));
+    LOG_DEBUG("Main", "Log level: " + presence_for_plex::utils::to_string(config.log_level));
 
     register_signal_handlers();
 
@@ -146,7 +146,7 @@ int main(int argc, char* argv[]) {
         auto single_instance = presence_for_plex::platform::SingleInstanceManager::create("PresenceForPlex");
         (void)single_instance->try_acquire_instance("PresenceForPlex");
 
-        LOG_INFO("Main", "Creating application...");
+        LOG_DEBUG("Main", "Creating application...");
         auto app_result = presence_for_plex::core::create_application();
         if (!app_result) {
             LOG_ERROR("Main", "Application creation failed");

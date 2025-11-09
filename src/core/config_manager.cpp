@@ -15,13 +15,13 @@ class ConfigManager::Impl {
 public:
     explicit Impl(const std::filesystem::path& config_path)
         : m_config_path(config_path.empty() ? get_default_config_path() : config_path) {
-        LOG_INFO("ConfigService", "Initializing with path: " + m_config_path.string());
+        LOG_DEBUG("ConfigService", "Initializing with path: " + m_config_path.string());
         ensure_config_directory();
         m_config_exists = std::filesystem::exists(m_config_path);
     }
 
     std::expected<void, ConfigError> load() {
-        LOG_INFO("ConfigService", "Loading configuration");
+        LOG_DEBUG("ConfigService", "Loading configuration");
 
         if (!std::filesystem::exists(m_config_path)) {
             LOG_INFO("ConfigService", "Using default configuration");
@@ -35,7 +35,7 @@ public:
         if (result) {
             std::unique_lock lock(m_mutex);
             m_config = *result;
-            LOG_INFO("ConfigService", "Configuration loaded");
+            LOG_DEBUG("ConfigService", "Configuration loaded");
             return {};
         }
         return std::unexpected(result.error());

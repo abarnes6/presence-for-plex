@@ -27,8 +27,8 @@ public:
 
     std::expected<core::PlexToken, core::PlexError> acquire_auth_token();
     std::expected<std::string, core::PlexError> fetch_username(const core::PlexToken& token);
-    std::expected<void, core::PlexError> validate_token(const core::PlexToken& token);
-    std::expected<core::PlexToken, core::PlexError> ensure_authenticated();
+    std::expected<std::string, core::PlexError> validate_token(const core::PlexToken& token);
+    std::expected<std::pair<core::PlexToken, std::string>, core::PlexError> ensure_authenticated(bool skip_validation = false);
 
     std::map<std::string, std::string> get_standard_headers(const core::PlexToken& token = {}) const;
 

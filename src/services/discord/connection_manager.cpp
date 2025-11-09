@@ -36,7 +36,7 @@ bool ConnectionManager::start() {
         return is_connected();
     }
 
-    LOG_INFO("ConnectionManager", "Starting connection management");
+    LOG_DEBUG("ConnectionManager", "Starting connection management");
 
     // Try initial connection
     bool initial_success = attempt_connection();
@@ -175,7 +175,7 @@ bool ConnectionManager::attempt_connection() {
     try {
         bool success = m_ipc->connect();
         if (success) {
-            LOG_INFO("ConnectionManager", "Connection successful");
+            LOG_DEBUG("ConnectionManager", "Connection successful");
             return true;
         } else {
             LOG_DEBUG("ConnectionManager", "Connection failed");
@@ -202,7 +202,7 @@ void ConnectionManager::handle_connection_success(bool is_reconnect) {
     m_connected = true;
     notify_connection_state(true);
 
-    LOG_INFO("ConnectionManager", "Connection established successfully");
+    LOG_DEBUG("ConnectionManager", "Connection established successfully");
 }
 
 void ConnectionManager::handle_connection_failure() {

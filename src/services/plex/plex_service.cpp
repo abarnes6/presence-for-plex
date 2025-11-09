@@ -3,11 +3,13 @@
 #include "presence_for_plex/core/application.hpp"
 #include "presence_for_plex/core/events.hpp"
 #include "presence_for_plex/utils/logger.hpp"
+#include "presence_for_plex/utils/json_helper.hpp"
 #include <nlohmann/json.hpp>
 #include <cassert>
 #include <stdexcept>
 #include <unordered_set>
 #include <chrono>
+#include <thread>
 
 namespace presence_for_plex {
 namespace services {
@@ -29,7 +31,7 @@ PlexService::PlexService(
     , m_config_service(std::move(config_service))
     , m_auth_service(std::move(auth_service)) {
 
-    LOG_INFO("PlexService", "Creating Plex service with simplified dependencies");
+    LOG_DEBUG("PlexService", "Creating Plex service");
 
     // Set up SSE event callback
     m_connection_manager->set_sse_event_callback(
@@ -83,65 +85,74 @@ PlexService::~PlexService() {
 }
 
 std::expected<void, core::PlexError> PlexService::start() {
-    LOG_INFO("PlexService", "Starting Plex service");
+    LOG_DEBUG("PlexService", "Starting Plex service");
 
     if (m_running) {
         LOG_WARNING("PlexService", "Service already running");
         return {};
     }
 
-    // Ensure authentication before starting connections
-    auto auth_result = m_authenticator->ensure_authenticated();
+    // Use optimistic token loading
+    auto auth_result = m_authenticator->ensure_authenticated(true);  // Skip validation
     if (!auth_result) {
-        LOG_ERROR("PlexService", "Failed to authenticate with Plex");
+        LOG_ERROR("PlexService", "Failed to load authentication token");
         return std::unexpected<core::PlexError>(auth_result.error());
     }
 
-    auto token = auth_result.value();
+    auto [token, username] = auth_result.value();
+    LOG_DEBUG("PlexService", "Token loaded, starting services");
 
-    // Fetch and store username
-    auto username_result = m_authenticator->fetch_username(token);
-    if (username_result) {
-        m_plex_username = username_result.value();
-        LOG_INFO("PlexService", "Logged in as: " + m_plex_username);
+    // Mark as running first
+    m_running = true;
 
-        // Set the target username in the client for filtering
-        if (m_client) {
-            m_client->set_target_username(m_plex_username);
-            LOG_DEBUG("PlexService", "Set target username for session filtering: " + m_plex_username);
+    // Discover servers and fetch username asynchronously to avoid blocking startup
+    std::thread discovery_thread([this, token]() {
+        // Fetch username in background (validates token as side-effect)
+        auto username_result = m_authenticator->fetch_username(token);
+        if (username_result) {
+            m_plex_username = username_result.value();
+            LOG_INFO("PlexService", "Logged in as: " + m_plex_username);
+
+            // Set the target username in the client for filtering
+            if (m_client) {
+                m_client->set_target_username(m_plex_username);
+                LOG_DEBUG("PlexService", "Set target username for session filtering: " + m_plex_username);
+            }
+        } else {
+            LOG_WARNING("PlexService", "Failed to fetch username, session filtering may not work correctly");
         }
-    }
 
-    // Discover servers from Plex API if auto-discovery is enabled
-    if (m_config_service && m_config_service->get().media_services.plex.auto_discover) {
-        LOG_INFO("PlexService", "Auto-discovery enabled, discovering servers from Plex API");
-        auto discovery_result = discover_servers(token);
-        if (!discovery_result) {
-            LOG_WARNING("PlexService", "Failed to discover servers, continuing anyway");
+        // Discover servers from Plex API if auto-discovery is enabled
+        if (m_config_service && m_config_service->get().media_services.plex.auto_discover) {
+            LOG_INFO("PlexService", "Auto-discovery enabled, discovering servers from Plex API");
+            auto discovery_result = discover_servers(token);
+            if (!discovery_result) {
+                LOG_WARNING("PlexService", "Failed to discover servers, continuing anyway");
+            }
+        } else {
+            LOG_INFO("PlexService", "Auto-discovery disabled, skipping server discovery");
         }
-    } else {
-        LOG_INFO("PlexService", "Auto-discovery disabled, skipping server discovery");
-    }
 
-    // Add manual servers from config
-    if (m_config_service) {
-        const auto& manual_urls = m_config_service->get().media_services.plex.server_urls;
-        if (!manual_urls.empty()) {
-            LOG_INFO("PlexService", "Adding " + std::to_string(manual_urls.size()) + " manual server(s)");
-            for (const auto& url : manual_urls) {
-                auto add_result = add_manual_server(url, token);
-                if (!add_result) {
-                    LOG_WARNING("PlexService", "Failed to add manual server: " + url);
+        // Add manual servers from config
+        if (m_config_service) {
+            const auto& manual_urls = m_config_service->get().media_services.plex.server_urls;
+            if (!manual_urls.empty()) {
+                LOG_INFO("PlexService", "Adding " + std::to_string(manual_urls.size()) + " manual server(s)");
+                for (const auto& url : manual_urls) {
+                    auto add_result = add_manual_server(url, token);
+                    if (!add_result) {
+                        LOG_WARNING("PlexService", "Failed to add manual server: " + url);
+                    }
                 }
             }
         }
-    }
 
-    // Start all connections - servers will self-manage and connect asynchronously
-    m_connection_manager->start_all_connections();
-    LOG_INFO("PlexService", "Server connections initiated - they will connect asynchronously");
+        // Start all connections after discovery completes
+        m_connection_manager->start_all_connections();
+        LOG_DEBUG("PlexService", "Server connections initiated - they will connect asynchronously");
+    });
+    discovery_thread.detach();
 
-    m_running = true;
     return {};
 }
 
@@ -295,7 +306,7 @@ void PlexService::on_media_state_changed(const core::MediaInfo& old_state, const
 }
 
 void PlexService::on_connection_state_changed(const core::ServerId& server_id, bool connected) {
-    LOG_INFO("PlexService", "Server " + server_id.get() + " connection state: " +
+    LOG_DEBUG("PlexService", "Server " + server_id.get() + " connection state: " +
                   (connected ? "connected" : "disconnected"));
 
     if (m_event_bus) {
@@ -316,22 +327,22 @@ void PlexService::on_error_occurred(core::PlexError error, const std::string& me
 }
 
 void PlexService::handle_sse_event(const core::ServerId& server_id, const std::string& event) {
-    try {
-        auto json_event = json::parse(event);
-
-        LOG_DEBUG("PlexService", "Received event from server " + server_id.get());
-
-        if (json_event.contains("PlaySessionStateNotification")) {
-            m_client->process_session_event(server_id, json_event["PlaySessionStateNotification"]);
-        }
-    } catch (const std::exception& e) {
-        LOG_ERROR("PlexService", "Error parsing SSE event: " + std::string(e.what()));
+    auto json_result = utils::JsonHelper::safe_parse(event);
+    if (!json_result) {
+        LOG_ERROR("PlexService", "Error parsing SSE event: " + json_result.error());
         on_error_occurred(core::PlexError::ParseError, "Failed to parse SSE event");
+        return;
+    }
+
+    LOG_DEBUG("PlexService", "Received event from server " + server_id.get());
+
+    if (utils::JsonHelper::has_field(json_result.value(), "PlaySessionStateNotification")) {
+        m_client->process_session_event(server_id, json_result.value()["PlaySessionStateNotification"]);
     }
 }
 
 std::expected<void, core::PlexError> PlexService::discover_servers(const std::string& auth_token) {
-    LOG_INFO("PlexService", "Discovering Plex servers");
+    LOG_DEBUG("PlexService", "Discovering Plex servers");
 
     if (!m_http_client) {
         LOG_ERROR("PlexService", "HTTP client not available for server discovery");
@@ -365,65 +376,62 @@ std::expected<void, core::PlexError> PlexService::discover_servers(const std::st
 
 std::expected<void, core::PlexError> PlexService::parse_server_json(const std::string& json_response, const std::string& auth_token) {
     (void)auth_token;
-    LOG_INFO("PlexService", "Parsing server JSON response");
+    LOG_DEBUG("PlexService", "Parsing server JSON response");
 
-    try {
-        auto json = json::parse(json_response);
-
-        int server_count = 0;
-
-        // Process each resource (server)
-        for (const auto& resource : json) {
-            // Check if this is a Plex Media Server
-            std::string provides = resource.value("provides", "");
-            if (provides != "server") {
-                continue;
-            }
-
-            auto server = std::make_unique<core::PlexServer>();
-            server->name = resource.value("name", "Unknown");
-            server->client_identifier = resource.value("clientIdentifier", "");
-            server->access_token = resource.value("accessToken", "");
-            server->owned = resource.value("owned", false);
-
-            LOG_INFO("PlexService", "Found server: " + server->name +
-                         " (" + server->client_identifier + ")" +
-                         (server->owned ? " [owned]" : " [shared]"));
-
-            // Process connections (we want both local and remote)
-            if (resource.contains("connections") && resource["connections"].is_array()) {
-                for (const auto& connection : resource["connections"]) {
-                    std::string uri = connection.value("uri", "");
-                    bool is_local = connection.value("local", false);
-
-                    if (is_local && !uri.empty()) {
-                        server->local_uri = uri;
-                        LOG_INFO("PlexService", "  Local URI: " + uri);
-                    } else if (!is_local && !uri.empty()) {
-                        server->public_uri = uri;
-                        LOG_INFO("PlexService", "  Public URI: " + uri);
-                    }
-                }
-            }
-
-            // Add server if it has at least one valid URI
-            if (!server->local_uri.empty() || !server->public_uri.empty()) {
-                auto add_result = add_server(std::move(server));
-                if (add_result) {
-                    server_count++;
-                } else {
-                    LOG_WARNING("PlexService", "Failed to add server: " + server->name);
-                }
-            }
-        }
-
-        LOG_INFO("PlexService", "Successfully discovered and added " + std::to_string(server_count) + " Plex servers");
-        return {};
-
-    } catch (const std::exception& e) {
-        LOG_ERROR("PlexService", "Failed to parse server JSON: " + std::string(e.what()));
+    auto json_result = utils::JsonHelper::safe_parse(json_response);
+    if (!json_result) {
+        LOG_ERROR("PlexService", "Failed to parse server JSON: " + json_result.error());
         return std::unexpected<core::PlexError>(core::PlexError::ParseError);
     }
+
+    auto json = json_result.value();
+    int server_count = 0;
+
+    // Process each resource (server)
+    for (const auto& resource : json) {
+        // Check if this is a Plex Media Server
+        std::string provides = utils::JsonHelper::get_optional<std::string>(resource, "provides", "");
+        if (provides != "server") {
+            continue;
+        }
+
+        auto server = std::make_unique<core::PlexServer>();
+        server->name = utils::JsonHelper::get_optional<std::string>(resource, "name", "Unknown");
+        server->client_identifier = utils::JsonHelper::get_optional<std::string>(resource, "clientIdentifier", "");
+        server->access_token = utils::JsonHelper::get_optional<std::string>(resource, "accessToken", "");
+        server->owned = utils::JsonHelper::get_optional<bool>(resource, "owned", false);
+
+        LOG_INFO("PlexService", "Found server: " + server->name +
+                     " (" + server->client_identifier + ")" +
+                     (server->owned ? " [owned]" : " [shared]"));
+
+        // Process connections (we want both local and remote)
+        utils::JsonHelper::for_each_in_array(resource, "connections", [&](const auto& connection) {
+            std::string uri = utils::JsonHelper::get_optional<std::string>(connection, "uri", "");
+            bool is_local = utils::JsonHelper::get_optional<bool>(connection, "local", false);
+
+            if (is_local && !uri.empty()) {
+                server->local_uri = uri;
+                LOG_INFO("PlexService", "  Local URI: " + uri);
+            } else if (!is_local && !uri.empty()) {
+                server->public_uri = uri;
+                LOG_INFO("PlexService", "  Public URI: " + uri);
+            }
+        });
+
+        // Add server if it has at least one valid URI
+        if (!server->local_uri.empty() || !server->public_uri.empty()) {
+            auto add_result = add_server(std::move(server));
+            if (add_result) {
+                server_count++;
+            } else {
+                LOG_WARNING("PlexService", "Failed to add server: " + server->name);
+            }
+        }
+    }
+
+    LOG_INFO("PlexService", "Successfully discovered and added " + std::to_string(server_count) + " Plex servers");
+    return {};
 }
 
 std::expected<void, core::PlexError> PlexService::add_manual_server(const std::string& server_url, const core::PlexToken& auth_token) {
@@ -453,52 +461,53 @@ std::expected<void, core::PlexError> PlexService::add_manual_server(const std::s
         return std::unexpected<core::PlexError>(core::PlexError::NetworkError);
     }
 
-    try {
-        auto json_response = json::parse(response->body);
-
-        if (!json_response.contains("MediaContainer")) {
-            LOG_ERROR("PlexService", "Invalid identity response from manual server");
-            return std::unexpected<core::PlexError>(core::PlexError::InvalidResponse);
-        }
-
-        auto container = json_response["MediaContainer"];
-
-        std::string client_id = container.value("machineIdentifier", "");
-        std::string friendly_name = container.value("friendlyName", "Manual Server");
-
-        if (client_id.empty()) {
-            LOG_ERROR("PlexService", "Server did not provide machineIdentifier");
-            return std::unexpected<core::PlexError>(core::PlexError::InvalidResponse);
-        }
-
-        LOG_INFO("PlexService", "Found manual server: " + friendly_name + " (" + client_id + ")");
-
-        // Create PlexServer object
-        auto server = std::make_unique<core::PlexServer>();
-        server->name = friendly_name;
-        server->client_identifier = client_id;
-        server->access_token = auth_token;
-        server->owned = true; // Assume owned for manual servers
-
-        // Determine if this is a local or public URL based on address
-        if (server_url.find("127.0.0.1") != std::string::npos ||
-            server_url.find("localhost") != std::string::npos ||
-            server_url.find("192.168.") != std::string::npos ||
-            server_url.find("10.") != std::string::npos) {
-            server->local_uri = server_url;
-            LOG_DEBUG("PlexService", "Added as local URI");
-        } else {
-            server->public_uri = server_url;
-            LOG_DEBUG("PlexService", "Added as public URI");
-        }
-
-        // Add the server
-        return add_server(std::move(server));
-
-    } catch (const std::exception& e) {
-        LOG_ERROR("PlexService", "Error parsing identity response: " + std::string(e.what()));
+    auto json_result = utils::JsonHelper::safe_parse(response->body);
+    if (!json_result) {
+        LOG_ERROR("PlexService", "Error parsing identity response: " + json_result.error());
         return std::unexpected<core::PlexError>(core::PlexError::ParseError);
     }
+
+    auto json_response = json_result.value();
+
+    if (!utils::JsonHelper::has_field(json_response, "MediaContainer")) {
+        LOG_ERROR("PlexService", "Invalid identity response from manual server");
+        return std::unexpected<core::PlexError>(core::PlexError::InvalidResponse);
+    }
+
+    auto container = json_response["MediaContainer"];
+
+    auto client_id_result = utils::JsonHelper::get_required<std::string>(container, "machineIdentifier");
+    if (!client_id_result) {
+        LOG_ERROR("PlexService", "Server did not provide machineIdentifier");
+        return std::unexpected<core::PlexError>(core::PlexError::InvalidResponse);
+    }
+
+    std::string client_id = client_id_result.value();
+    std::string friendly_name = utils::JsonHelper::get_optional<std::string>(container, "friendlyName", "Manual Server");
+
+    LOG_INFO("PlexService", "Found manual server: " + friendly_name + " (" + client_id + ")");
+
+    // Create PlexServer object
+    auto server = std::make_unique<core::PlexServer>();
+    server->name = friendly_name;
+    server->client_identifier = client_id;
+    server->access_token = auth_token;
+    server->owned = true; // Assume owned for manual servers
+
+    // Determine if this is a local or public URL based on address
+    if (server_url.find("127.0.0.1") != std::string::npos ||
+        server_url.find("localhost") != std::string::npos ||
+        server_url.find("192.168.") != std::string::npos ||
+        server_url.find("10.") != std::string::npos) {
+        server->local_uri = server_url;
+        LOG_DEBUG("PlexService", "Added as local URI");
+    } else {
+        server->public_uri = server_url;
+        LOG_DEBUG("PlexService", "Added as public URI");
+    }
+
+    // Add the server
+    return add_server(std::move(server));
 }
 
 bool PlexService::is_media_type_enabled(core::MediaType type) const {

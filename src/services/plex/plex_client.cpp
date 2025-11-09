@@ -1,6 +1,8 @@
 #include "presence_for_plex/services/plex/plex_client.hpp"
 #include "presence_for_plex/services/network/http_client.hpp"
 #include "presence_for_plex/utils/logger.hpp"
+#include "presence_for_plex/utils/json_helper.hpp"
+#include "presence_for_plex/utils/plex_headers_builder.hpp"
 #include <nlohmann/json.hpp>
 #include <sstream>
 #include <iomanip>
@@ -131,29 +133,30 @@ std::expected<std::string, core::PlexError> TMDBService::fetch_artwork_url(
         return std::unexpected<core::PlexError>(core::PlexError::NetworkError);
     }
 
-    try {
-        auto json_response = json::parse(response.value().body);
-
-        // First try to get a poster
-        if (json_response.contains("posters") && !json_response["posters"].empty()) {
-            std::string poster_path = json_response["posters"][0]["file_path"];
-            std::string full_url = std::string(TMDB_IMAGE_BASE_URL) + poster_path;
-            LOG_INFO("TMDB", "Found poster for ID " + tmdb_id + ": " + full_url);
-            return full_url;
-        }
-        // Fallback to backdrops
-        else if (json_response.contains("backdrops") && !json_response["backdrops"].empty()) {
-            std::string backdrop_path = json_response["backdrops"][0]["file_path"];
-            std::string full_url = std::string(TMDB_IMAGE_BASE_URL) + backdrop_path;
-            LOG_INFO("TMDB", "Found backdrop for ID " + tmdb_id + ": " + full_url);
-            return full_url;
-        }
-
-        return std::unexpected<core::PlexError>(core::PlexError::InvalidResponse);
-    } catch (const std::exception& e) {
-        LOG_ERROR("TMDB", "Error parsing TMDB response: " + std::string(e.what()));
+    auto json_result = utils::JsonHelper::safe_parse(response.value().body);
+    if (!json_result) {
+        LOG_ERROR("TMDB", "Error parsing TMDB response: " + json_result.error());
         return std::unexpected<core::PlexError>(core::PlexError::ParseError);
     }
+
+    auto json_response = json_result.value();
+
+    // First try to get a poster
+    if (utils::JsonHelper::has_array(json_response, "posters")) {
+        std::string poster_path = json_response["posters"][0]["file_path"];
+        std::string full_url = std::string(TMDB_IMAGE_BASE_URL) + poster_path;
+        LOG_INFO("TMDB", "Found poster for ID " + tmdb_id + ": " + full_url);
+        return full_url;
+    }
+    // Fallback to backdrops
+    else if (utils::JsonHelper::has_array(json_response, "backdrops")) {
+        std::string backdrop_path = json_response["backdrops"][0]["file_path"];
+        std::string full_url = std::string(TMDB_IMAGE_BASE_URL) + backdrop_path;
+        LOG_INFO("TMDB", "Found backdrop for ID " + tmdb_id + ": " + full_url);
+        return full_url;
+    }
+
+    return std::unexpected<core::PlexError>(core::PlexError::InvalidResponse);
 }
 
 std::expected<void, core::PlexError> TMDBService::enrich_media_info(core::MediaInfo& info) {
@@ -199,22 +202,29 @@ std::expected<std::string, core::PlexError> JikanService::fetch_artwork_url(
         return std::unexpected<core::PlexError>(core::PlexError::NetworkError);
     }
 
-    try {
-        auto json_response = json::parse(response.value().body);
-        if (json_response.contains("data") && json_response["data"].contains("images")) {
-            auto images = json_response["data"]["images"];
-            if (images.contains("jpg") && images["jpg"].contains("large_image_url")) {
-                std::string artwork_url = images["jpg"]["large_image_url"];
-                LOG_INFO("Jikan", "Found artwork for MAL ID " + mal_id + ": " + artwork_url);
-                return artwork_url;
-            }
-        }
-
-        return std::unexpected<core::PlexError>(core::PlexError::InvalidResponse);
-    } catch (const std::exception& e) {
-        LOG_ERROR("Jikan", "Error parsing Jikan response: " + std::string(e.what()));
+    auto json_result = utils::JsonHelper::safe_parse(response.value().body);
+    if (!json_result) {
+        LOG_ERROR("Jikan", "Error parsing Jikan response: " + json_result.error());
         return std::unexpected<core::PlexError>(core::PlexError::ParseError);
     }
+
+    auto json_response = json_result.value();
+    if (utils::JsonHelper::has_field(json_response, "data")) {
+        auto data = json_response["data"];
+        if (utils::JsonHelper::has_field(data, "images")) {
+            auto images = data["images"];
+            if (utils::JsonHelper::has_field(images, "jpg")) {
+                auto jpg = images["jpg"];
+                if (utils::JsonHelper::has_field(jpg, "large_image_url")) {
+                    std::string artwork_url = jpg["large_image_url"];
+                    LOG_INFO("Jikan", "Found artwork for MAL ID " + mal_id + ": " + artwork_url);
+                    return artwork_url;
+                }
+            }
+        }
+    }
+
+    return std::unexpected<core::PlexError>(core::PlexError::InvalidResponse);
 }
 
 std::expected<void, core::PlexError> JikanService::enrich_media_info(core::MediaInfo& info) {
@@ -279,22 +289,24 @@ std::expected<std::string, core::PlexError> JikanService::search_anime_by_title(
         return std::unexpected<core::PlexError>(core::PlexError::NetworkError);
     }
 
-    try {
-        auto json_response = json::parse(response.value().body);
-        if (json_response.contains("data") && !json_response["data"].empty()) {
-            auto first_result = json_response["data"][0];
-            if (first_result.contains("mal_id")) {
-                std::string mal_id = std::to_string(first_result["mal_id"].get<int>());
-                LOG_INFO("Jikan", "Found MAL ID for " + title + ": " + mal_id);
-                return mal_id;
-            }
-        }
-
-        return std::unexpected<core::PlexError>(core::PlexError::InvalidResponse);
-    } catch (const std::exception& e) {
-        LOG_ERROR("Jikan", "Error parsing search response: " + std::string(e.what()));
+    auto json_result = utils::JsonHelper::safe_parse(response.value().body);
+    if (!json_result) {
+        LOG_ERROR("Jikan", "Error parsing search response: " + json_result.error());
         return std::unexpected<core::PlexError>(core::PlexError::ParseError);
     }
+
+    auto json_response = json_result.value();
+    if (utils::JsonHelper::has_array(json_response, "data")) {
+        auto first_result = json_response["data"][0];
+        auto mal_id_result = utils::JsonHelper::get_required<int>(first_result, "mal_id");
+        if (mal_id_result) {
+            std::string mal_id = std::to_string(mal_id_result.value());
+            LOG_INFO("Jikan", "Found MAL ID for " + title + ": " + mal_id);
+            return mal_id;
+        }
+    }
+
+    return std::unexpected<core::PlexError>(core::PlexError::InvalidResponse);
 }
 
 std::string JikanService::url_encode(const std::string& value) {
@@ -321,7 +333,7 @@ PlexClient::PlexClient(
     : m_http_client(std::move(http_client))
     , m_target_username(std::move(username)) {
 
-    LOG_INFO("PlexClient", "Creating Plex client");
+    LOG_DEBUG("PlexClient", "Creating Plex client");
 }
 
 void PlexClient::add_metadata_service(std::unique_ptr<IExternalMetadataService> service) {
@@ -361,46 +373,50 @@ std::expected<core::MediaInfo, core::PlexError> PlexClient::fetch_media_details(
         return std::unexpected<core::PlexError>(core::PlexError::NetworkError);
     }
 
-    try {
-        auto json_response = json::parse(response.value().body);
-
-        if (!json_response.contains("MediaContainer") ||
-            !json_response["MediaContainer"].contains("Metadata") ||
-            json_response["MediaContainer"]["Metadata"].empty()) {
-            LOG_ERROR("PlexClient", "Invalid media details response");
-            return std::unexpected<core::PlexError>(core::PlexError::InvalidResponse);
-        }
-
-        auto metadata = json_response["MediaContainer"]["Metadata"][0];
-
-        core::MediaInfo info;
-        extract_basic_media_info(metadata, info);
-
-        // Extract type-specific information
-        extract_type_specific_info(metadata, info);
-
-        // For TV shows, fetch grandparent metadata before enrichment to get TMDB/IMDB IDs
-        if (info.type == core::MediaType::TVShow && !info.grandparent_key.empty()) {
-            LOG_DEBUG("PlexClient", "Fetching grandparent metadata before enrichment");
-            auto grandparent_result = fetch_grandparent_metadata(server_uri, access_token, info);
-            if (!grandparent_result.has_value()) {
-                LOG_WARNING("PlexClient", "Failed to fetch grandparent metadata, continuing without it");
-            }
-        }
-
-        // Enrich with external services
-        enrich_with_external_services(info);
-
-        // Cache the result
-        cache_media_info(cache_key, info);
-
-        LOG_INFO("PlexClient", "Successfully fetched media: " + info.title);
-        return info;
-
-    } catch (const std::exception& e) {
-        LOG_ERROR("PlexClient", "Error parsing media details: " + std::string(e.what()));
+    auto json_result = utils::JsonHelper::safe_parse(response.value().body);
+    if (!json_result) {
+        LOG_ERROR("PlexClient", "Failed to parse media details: " + json_result.error());
         return std::unexpected<core::PlexError>(core::PlexError::ParseError);
     }
+
+    auto json_response = json_result.value();
+
+    if (!utils::JsonHelper::has_field(json_response, "MediaContainer")) {
+        LOG_ERROR("PlexClient", "Invalid media details response: missing MediaContainer");
+        return std::unexpected<core::PlexError>(core::PlexError::InvalidResponse);
+    }
+
+    auto container = json_response["MediaContainer"];
+    if (!utils::JsonHelper::has_array(container, "Metadata")) {
+        LOG_ERROR("PlexClient", "Invalid media details response: missing or empty Metadata");
+        return std::unexpected<core::PlexError>(core::PlexError::InvalidResponse);
+    }
+
+    auto metadata = container["Metadata"][0];
+
+    core::MediaInfo info;
+    extract_basic_media_info(metadata, info);
+
+    // Extract type-specific information
+    extract_type_specific_info(metadata, info);
+
+    // For TV shows, fetch grandparent metadata before enrichment to get TMDB/IMDB IDs
+    if (info.type == core::MediaType::TVShow && !info.grandparent_key.empty()) {
+        LOG_DEBUG("PlexClient", "Fetching grandparent metadata before enrichment");
+        auto grandparent_result = fetch_grandparent_metadata(server_uri, access_token, info);
+        if (!grandparent_result.has_value()) {
+            LOG_WARNING("PlexClient", "Failed to fetch grandparent metadata, continuing without it");
+        }
+    }
+
+    // Enrich with external services
+    enrich_with_external_services(info);
+
+    // Cache the result
+    cache_media_info(cache_key, info);
+
+    LOG_DEBUG("PlexClient", "Successfully fetched media: " + info.title);
+    return info;
 }
 
 std::expected<void, core::PlexError> PlexClient::fetch_grandparent_metadata(
@@ -432,44 +448,46 @@ std::expected<void, core::PlexError> PlexClient::fetch_grandparent_metadata(
         return std::unexpected<core::PlexError>(core::PlexError::NetworkError);
     }
 
-    try {
-        auto json_response = json::parse(response.value().body);
-
-        if (!json_response.contains("MediaContainer") ||
-            !json_response["MediaContainer"].contains("Metadata") ||
-            json_response["MediaContainer"]["Metadata"].empty()) {
-            LOG_ERROR("PlexClient", "Invalid grandparent metadata response");
-            return std::unexpected<core::PlexError>(core::PlexError::InvalidResponse);
-        }
-
-        auto metadata = json_response["MediaContainer"]["Metadata"][0];
-
-        // Extract GUIDs from show metadata
-        if (metadata.contains("Guid") && metadata["Guid"].is_array()) {
-            for (const auto& guid : metadata["Guid"]) {
-                std::string id = guid.value("id", "");
-                if (id.find("imdb://") == 0) {
-                    info.imdb_id = id.substr(7);
-                } else if (id.find("tmdb://") == 0) {
-                    info.tmdb_id = id.substr(7);
-                }
-            }
-        }
-
-        // Extract genres
-        if (metadata.contains("Genre") && metadata["Genre"].is_array()) {
-            info.genres.clear();
-            for (const auto& genre : metadata["Genre"]) {
-                info.genres.push_back(genre.value("tag", ""));
-            }
-        }
-
-        return {};
-
-    } catch (const std::exception& e) {
-        LOG_ERROR("PlexClient", "Error parsing grandparent metadata: " + std::string(e.what()));
+    auto json_result = utils::JsonHelper::safe_parse(response.value().body);
+    if (!json_result) {
+        LOG_ERROR("PlexClient", "Failed to parse grandparent metadata: " + json_result.error());
         return std::unexpected<core::PlexError>(core::PlexError::ParseError);
     }
+
+    auto json_response = json_result.value();
+
+    if (!utils::JsonHelper::has_field(json_response, "MediaContainer")) {
+        LOG_ERROR("PlexClient", "Invalid grandparent metadata response: missing MediaContainer");
+        return std::unexpected<core::PlexError>(core::PlexError::InvalidResponse);
+    }
+
+    auto container = json_response["MediaContainer"];
+    if (!utils::JsonHelper::has_array(container, "Metadata")) {
+        LOG_ERROR("PlexClient", "Invalid grandparent metadata response: missing or empty Metadata");
+        return std::unexpected<core::PlexError>(core::PlexError::InvalidResponse);
+    }
+
+    auto metadata = container["Metadata"][0];
+
+    // Extract GUIDs from show metadata
+    utils::JsonHelper::for_each_in_array(metadata, "Guid", [&info](const auto& guid) {
+        std::string id = utils::JsonHelper::get_optional<std::string>(guid, "id", "");
+        if (id.find("imdb://") == 0) {
+            info.imdb_id = id.substr(7);
+        } else if (id.find("tmdb://") == 0) {
+            info.tmdb_id = id.substr(7);
+        }
+    });
+
+    // Extract genres
+    if (utils::JsonHelper::has_array(metadata, "Genre")) {
+        info.genres.clear();
+        utils::JsonHelper::for_each_in_array(metadata, "Genre", [&info](const auto& genre) {
+            info.genres.push_back(utils::JsonHelper::get_optional<std::string>(genre, "tag", ""));
+        });
+    }
+
+    return {};
 }
 
 void PlexClient::extract_basic_media_info(const nlohmann::json& metadata, core::MediaInfo& info) const {
@@ -503,20 +521,7 @@ void PlexClient::enrich_with_external_services(core::MediaInfo& info) {
 }
 
 std::map<std::string, std::string> PlexClient::get_standard_headers(const core::PlexToken& token) const {
-    std::map<std::string, std::string> headers = {
-        {"X-Plex-Product", "Presence For Plex"},
-        {"X-Plex-Version", "1.0.0"},
-        {"X-Plex-Client-Identifier", "presence-for-plex"},
-        {"X-Plex-Platform", "Linux"},
-        {"X-Plex-Device", "PC"},
-        {"Accept", "application/json"}
-    };
-
-    if (!token.empty()) {
-        headers["X-Plex-Token"] = token;
-    }
-
-    return headers;
+    return utils::PlexHeadersBuilder::create_authenticated_headers("presence-for-plex", token);
 }
 
 // Session management methods
@@ -560,7 +565,7 @@ void PlexClient::process_session_event(
         // Remove the session if it exists
         auto session_it = m_active_sessions.find(session_key);
         if (session_it != m_active_sessions.end()) {
-            LOG_INFO("PlexClient", "Removing stopped session: " + session_key.get());
+            LOG_DEBUG("PlexClient", "Removing stopped session: " + session_key.get());
             m_active_sessions.erase(session_it);
 
             // Notify callback about state change if this was the current session
@@ -611,7 +616,7 @@ std::expected<std::vector<core::MediaInfo>, core::PlexError> PlexClient::get_act
 void PlexClient::set_target_username(const std::string& username) {
     LOG_DEBUG("PlexClient", "set_target_username() called with: " + username);
     m_target_username = username;
-    LOG_INFO("PlexClient", "Target username set to: " + username);
+    LOG_DEBUG("PlexClient", "Target username set to: " + username);
 }
 
 std::string PlexClient::get_target_username() const {
@@ -719,7 +724,7 @@ void PlexClient::update_session_info(
     bool is_new_session = !has_existing_session;
     m_active_sessions[session_key] = info;
 
-    LOG_INFO("PlexClient",
+    LOG_DEBUG("PlexClient",
                   (is_new_session ? "Added" : "Updated") + std::string(" session ") + session_key.get() +
                   ": " + info.title + " (" + std::to_string(info.progress) + "/" +
                   std::to_string(info.duration) + "s)");
@@ -862,50 +867,61 @@ std::expected<std::string, core::PlexError> PlexClient::fetch_session_username(
         return std::unexpected<core::PlexError>(core::PlexError::NetworkError);
     }
 
-    try {
-        auto json_response = json::parse(response->body);
-
-        if (!json_response.contains("MediaContainer")) {
-            LOG_ERROR("PlexClient", "Invalid session response format");
-            return std::unexpected<core::PlexError>(core::PlexError::InvalidResponse);
-        }
-
-        if (json_response["MediaContainer"].contains("size") &&
-            json_response["MediaContainer"]["size"].get<int>() == 0) {
-            LOG_DEBUG("PlexClient", "No active sessions found");
-            return std::unexpected<core::PlexError>(core::PlexError::InvalidResponse);
-        }
-
-        if (!json_response["MediaContainer"].contains("Metadata")) {
-            LOG_DEBUG("PlexClient", "No session metadata found");
-            return std::unexpected<core::PlexError>(core::PlexError::InvalidResponse);
-        }
-
-        // Find the matching session by sessionKey
-        for (const auto& session : json_response["MediaContainer"]["Metadata"]) {
-            if (session.contains("sessionKey") &&
-                session["sessionKey"].get<std::string>() == session_key.get()) {
-
-                // Extract user info
-                if (session.contains("User") && session["User"].contains("title")) {
-                    std::string username = session["User"]["title"].get<std::string>();
-                    LOG_INFO("PlexClient", "Found user for session " + session_key.get() + ": " + username);
-
-                    // Cache the result
-                    cache_session_user(cache_key, username);
-                    return username;
-                }
-                break;
-            }
-        }
-
-        LOG_WARNING("PlexClient", "Session not found or no user info: " + session_key.get());
-        return std::unexpected<core::PlexError>(core::PlexError::InvalidResponse);
-
-    } catch (const std::exception& e) {
-        LOG_ERROR("PlexClient", "Error parsing session data: " + std::string(e.what()));
+    auto json_result = utils::JsonHelper::safe_parse(response->body);
+    if (!json_result) {
+        LOG_ERROR("PlexClient", "Failed to parse session data: " + json_result.error());
         return std::unexpected<core::PlexError>(core::PlexError::ParseError);
     }
+
+    auto json_response = json_result.value();
+
+    if (!utils::JsonHelper::has_field(json_response, "MediaContainer")) {
+        LOG_ERROR("PlexClient", "Invalid session response format: missing MediaContainer");
+        return std::unexpected<core::PlexError>(core::PlexError::InvalidResponse);
+    }
+
+    auto container = json_response["MediaContainer"];
+
+    int size = utils::JsonHelper::get_optional<int>(container, "size", 0);
+    if (size == 0) {
+        LOG_DEBUG("PlexClient", "No active sessions found");
+        return std::unexpected<core::PlexError>(core::PlexError::InvalidResponse);
+    }
+
+    if (!utils::JsonHelper::has_array(container, "Metadata")) {
+        LOG_DEBUG("PlexClient", "No session metadata found");
+        return std::unexpected<core::PlexError>(core::PlexError::InvalidResponse);
+    }
+
+    // Find the matching session by sessionKey
+    std::string found_username;
+    bool found = false;
+
+    utils::JsonHelper::for_each_in_array(container, "Metadata", [&](const auto& session) {
+        if (found) return;
+
+        std::string current_session_key = utils::JsonHelper::get_optional<std::string>(session, "sessionKey", "");
+        if (current_session_key == session_key.get()) {
+            // Extract user info
+            if (utils::JsonHelper::has_field(session, "User")) {
+                auto user = session["User"];
+                if (utils::JsonHelper::has_field(user, "title")) {
+                    found_username = user["title"].get<std::string>();
+                    found = true;
+                    LOG_DEBUG("PlexClient", "Found user for session " + session_key.get() + ": " + found_username);
+                }
+            }
+        }
+    });
+
+    if (found) {
+        // Cache the result
+        cache_session_user(cache_key, found_username);
+        return found_username;
+    }
+
+    LOG_WARNING("PlexClient", "Session not found or no user info: " + session_key.get());
+    return std::unexpected<core::PlexError>(core::PlexError::InvalidResponse);
 }
 
 // Cache management methods

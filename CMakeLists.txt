@@ -92,6 +92,9 @@ set(UTILS_SOURCES
     src/utils/uuid_generator.cpp
     src/utils/yaml_config.cpp
     src/utils/url_utils.cpp
+    src/utils/format_utils.cpp
+    src/utils/json_helper.cpp
+    src/utils/plex_headers_builder.cpp
 )
 
 # Collect all headers

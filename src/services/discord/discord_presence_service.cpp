@@ -1,6 +1,7 @@
 #include "presence_for_plex/services/discord/discord_presence_service.hpp"
 #include "presence_for_plex/core/events_impl.hpp"
 #include "presence_for_plex/utils/logger.hpp"
+#include "presence_for_plex/utils/format_utils.hpp"
 #include <cassert>
 #include <chrono>
 #include <thread>
@@ -69,8 +70,7 @@ DiscordPresenceService::DiscordPresenceService(Config config)
 
     m_stats.service_start_time = std::chrono::system_clock::now();
 
-    LOG_INFO("DiscordPresenceService",
-        "Initialized with client ID: " + m_config.client_id);
+    LOG_INFO("DiscordPresenceService", "Discord client ID: " + m_config.client_id);
 }
 
 DiscordPresenceService::~DiscordPresenceService() {
@@ -83,7 +83,7 @@ std::expected<void, core::DiscordError> DiscordPresenceService::initialize() {
         return {};
     }
 
-    LOG_INFO("DiscordPresenceService", "Initializing Discord presence service");
+    LOG_DEBUG("DiscordPresenceService", "Initializing Discord presence service");
 
     // Start connection manager
     if (!m_connection_manager->start()) {
@@ -95,7 +95,7 @@ std::expected<void, core::DiscordError> DiscordPresenceService::initialize() {
     // Start update thread
     m_update_thread = std::jthread([this](std::stop_token) { update_loop(); });
 
-    LOG_INFO("DiscordPresenceService", "Discord presence service initialized");
+    LOG_DEBUG("DiscordPresenceService", "Discord presence service initialized");
     return {};
 }
 
@@ -480,7 +480,7 @@ json DiscordPresenceService::create_discord_activity(const PresenceData& data) c
 
     // Use the activity type from PresenceData
     activity["type"] = data.activity_type;
-    activity["status_display_type"] = 2;  // Match old implementation
+    activity["status_display_type"] = 2;  // Display type for watching activity
     activity["instance"] = true;  // Required for rich presence
 
     if (!data.details.empty()) {
@@ -569,7 +569,7 @@ void DiscordPresenceService::handle_connection_changed(bool connected) {
     on_connection_state_changed(connected);
 
     if (connected) {
-        LOG_INFO("DiscordPresenceService", "Connection established, will process pending frame");
+        LOG_DEBUG("DiscordPresenceService", "Connection established, will process pending frame");
         m_update_cv.notify_one();
     }
 }
@@ -632,139 +632,6 @@ DiscordPresenceService::create(const core::ApplicationConfig& app_config) {
     }
 }
 
-// Anonymous namespace for helper functions
-namespace {
-
-std::string format_duration(double seconds) {
-    int total_seconds = static_cast<int>(seconds);
-    int hours = total_seconds / 3600;
-    int minutes = (total_seconds % 3600) / 60;
-    int secs = total_seconds % 60;
-
-    std::ostringstream oss;
-    if (hours > 0) {
-        oss << hours << ":" << std::setfill('0') << std::setw(2) << minutes
-            << ":" << std::setw(2) << secs;
-    } else {
-        oss << minutes << ":" << std::setfill('0') << std::setw(2) << secs;
-    }
-    return oss.str();
-}
-
-std::string format_progress_percentage(double progress, double duration) {
-    if (duration <= 0) return "0%";
-    double percentage = (progress / duration) * 100.0;
-    std::ostringstream oss;
-    oss << std::fixed << std::setprecision(0) << percentage << "%";
-    return oss.str();
-}
-
-std::string replace_placeholders(const std::string& format, const core::MediaInfo& media) {
-    std::string result = format;
-
-    auto replace = [&result](const std::string& placeholder, const std::string& value) {
-        size_t pos = 0;
-        while ((pos = result.find(placeholder, pos)) != std::string::npos) {
-            result.replace(pos, placeholder.length(), value);
-            pos += value.length();
-        }
-    };
-
-    // Basic media information
-    replace("{title}", media.title);
-    replace("{original_title}", media.original_title);
-    replace("{year}", media.year > 0 ? std::to_string(media.year) : "");
-    replace("{studio}", media.studio);
-    replace("{summary}", media.summary);
-
-    // TV show specific
-    replace("{show}", media.grandparent_title);
-    replace("{show_title}", media.grandparent_title);
-    replace("{season}", media.season > 0 ? std::to_string(media.season) : "");
-    replace("{episode}", media.episode > 0 ? std::to_string(media.episode) : "");
-    replace("{season_padded}", media.season > 0 ? (media.season < 10 ? "0" + std::to_string(media.season) : std::to_string(media.season)) : "");
-    replace("{episode_padded}", media.episode > 0 ? (media.episode < 10 ? "0" + std::to_string(media.episode) : std::to_string(media.episode)) : "");
-
-    // Music specific
-    replace("{artist}", media.artist);
-    replace("{album}", media.album);
-    replace("{track}", media.track > 0 ? std::to_string(media.track) : "");
-
-    // Playback state
-    std::string state_str;
-    switch (media.state) {
-        case core::PlaybackState::Playing: state_str = "Playing"; break;
-        case core::PlaybackState::Paused: state_str = "Paused"; break;
-        case core::PlaybackState::Buffering: state_str = "Buffering"; break;
-        case core::PlaybackState::Stopped: state_str = "Stopped"; break;
-        default: state_str = "Unknown"; break;
-    }
-    replace("{state}", state_str);
-
-    // Media type
-    std::string type_str;
-    switch (media.type) {
-        case core::MediaType::Movie: type_str = "Movie"; break;
-        case core::MediaType::TVShow: type_str = "TV Show"; break;
-        case core::MediaType::Music: type_str = "Music"; break;
-        default: type_str = "Media"; break;
-    }
-    replace("{type}", type_str);
-
-    // Playback progress
-    replace("{progress}", format_duration(media.progress));
-    replace("{duration}", format_duration(media.duration));
-    replace("{progress_percentage}", format_progress_percentage(media.progress, media.duration));
-    replace("{remaining}", format_duration(media.duration - media.progress));
-
-    // User information
-    replace("{username}", media.username);
-
-    // Genres
-    if (!media.genres.empty()) {
-        std::string genres_str = std::accumulate(
-            std::next(media.genres.begin()),
-            media.genres.end(),
-            media.genres[0],
-            [](const std::string& a, const std::string& b) {
-                return a + ", " + b;
-            }
-        );
-        replace("{genres}", genres_str);
-        replace("{genre}", media.genres[0]);
-    } else {
-        replace("{genres}", "");
-        replace("{genre}", "");
-    }
-
-    // Rating
-    if (media.rating > 0) {
-        std::ostringstream oss;
-        oss << std::fixed << std::setprecision(1) << media.rating;
-        replace("{rating}", oss.str());
-    } else {
-        replace("{rating}", "");
-    }
-
-    // Season/Episode formatting helpers
-    if (media.season > 0 && media.episode > 0) {
-        std::ostringstream se_format;
-        se_format << "S" << media.season << " • E" << media.episode;
-        replace("{se}", se_format.str());
-
-        std::ostringstream sxe_format;
-        sxe_format << "S" << std::setfill('0') << std::setw(2) << media.season
-                   << "E" << std::setw(2) << media.episode;
-        replace("{SxE}", sxe_format.str());
-    } else {
-        replace("{se}", "");
-        replace("{SxE}", "");
-    }
-
-    return result;
-}
-
-} // anonymous namespace
 
 PresenceData DiscordPresenceService::format_media(const core::MediaInfo& media) const {
     PresenceData data;
@@ -814,12 +681,12 @@ PresenceData DiscordPresenceService::format_media(const core::MediaInfo& media) 
     }
 
     // Replace placeholders
-    data.details = replace_placeholders(details_format, media);
-    data.state = replace_placeholders(state_format, media);
+    data.details = utils::replace_placeholders(details_format, media);
+    data.state = utils::replace_placeholders(state_format, media);
 
     // Large image text
     if (!large_image_text_format.empty()) {
-        data.large_image_text = replace_placeholders(large_image_text_format, media);
+        data.large_image_text = utils::replace_placeholders(large_image_text_format, media);
     } else {
         data.large_image_text = media.title;
     }

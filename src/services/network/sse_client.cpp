@@ -117,7 +117,7 @@ void SSEClient::event_loop() {
                 m_running = false;
                 break;
             }
-            LOG_INFO("SSEClient", "Initial connection attempt " + std::to_string(m_connection_attempts) +
+            LOG_DEBUG("SSEClient", "Initial connection attempt " + std::to_string(m_connection_attempts) +
                          "/" + std::to_string(MAX_INITIAL_CONNECTION_ATTEMPTS) + " for: " + m_url);
         }
 

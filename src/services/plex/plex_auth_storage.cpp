@@ -9,7 +9,7 @@ namespace services {
 
 PlexAuthStorage::PlexAuthStorage(const std::filesystem::path& storage_path)
     : m_storage_path(storage_path.empty() ? get_default_auth_path() : storage_path) {
-    LOG_INFO("PlexAuthStorage", "Initializing authentication storage");
+    LOG_DEBUG("PlexAuthStorage", "Initializing authentication storage");
     ensure_storage_directory();
     load();
 }

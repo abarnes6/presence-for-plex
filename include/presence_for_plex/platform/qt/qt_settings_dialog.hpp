@@ -7,7 +7,12 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QTextEdit>
+#include <QLabel>
+#include <QScrollArea>
+#include <QGroupBox>
 #include <memory>
+#include <string>
+#include <vector>
 
 namespace presence_for_plex::platform::qt {
 
@@ -23,17 +28,14 @@ public:
 private:
     void setup_ui();
     void load_config(const core::ApplicationConfig& config);
-    void create_general_tab();
-    void create_discord_tab();
-    void create_plex_tab();
-    void create_services_tab();
-    void create_format_tab();
+    void update_preview();
 
     void on_accept();
     void on_reject();
     void on_reset_defaults();
     void validate_inputs();
     void open_logs_folder();
+    void scroll_to_section(int index);
 
 private:
     // General settings
@@ -79,6 +81,24 @@ private:
 
     // Help text
     QTextEdit* m_format_help_text = nullptr;
+
+    // Preview widgets
+    QLabel* m_tv_preview_details = nullptr;
+    QLabel* m_tv_preview_state = nullptr;
+    QLabel* m_tv_preview_image_text = nullptr;
+    QLabel* m_tv_preview_image = nullptr;
+    QLabel* m_movie_preview_details = nullptr;
+    QLabel* m_movie_preview_state = nullptr;
+    QLabel* m_movie_preview_image_text = nullptr;
+    QLabel* m_movie_preview_image = nullptr;
+    QLabel* m_music_preview_details = nullptr;
+    QLabel* m_music_preview_state = nullptr;
+    QLabel* m_music_preview_image_text = nullptr;
+    QLabel* m_music_preview_image = nullptr;
+
+    // Navigation
+    QScrollArea* m_scroll_area = nullptr;
+    std::vector<QGroupBox*> m_sections;
 
     core::ApplicationConfig m_original_config;
 };

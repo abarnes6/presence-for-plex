@@ -26,7 +26,7 @@ std::expected<void, UiError> QtSystemTray::initialize() {
         return {};
     }
 
-    LOG_INFO(m_component_name, "Initializing Qt system tray");
+    LOG_DEBUG(m_component_name, "Initializing Qt system tray");
 
     if (!QSystemTrayIcon::isSystemTrayAvailable()) {
         LOG_ERROR(m_component_name, "System tray is not available on this system");
@@ -53,7 +53,7 @@ std::expected<void, UiError> QtSystemTray::initialize() {
     }
 
     m_initialized = true;
-    LOG_INFO(m_component_name, "Qt system tray initialized successfully");
+    LOG_DEBUG(m_component_name, "Qt system tray initialized successfully");
     return {};
 }
 

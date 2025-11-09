@@ -157,6 +157,7 @@ ConsoleSink::ConsoleSink(bool use_colors) : m_use_colors(use_colors && is_termin
 void ConsoleSink::write(const LogMessage& message) {
     auto formatted = format_message(message);
     std::cout << colorize(formatted, message.m_level) << '\n';
+    std::cout.flush();  // Flush immediately for real-time logging
 }
 
 void ConsoleSink::flush() {
@@ -234,6 +235,7 @@ FileSink::~FileSink() {
 void FileSink::write(const LogMessage& message) {
     if (m_file.is_open()) {
         m_file << format_message(message) << '\n';
+        m_file.flush();  // Flush immediately for real-time logging
     }
 }
 

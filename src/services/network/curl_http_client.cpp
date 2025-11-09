@@ -487,9 +487,10 @@ public:
         curl_easy_setopt(curl, CURLOPT_TIMEOUT, 0L);  // No timeout for persistent connection
         curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 30L);  // Connection timeout only
 
-        // Set low-speed limits to detect dead connections
+        // Set low-speed limits to detect dead connections (but be lenient for SSE)
+        // SSE connections can be idle for long periods when no events are occurring
         curl_easy_setopt(curl, CURLOPT_LOW_SPEED_LIMIT, 1L);  // 1 byte/sec minimum
-        curl_easy_setopt(curl, CURLOPT_LOW_SPEED_TIME, 2L);  // for 2 seconds
+        curl_easy_setopt(curl, CURLOPT_LOW_SPEED_TIME, 15L);  // Allow 15 seconds of idle time
 
         // Don't follow redirects for streaming connections
         curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 0L);

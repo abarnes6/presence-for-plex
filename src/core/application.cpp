@@ -44,7 +44,7 @@ public:
     }
 
     std::expected<void, ApplicationError> initialize() override {
-        LOG_INFO("Application", "Initializing...");
+        LOG_DEBUG("Application", "Initializing...");
 
         if (m_state != ApplicationState::NotInitialized) {
             LOG_WARNING("Application", "Already initialized");
@@ -65,7 +65,7 @@ public:
             connect_services();
 
             m_state = ApplicationState::Running;
-            LOG_INFO("Application", "Initialization complete");
+            LOG_DEBUG("Application", "Initialization complete");
             return {};
 
         } catch (const std::exception& e) {
@@ -76,7 +76,7 @@ public:
     }
 
     std::expected<void, ApplicationError> start() override {
-        LOG_INFO("Application", "Starting services...");
+        LOG_DEBUG("Application", "Starting services...");
 
         if (m_state != ApplicationState::Running) {
             LOG_ERROR("Application", "Not initialized");
@@ -90,7 +90,7 @@ public:
             initialize_system_tray();
             start_services();
 
-            LOG_INFO("Application", "Services started");
+            LOG_DEBUG("Application", "Services started");
             return {};
 
         } catch (const std::exception& e) {
@@ -260,7 +260,7 @@ private:
             return;
         }
 
-        LOG_INFO("Application", "UI service initialized");
+        LOG_DEBUG("Application", "UI service initialized");
     }
 
     void initialize_media_service() {
@@ -274,7 +274,7 @@ private:
 
         // Initialize Plex if enabled
         if (config.media_services.plex.enabled) {
-            LOG_INFO("Application", "Initializing Plex media service");
+            LOG_DEBUG("Application", "Initializing Plex media service");
 
             try {
                 // Create HTTP client
@@ -305,7 +305,7 @@ private:
                 );
 
                 m_media_service->set_event_bus(m_event_bus);
-                LOG_INFO("Application", "Plex media service initialized with unified client");
+                LOG_DEBUG("Application", "Plex media service initialized with unified client");
             } catch (const std::exception& e) {
                 LOG_ERROR("Application", "Plex media service creation failed: " + std::string(e.what()));
             }
@@ -344,7 +344,7 @@ private:
             m_presence_service->set_music_large_image_text_format(config.presence.discord.music_large_image_text_format);
 
             m_presence_service->set_event_bus(m_event_bus);
-            LOG_INFO("Application", "Presence service initialized");
+            LOG_DEBUG("Application", "Presence service initialized");
         } else {
             LOG_ERROR("Application", "Presence service creation failed");
         }
@@ -362,7 +362,7 @@ private:
         );
 
         m_update_service->set_event_bus(m_event_bus);
-        LOG_INFO("Application", "Update service initialized");
+        LOG_DEBUG("Application", "Update service initialized");
     }
 
     void connect_services() {
@@ -401,7 +401,7 @@ private:
         );
         m_event_subscriptions.push_back(config_sub);
 
-        LOG_INFO("Application", "Services connected");
+        LOG_DEBUG("Application", "Services connected");
     }
 
     void start_services() {
@@ -411,7 +411,7 @@ private:
                     if (!m_media_service->start()) {
                         LOG_WARNING("Application", "Media service start failed");
                     } else {
-                        LOG_INFO("Application", "Media service started");
+                        LOG_DEBUG("Application", "Media service started");
                     }
                 })
             );
@@ -423,7 +423,7 @@ private:
                     if (!m_presence_service->initialize()) {
                         LOG_WARNING("Application", "Presence service start failed");
                     } else {
-                        LOG_INFO("Application", "Presence service started");
+                        LOG_DEBUG("Application", "Presence service started");
                     }
                 })
             );
@@ -538,7 +538,7 @@ private:
         (void)m_system_tray->set_tooltip("Presence for Plex");
         setup_tray_menu();
         m_system_tray->show();
-        LOG_INFO("Application", "System tray created");
+        LOG_DEBUG("Application", "System tray created");
     }
 
     void show_settings_dialog() {
@@ -650,7 +650,7 @@ private:
 };
 
 std::expected<std::unique_ptr<Application>, ApplicationError> create_application() {
-    LOG_INFO("Application", "Creating application");
+    LOG_DEBUG("Application", "Creating application");
 
     try {
         return std::make_unique<ApplicationImpl>();

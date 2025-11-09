@@ -21,7 +21,7 @@ std::expected<void, UiError> QtUiService::initialize() {
         return {};
     }
 
-    LOG_INFO(m_component_name, "Initializing Qt UI service");
+    LOG_DEBUG(m_component_name, "Initializing Qt UI service");
 
     // Use the existing QApplication instance created in main
     m_app = qobject_cast<QApplication*>(QCoreApplication::instance());
@@ -31,7 +31,7 @@ std::expected<void, UiError> QtUiService::initialize() {
     }
 
     m_initialized = true;
-    LOG_INFO(m_component_name, "Qt UI service initialized successfully");
+    LOG_DEBUG(m_component_name, "Qt UI service initialized successfully");
     return {};
 }
 
