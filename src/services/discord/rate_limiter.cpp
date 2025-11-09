@@ -1,4 +1,4 @@
-#include "presence_for_plex/services/rate_limiter.hpp"
+#include "presence_for_plex/services/discord/rate_limiter.hpp"
 #include "presence_for_plex/utils/logger.hpp"
 #include <algorithm>
 

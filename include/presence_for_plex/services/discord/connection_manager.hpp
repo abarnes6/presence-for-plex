@@ -9,38 +9,8 @@
 
 namespace presence_for_plex::services {
 
-/**
- * @brief Interface for connection management strategies
- *
- * Follows the Strategy pattern to allow different connection behaviors
- */
-class IConnectionStrategy {
-public:
-    virtual ~IConnectionStrategy() = default;
-
-    /**
-     * @brief Attempt to establish a connection
-     * @return true if connection successful, false otherwise
-     */
-    virtual bool connect() = 0;
-
-    /**
-     * @brief Check if currently connected
-     * @return true if connected, false otherwise
-     */
-    virtual bool is_connected() const = 0;
-
-    /**
-     * @brief Disconnect and cleanup
-     */
-    virtual void disconnect() = 0;
-
-    /**
-     * @brief Send a health check ping
-     * @return true if ping successful, false otherwise
-     */
-    virtual bool send_health_check() = 0;
-};
+// Forward declaration
+class DiscordIPC;
 
 /**
  * @brief Configuration for connection retry behavior
@@ -90,7 +60,7 @@ public:
     using HealthCheckCallback = std::function<void(bool)>;
 
     explicit ConnectionManager(
-        std::unique_ptr<IConnectionStrategy> strategy,
+        std::unique_ptr<DiscordIPC> ipc,
         ConnectionRetryConfig config = {}
     );
 
@@ -147,23 +117,15 @@ public:
     RetryStats get_retry_stats() const;
 
     /**
-     * @brief Get the underlying connection strategy
-     * @return Pointer to the strategy, or nullptr if not available
+     * @brief Get the Discord IPC instance
+     * @return Pointer to the IPC, or nullptr if not available
      */
-    template<typename T>
-    T* get_strategy() const {
-        return dynamic_cast<T*>(m_strategy.get());
-    }
-
-    /**
-     * @brief Get the raw connection strategy pointer
-     */
-    IConnectionStrategy* get_raw_strategy() const {
-        return m_strategy.get();
+    DiscordIPC* get_ipc() const {
+        return m_ipc.get();
     }
 
 private:
-    std::unique_ptr<IConnectionStrategy> m_strategy;
+    std::unique_ptr<DiscordIPC> m_ipc;
     ConnectionRetryConfig m_config;
 
     std::atomic<bool> m_running{false};

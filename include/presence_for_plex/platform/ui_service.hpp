@@ -110,123 +110,6 @@ protected:
     virtual void on_menu_item_selected(const std::string& item_id) = 0;
 };
 
-// Notification manager interface
-class NotificationManager {
-public:
-    virtual ~NotificationManager() = default;
-
-    // Lifecycle
-    virtual std::expected<void, UiError> initialize() = 0;
-    virtual void shutdown() = 0;
-    virtual bool is_supported() const = 0;
-
-    // Notification management
-    using NotificationId = std::string;
-
-    virtual std::expected<NotificationId, UiError> show_notification(const Notification& notification) = 0;
-    virtual std::expected<void, UiError> update_notification(const NotificationId& id, const Notification& notification) = 0;
-    virtual std::expected<void, UiError> hide_notification(const NotificationId& id) = 0;
-    virtual void clear_all_notifications() = 0;
-
-    // Event callbacks
-    using NotificationCallback = std::function<void(const NotificationId&)>;
-
-    virtual void set_click_callback(NotificationCallback callback) = 0;
-    virtual void set_dismiss_callback(NotificationCallback callback) = 0;
-
-protected:
-    virtual void on_notification_clicked(const NotificationId& id) = 0;
-    virtual void on_notification_dismissed(const NotificationId& id) = 0;
-};
-
-// Window management interface
-class WindowManager {
-public:
-    virtual ~WindowManager() = default;
-
-    // Window discovery
-    virtual std::vector<std::string> find_windows_by_title(const std::string& title) const = 0;
-    virtual std::vector<std::string> find_windows_by_class(const std::string& class_name) const = 0;
-    virtual std::optional<std::string> find_window_by_process(const std::string& process_name) const = 0;
-
-    // Window operations
-    virtual std::expected<void, UiError> bring_to_front(const std::string& window_id) = 0;
-    virtual std::expected<void, UiError> minimize_window(const std::string& window_id) = 0;
-    virtual std::expected<void, UiError> maximize_window(const std::string& window_id) = 0;
-    virtual std::expected<void, UiError> close_window(const std::string& window_id) = 0;
-
-    // Window properties
-    virtual std::optional<std::string> get_window_title(const std::string& window_id) const = 0;
-    virtual std::expected<bool, UiError> is_window_visible(const std::string& window_id) const = 0;
-    virtual std::expected<bool, UiError> is_window_minimized(const std::string& window_id) const = 0;
-};
-
-// Dialog interface for user interaction
-class DialogManager {
-public:
-    virtual ~DialogManager() = default;
-
-    enum class DialogType {
-        Info,
-        Warning,
-        Error,
-        Question,
-        Input
-    };
-
-    enum class DialogResult {
-        OK,
-        Cancel,
-        Yes,
-        No,
-        Retry
-    };
-
-    // Message dialogs
-    virtual std::expected<DialogResult, UiError> show_message(
-        const std::string& title,
-        const std::string& message,
-        DialogType type = DialogType::Info
-    ) = 0;
-
-    virtual std::expected<DialogResult, UiError> show_question(
-        const std::string& title,
-        const std::string& question,
-        bool show_cancel = true
-    ) = 0;
-
-    // Input dialogs
-    virtual std::expected<std::string, UiError> show_input_dialog(
-        const std::string& title,
-        const std::string& prompt,
-        const std::string& default_value = ""
-    ) = 0;
-
-    virtual std::expected<std::string, UiError> show_password_dialog(
-        const std::string& title,
-        const std::string& prompt
-    ) = 0;
-
-    // File dialogs
-    virtual std::expected<std::string, UiError> show_open_file_dialog(
-        const std::string& title,
-        const std::string& filter = "",
-        const std::string& initial_dir = ""
-    ) = 0;
-
-    virtual std::expected<std::string, UiError> show_save_file_dialog(
-        const std::string& title,
-        const std::string& filter = "",
-        const std::string& initial_dir = "",
-        const std::string& default_name = ""
-    ) = 0;
-
-    virtual std::expected<std::string, UiError> show_folder_dialog(
-        const std::string& title,
-        const std::string& initial_dir = ""
-    ) = 0;
-};
-
 // Main UI service interface that aggregates all UI functionality
 class UiService {
 public:
@@ -239,15 +122,9 @@ public:
 
     // Component access
     virtual std::unique_ptr<SystemTray> create_system_tray() = 0;
-    virtual std::unique_ptr<NotificationManager> create_notification_manager() = 0;
-    virtual std::unique_ptr<WindowManager> create_window_manager() = 0;
-    virtual std::unique_ptr<DialogManager> create_dialog_manager() = 0;
 
     // Platform capabilities
     virtual bool supports_system_tray() const = 0;
-    virtual bool supports_notifications() const = 0;
-    virtual bool supports_window_management() const = 0;
-    virtual bool supports_dialogs() const = 0;
 
     // Event loop integration
     virtual void process_events() = 0;

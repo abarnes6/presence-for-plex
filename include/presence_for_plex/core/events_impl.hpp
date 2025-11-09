@@ -4,7 +4,7 @@
 #include <utility>
 
 #include "presence_for_plex/core/events.hpp"
-#include "presence_for_plex/services/presence_service.hpp"
+#include "presence_for_plex/services/discord/discord_presence_service.hpp"
 #include "presence_for_plex/platform/ui_service.hpp"
 
 namespace presence_for_plex::core::events {

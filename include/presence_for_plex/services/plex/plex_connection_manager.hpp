@@ -11,12 +11,9 @@
 #include <expected>
 
 namespace presence_for_plex {
-
-namespace core {
-class AuthenticationService;
-}
-
 namespace services {
+
+class PlexAuthStorage;
 
 // Forward declarations
 class HttpClient;
@@ -38,7 +35,7 @@ struct PlexServerRuntime {
 
 class PlexConnectionManager {
 public:
-    explicit PlexConnectionManager(std::shared_ptr<HttpClient> http_client, std::shared_ptr<core::AuthenticationService> auth_service);
+    explicit PlexConnectionManager(std::shared_ptr<HttpClient> http_client, std::shared_ptr<PlexAuthStorage> auth_service);
     ~PlexConnectionManager();
 
     std::expected<void, core::PlexError> add_server(std::unique_ptr<core::PlexServer> server);
@@ -61,7 +58,7 @@ private:
     std::expected<bool, core::PlexError> test_uri_accessibility(const std::string& uri, const core::PlexToken& token);
 
     std::shared_ptr<HttpClient> m_http_client;
-    std::shared_ptr<core::AuthenticationService> m_auth_service;
+    std::shared_ptr<PlexAuthStorage> m_auth_service;
     mutable std::mutex m_servers_mutex;
     std::map<core::ServerId, std::shared_ptr<PlexServerRuntime>> m_servers;
     SSEEventCallback m_sse_callback;

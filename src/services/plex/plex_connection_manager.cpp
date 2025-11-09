@@ -1,7 +1,7 @@
 #include "presence_for_plex/services/plex/plex_connection_manager.hpp"
 #include "presence_for_plex/services/network/sse_client.hpp"
-#include "presence_for_plex/services/network_service.hpp"
-#include "presence_for_plex/core/authentication_service.hpp"
+#include "presence_for_plex/services/network/http_client.hpp"
+#include "presence_for_plex/services/plex/plex_auth_storage.hpp"
 #include "presence_for_plex/utils/logger.hpp"
 #include <thread>
 #include <chrono>
@@ -13,7 +13,7 @@ namespace presence_for_plex {
 namespace services {
 
 // PlexConnectionManager implementation
-PlexConnectionManager::PlexConnectionManager(std::shared_ptr<HttpClient> http_client, std::shared_ptr<core::AuthenticationService> auth_service)
+PlexConnectionManager::PlexConnectionManager(std::shared_ptr<HttpClient> http_client, std::shared_ptr<PlexAuthStorage> auth_service)
     : m_http_client(std::move(http_client))
     , m_auth_service(std::move(auth_service)) {
 
@@ -33,7 +33,7 @@ std::expected<void, core::PlexError> PlexConnectionManager::add_server(std::uniq
         return std::unexpected<core::PlexError>(core::PlexError::InvalidResponse);
     }
 
-    core::ServerId server_id(server->client_identifier.get());
+    core::ServerId server_id(server->client_identifier);
 
     LOG_INFO("PlexConnectionManager", "Adding server: " + server->name + " (" + server_id.get() + ")");
     LOG_DEBUG("PlexConnectionManager", "Server details - Local URI: " + server->local_uri + ", Public URI: " + server->public_uri + ", Owned: " + (server->owned ? "true" : "false"));
@@ -227,7 +227,7 @@ void PlexConnectionManager::stop_all_connections() {
 
 void PlexConnectionManager::setup_server_sse_connection(std::shared_ptr<PlexServerRuntime> runtime_ptr) {
     const auto& server = runtime_ptr->server;
-    core::ServerId server_id(server->client_identifier.get());
+    core::ServerId server_id(server->client_identifier);
 
     LOG_INFO("PlexConnectionManager", "Setting up SSE connection to: " + server->name);
 
@@ -235,10 +235,10 @@ void PlexConnectionManager::setup_server_sse_connection(std::shared_ptr<PlexServ
     HttpHeaders headers = {
         {"X-Plex-Product", "Presence For Plex"},
         {"X-Plex-Version", "1.0.0"},
-        {"X-Plex-Client-Identifier", server->client_identifier.get()},
+        {"X-Plex-Client-Identifier", server->client_identifier},
         {"X-Plex-Platform", "Linux"},
         {"X-Plex-Device", "PC"},
-        {"X-Plex-Token", server->access_token.get()}
+        {"X-Plex-Token", server->access_token}
     };
 
     // Set up SSE callback
@@ -304,7 +304,7 @@ std::expected<bool, core::PlexError> PlexConnectionManager::test_uri_accessibili
         {"X-Plex-Client-Identifier", m_auth_service->get_plex_client_identifier()},
         {"X-Plex-Platform", "Linux"},
         {"X-Plex-Device", "PC"},
-        {"X-Plex-Token", token.get()}
+        {"X-Plex-Token", token}
     };
 
     auto response = m_http_client->get(uri, headers);

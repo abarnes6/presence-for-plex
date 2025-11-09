@@ -35,22 +35,6 @@ enum class ApplicationError {
     ShutdownFailed
 };
 
-enum class ValidationError {
-    EmptyTitle,
-    InvalidDuration,
-    ProgressOutOfBounds,
-    MissingEpisodeInfo,
-    MissingSeasonInfo,
-    InvalidUpdateInterval,
-    InvalidPollInterval,
-    EmptyClientId,
-    InvalidServerUrl,
-    EmptyServerName,
-    EmptyAuthToken,
-    InvalidFormat,
-    MissingRequiredField
-};
-
 enum class ConfigError {
     FileNotFound,
     InvalidFormat,
@@ -111,44 +95,14 @@ enum class DiscordError {
 };
 
 // ============================================================================
-// Configuration limits
-// ============================================================================
-
-namespace ConfigLimits {
-    constexpr auto MIN_UPDATE_INTERVAL = std::chrono::seconds(1);
-    constexpr auto MAX_UPDATE_INTERVAL = std::chrono::seconds(300);
-    constexpr auto MIN_POLL_INTERVAL = std::chrono::seconds(1);
-    constexpr auto MAX_POLL_INTERVAL = std::chrono::seconds(60);
-    constexpr auto MIN_TIMEOUT = std::chrono::seconds(5);
-    constexpr auto MAX_TIMEOUT = std::chrono::seconds(300);
-}
-
-// ============================================================================
 // Forward declarations
 // ============================================================================
 
 class HttpClient;
 
 // Strong types for IDs and tokens
-struct PlexToken {
-    std::string value;
-
-    PlexToken() = default;
-    explicit PlexToken(std::string token) : value(std::move(token)) {}
-
-    bool empty() const { return value.empty(); }
-    const std::string& get() const { return value; }
-};
-
-struct ClientId {
-    std::string value;
-
-    ClientId() = default;
-    explicit ClientId(std::string id) : value(std::move(id)) {}
-
-    bool empty() const { return value.empty(); }
-    const std::string& get() const { return value; }
-};
+using PlexToken = std::string;
+using ClientId = std::string;
 
 struct ServerId {
     std::string value;
@@ -272,9 +226,6 @@ struct MediaInfo {
     // Metadata
     SessionKey session_key;          // Plex session key
     ServerId server_id;              // ID of the server hosting this content
-
-    // Validation
-    std::expected<void, ValidationError> validate() const;
 };
 
 // Configuration structures
@@ -299,16 +250,12 @@ struct DiscordConfig {
     std::string music_details_format = "{title}";
     std::string music_state_format = "{artist} - {album}";
     std::string music_large_image_text_format = "{title}";
-
-    std::expected<void, ValidationError> validate() const;
 };
 
 struct PresenceServiceConfig {
     PresenceServiceType type = PresenceServiceType::Discord;
     bool enabled = true;
     DiscordConfig discord;
-
-    std::expected<void, ValidationError> validate() const;
 };
 
 // Plex-specific configuration
@@ -323,15 +270,11 @@ struct PlexServiceConfig {
     bool enable_movies = true;
     bool enable_tv_shows = true;
     bool enable_music = true;
-
-    std::expected<void, ValidationError> validate() const;
 };
 
 // Container for all media service configurations
 struct MediaServicesConfig {
     PlexServiceConfig plex;
-
-    std::expected<void, ValidationError> validate() const;
 };
 
 struct ApplicationConfig {
@@ -351,8 +294,6 @@ struct ApplicationConfig {
     int version_major() const;
     int version_minor() const;
     int version_patch() const;
-
-    std::expected<void, ValidationError> validate() const;
 };
 
 // Event system types
@@ -369,13 +310,6 @@ namespace std {
     template<>
     struct hash<presence_for_plex::core::ServerId> {
         std::size_t operator()(const presence_for_plex::core::ServerId& id) const noexcept {
-            return std::hash<std::string>{}(id.value);
-        }
-    };
-
-    template<>
-    struct hash<presence_for_plex::core::ClientId> {
-        std::size_t operator()(const presence_for_plex::core::ClientId& id) const noexcept {
             return std::hash<std::string>{}(id.value);
         }
     };

@@ -1,6 +1,6 @@
 #include "presence_for_plex/services/plex/plex_authenticator.hpp"
-#include "presence_for_plex/services/network_service.hpp"
-#include "presence_for_plex/core/authentication_service.hpp"
+#include "presence_for_plex/services/network/http_client.hpp"
+#include "presence_for_plex/services/plex/plex_auth_storage.hpp"
 #include "presence_for_plex/platform/browser_launcher.hpp"
 #include "presence_for_plex/utils/logger.hpp"
 #include <nlohmann/json.hpp>
@@ -11,7 +11,7 @@ namespace services {
 using json = nlohmann::json;
 
 PlexAuthenticator::PlexAuthenticator(std::shared_ptr<HttpClient> http_client,
-                                   std::shared_ptr<core::AuthenticationService> auth_service,
+                                   std::shared_ptr<PlexAuthStorage> auth_service,
                                    std::shared_ptr<platform::BrowserLauncher> browser_launcher)
     : m_http_client(std::move(http_client))
     , m_auth_service(std::move(auth_service))
@@ -107,7 +107,7 @@ std::expected<core::PlexToken, core::PlexError> PlexAuthenticator::ensure_authen
     LOG_DEBUG("PlexAuthenticator", "Loaded stored token from config (length: " + std::to_string(stored_token_value.length()) + ")");
 
     // Check if we have a stored token and if it's valid
-    if (!stored_token.value.empty()) {
+    if (!stored_token.empty()) {
         auto validation_result = validate_token(stored_token);
         if (validation_result) {
             LOG_INFO("PlexAuthenticator", "Using stored valid token");
@@ -123,7 +123,7 @@ std::expected<core::PlexToken, core::PlexError> PlexAuthenticator::ensure_authen
 
     // Save the new token if authentication was successful
     if (new_token.has_value()) {
-        m_auth_service->set_plex_token(new_token.value().value);
+        m_auth_service->set_plex_token(new_token.value());
         m_auth_service->save();
     }
 
@@ -131,7 +131,7 @@ std::expected<core::PlexToken, core::PlexError> PlexAuthenticator::ensure_authen
 }
 
 std::map<std::string, std::string> PlexAuthenticator::get_standard_headers(const core::PlexToken& token) const {
-    LOG_DEBUG("PlexAuthenticator", "get_standard_headers() called with token length: " + std::to_string(token.value.length()));
+    LOG_DEBUG("PlexAuthenticator", "get_standard_headers() called with token length: " + std::to_string(token.length()));
     std::map<std::string, std::string> headers;
     headers["X-Plex-Product"] = "Presence For Plex";
     headers["X-Plex-Version"] = "1.0.0";
@@ -143,8 +143,8 @@ std::map<std::string, std::string> PlexAuthenticator::get_standard_headers(const
     headers["Accept"] = "application/json";
     headers["Content-Type"] = "application/x-www-form-urlencoded";
 
-    if (!token.value.empty()) {
-        headers["X-Plex-Token"] = token.value;
+    if (!token.empty()) {
+        headers["X-Plex-Token"] = token;
     }
 
     return headers;

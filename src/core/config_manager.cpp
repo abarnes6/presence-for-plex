@@ -9,18 +9,18 @@
 namespace presence_for_plex {
 namespace core {
 
-// Simplified configuration service implementation
+// Configuration manager implementation
 
-class ConfigurationServiceImpl : public ConfigurationService {
+class ConfigManager::Impl {
 public:
-    explicit ConfigurationServiceImpl(const std::filesystem::path& config_path)
+    explicit Impl(const std::filesystem::path& config_path)
         : m_config_path(config_path.empty() ? get_default_config_path() : config_path) {
         LOG_INFO("ConfigService", "Initializing with path: " + m_config_path.string());
         ensure_config_directory();
         m_config_exists = std::filesystem::exists(m_config_path);
     }
 
-    std::expected<void, ConfigError> load() override {
+    std::expected<void, ConfigError> load() {
         LOG_INFO("ConfigService", "Loading configuration");
 
         if (!std::filesystem::exists(m_config_path)) {
@@ -41,7 +41,7 @@ public:
         return std::unexpected(result.error());
     }
 
-    std::expected<void, ConfigError> save() override {
+    std::expected<void, ConfigError> save() {
         ApplicationConfig config_copy;
         {
             std::shared_lock lock(m_mutex);
@@ -119,21 +119,14 @@ public:
     }
 
 
-    const ApplicationConfig& get() const override {
+    const ApplicationConfig& get() const {
         std::shared_lock lock(m_mutex);
         return m_config;
     }
 
 
-    std::expected<void, ConfigError> update(const ApplicationConfig& config) override {
+    std::expected<void, ConfigError> update(const ApplicationConfig& config) {
         LOG_INFO("ConfigService", "Updating configuration");
-
-        // Validate configuration first
-        auto validation_result = config.validate();
-        if (!validation_result) {
-            LOG_ERROR("ConfigService", "Invalid configuration provided");
-            return std::unexpected(ConfigError::ValidationError);
-        }
 
         ApplicationConfig old_config;
         {
@@ -153,7 +146,7 @@ public:
     }
 
 
-    void set_event_bus(std::shared_ptr<EventBus> bus) override {
+    void set_event_bus(std::shared_ptr<EventBus> bus) {
         LOG_DEBUG("ConfigService", "Setting event bus");
         m_event_bus = std::move(bus);
     }
@@ -195,14 +188,31 @@ private:
     mutable bool m_config_exists = false;
 };
 
-std::unique_ptr<ConfigurationService> ConfigurationService::create(
-    const std::filesystem::path& config_path,
-    std::shared_ptr<EventBus> event_bus) {
-    auto service = std::make_unique<ConfigurationServiceImpl>(config_path);
-    if (event_bus) {
-        service->set_event_bus(event_bus);
-    }
-    return service;
+// ConfigManager implementation
+
+ConfigManager::ConfigManager(const std::filesystem::path& config_path)
+    : m_impl(std::make_unique<Impl>(config_path)) {}
+
+ConfigManager::~ConfigManager() = default;
+
+std::expected<void, ConfigError> ConfigManager::load() {
+    return m_impl->load();
+}
+
+std::expected<void, ConfigError> ConfigManager::save() {
+    return m_impl->save();
+}
+
+const ApplicationConfig& ConfigManager::get() const {
+    return m_impl->get();
+}
+
+std::expected<void, ConfigError> ConfigManager::update(const ApplicationConfig& config) {
+    return m_impl->update(config);
+}
+
+void ConfigManager::set_event_bus(std::shared_ptr<EventBus> bus) {
+    m_impl->set_event_bus(std::move(bus));
 }
 
 } // namespace core

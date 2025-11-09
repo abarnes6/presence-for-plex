@@ -1,5 +1,5 @@
 #include "presence_for_plex/services/update_service.hpp"
-#include "presence_for_plex/services/network_service.hpp"
+#include "presence_for_plex/services/network/http_client.hpp"
 #include "presence_for_plex/core/events.hpp"
 #include "presence_for_plex/utils/logger.hpp"
 #include <nlohmann/json.hpp>
@@ -7,23 +7,21 @@
 
 namespace presence_for_plex::services {
 
-class GitHubUpdateService : public UpdateService {
-public:
-    GitHubUpdateService(
-        std::string repo_owner,
-        std::string repo_name,
-        std::string current_version,
-        std::shared_ptr<HttpClient> http_client
-    )
-        : m_repo_owner(std::move(repo_owner)),
-          m_repo_name(std::move(repo_name)),
-          m_current_version(std::move(current_version)),
-          m_http_client(std::move(http_client))
-    {
-        LOG_DEBUG("UpdateService", "GitHub update service created for " + m_repo_owner + "/" + m_repo_name);
-    }
+GitHubUpdateService::GitHubUpdateService(
+    std::string repo_owner,
+    std::string repo_name,
+    std::string current_version,
+    std::shared_ptr<HttpClient> http_client
+)
+    : m_repo_owner(std::move(repo_owner)),
+      m_repo_name(std::move(repo_name)),
+      m_current_version(std::move(current_version)),
+      m_http_client(std::move(http_client))
+{
+    LOG_DEBUG("UpdateService", "GitHub update service created for " + m_repo_owner + "/" + m_repo_name);
+}
 
-    std::expected<UpdateInfo, UpdateCheckError> check_for_updates() override {
+std::expected<UpdateInfo, UpdateCheckError> GitHubUpdateService::check_for_updates() {
         LOG_INFO("UpdateService", "Checking for updates...");
 
         if (m_event_bus) {
@@ -92,39 +90,12 @@ public:
         }
     }
 
-    void set_event_bus(std::shared_ptr<core::EventBus> bus) override {
-        m_event_bus = std::move(bus);
-    }
+void GitHubUpdateService::set_event_bus(std::shared_ptr<core::EventBus> bus) {
+    m_event_bus = std::move(bus);
+}
 
-    std::string get_current_version() const override {
-        return m_current_version;
-    }
-
-private:
-    std::string m_repo_owner;
-    std::string m_repo_name;
-    std::string m_current_version;
-    std::shared_ptr<HttpClient> m_http_client;
-    std::shared_ptr<core::EventBus> m_event_bus;
-};
-
-std::unique_ptr<UpdateService> UpdateServiceFactory::create_github_service(
-    const std::string& repo_owner,
-    const std::string& repo_name,
-    const std::string& current_version,
-    std::shared_ptr<HttpClient> http_client
-) {
-    if (!http_client) {
-        auto factory = HttpClientFactory::create_default_factory();
-        http_client = factory->create_client(HttpClientFactory::ClientType::Curl);
-    }
-
-    return std::make_unique<GitHubUpdateService>(
-        repo_owner,
-        repo_name,
-        current_version,
-        std::move(http_client)
-    );
+std::string GitHubUpdateService::get_current_version() const {
+    return m_current_version;
 }
 
 } // namespace presence_for_plex::services

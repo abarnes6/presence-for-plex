@@ -52,23 +52,17 @@ configure_file(
 
 # Source files organization
 set(CORE_SOURCES
-    src/core/application/application.cpp
-    src/core/configuration/config_manager.cpp
-    src/core/authentication_service.cpp
-    src/core/models/model_validation.cpp
-    src/core/event_bus.cpp
+    src/core/application.cpp
+    src/core/config_manager.cpp
 )
 
 set(SERVICES_SOURCES
-    src/services/presence_service.cpp
-    src/services/media_service.cpp
     src/services/update_service.cpp
+    src/services/plex/plex_auth_storage.cpp
     src/services/plex/plex_authenticator.cpp
-    src/services/plex/plex_service_impl.cpp
-    src/services/plex/plex_cache_manager.cpp
+    src/services/plex/plex_service.cpp
+    src/services/plex/plex_client.cpp
     src/services/plex/plex_connection_manager.cpp
-    src/services/plex/plex_media_fetcher.cpp
-    src/services/plex/plex_session_manager.cpp
     src/services/discord/discord_ipc.cpp
     src/services/discord/rate_limiter.cpp
     src/services/discord/connection_manager.cpp
@@ -89,18 +83,15 @@ if(USE_QT_UI)
     list(APPEND PLATFORM_SOURCES
         src/platform/qt/qt_ui_service.cpp
         src/platform/qt/qt_system_tray.cpp
-        src/platform/qt/qt_notification_manager.cpp
-        src/platform/qt/qt_dialog_manager.cpp
-        src/platform/qt/qt_window_manager.cpp
         src/platform/qt/qt_settings_dialog.cpp
     )
 endif()
 
 set(UTILS_SOURCES
-    src/utils/logging/logger.cpp
-    src/utils/threading/thread_pool.cpp
-    src/utils/crypto/uuid_generator.cpp
+    src/utils/logger.cpp
+    src/utils/uuid_generator.cpp
     src/utils/yaml_config.cpp
+    src/utils/url_utils.cpp
 )
 
 # Collect all headers

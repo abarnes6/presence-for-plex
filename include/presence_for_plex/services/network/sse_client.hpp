@@ -1,6 +1,6 @@
 #pragma once
 
-#include "presence_for_plex/services/network_service.hpp"
+#include "presence_for_plex/services/network/http_client.hpp"
 #include "presence_for_plex/core/models.hpp"
 #include <functional>
 #include <memory>

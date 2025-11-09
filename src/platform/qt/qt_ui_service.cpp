@@ -1,8 +1,5 @@
 #include "presence_for_plex/platform/qt/qt_ui_service.hpp"
 #include "presence_for_plex/platform/qt/qt_system_tray.hpp"
-#include "presence_for_plex/platform/qt/qt_notification_manager.hpp"
-#include "presence_for_plex/platform/qt/qt_dialog_manager.hpp"
-#include "presence_for_plex/platform/qt/qt_window_manager.hpp"
 #include "presence_for_plex/utils/logger.hpp"
 #include <QCoreApplication>
 #include <QIcon>
@@ -71,50 +68,8 @@ std::unique_ptr<SystemTray> QtUiService::create_system_tray() {
     return std::make_unique<QtSystemTray>();
 }
 
-std::unique_ptr<NotificationManager> QtUiService::create_notification_manager() {
-    if (!m_initialized) {
-        LOG_ERROR(m_component_name, "UI service not initialized, cannot create notification manager");
-        return nullptr;
-    }
-
-    LOG_DEBUG(m_component_name, "Creating Qt notification manager");
-    return std::make_unique<QtNotificationManager>();
-}
-
-std::unique_ptr<WindowManager> QtUiService::create_window_manager() {
-    if (!m_initialized) {
-        LOG_ERROR(m_component_name, "UI service not initialized, cannot create window manager");
-        return nullptr;
-    }
-
-    LOG_DEBUG(m_component_name, "Creating Qt window manager");
-    return std::make_unique<QtWindowManager>();
-}
-
-std::unique_ptr<DialogManager> QtUiService::create_dialog_manager() {
-    if (!m_initialized) {
-        LOG_ERROR(m_component_name, "UI service not initialized, cannot create dialog manager");
-        return nullptr;
-    }
-
-    LOG_DEBUG(m_component_name, "Creating Qt dialog manager");
-    return std::make_unique<QtDialogManager>();
-}
-
 bool QtUiService::supports_system_tray() const {
     return QSystemTrayIcon::isSystemTrayAvailable();
-}
-
-bool QtUiService::supports_notifications() const {
-    return QSystemTrayIcon::supportsMessages();
-}
-
-bool QtUiService::supports_window_management() const {
-    return true;
-}
-
-bool QtUiService::supports_dialogs() const {
-    return true;
 }
 
 void QtUiService::process_events() {

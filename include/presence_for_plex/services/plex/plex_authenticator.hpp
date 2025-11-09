@@ -8,13 +8,12 @@
 #include <atomic>
 
 namespace presence_for_plex {
-namespace core {
-    class AuthenticationService;
-}
 namespace platform {
     class BrowserLauncher;
 }
 namespace services {
+
+class PlexAuthStorage;
 
 // Forward declarations
 class HttpClient;
@@ -22,7 +21,7 @@ class HttpClient;
 class PlexAuthenticator {
 public:
     explicit PlexAuthenticator(std::shared_ptr<HttpClient> http_client,
-                              std::shared_ptr<core::AuthenticationService> auth_service,
+                              std::shared_ptr<PlexAuthStorage> auth_service,
                               std::shared_ptr<platform::BrowserLauncher> browser_launcher = nullptr);
     ~PlexAuthenticator() = default;
 
@@ -45,7 +44,7 @@ private:
     );
 
     std::shared_ptr<HttpClient> m_http_client;
-    std::shared_ptr<core::AuthenticationService> m_auth_service;
+    std::shared_ptr<PlexAuthStorage> m_auth_service;
     std::shared_ptr<platform::BrowserLauncher> m_browser_launcher;
     std::atomic<bool> m_shutting_down{false};
 };

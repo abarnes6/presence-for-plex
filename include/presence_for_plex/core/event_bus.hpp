@@ -11,6 +11,8 @@
 #include <vector>
 #include <atomic>
 
+#include "presence_for_plex/utils/logger.hpp"
+
 namespace presence_for_plex::core {
 
 class EventBus : public std::enable_shared_from_this<EventBus> {
@@ -122,7 +124,9 @@ private:
     HandlerId m_next_handler_id{1};
     std::atomic<bool> m_shutting_down{false};
 
-    void handle_exception(const std::string& event_type, const std::exception& e);
+    void handle_exception(const std::string& event_type, const std::exception& e) {
+        LOG_ERROR("EventBus", "Exception in event handler for " + event_type + ": " + e.what());
+    }
 };
 
 }

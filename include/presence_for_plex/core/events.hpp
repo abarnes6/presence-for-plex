@@ -39,42 +39,52 @@ struct ConfigurationError : Event {
         : error(err), message(std::move(msg)) {}
 };
 
-struct MediaSessionStarted : Event {
-    MediaInfo media_info;
-    ServerId server_id;
+// Consolidated media session event
+struct MediaSessionStateChanged : Event {
+    enum class ChangeType {
+        Started,
+        Updated,
+        Ended
+    };
 
-    MediaSessionStarted(MediaInfo info, ServerId id)
-        : media_info(std::move(info)), server_id(std::move(id)) {}
-};
-
-struct MediaSessionUpdated : Event {
-    MediaInfo previous_info;
-    MediaInfo current_info;
-
-    MediaSessionUpdated(MediaInfo prev, MediaInfo curr)
-        : previous_info(std::move(prev)), current_info(std::move(curr)) {}
-};
-
-struct MediaSessionEnded : Event {
+    ChangeType change_type;
+    std::optional<MediaInfo> current_info;   // nullopt for Ended
+    std::optional<MediaInfo> previous_info;  // only for Updated
     SessionKey session_key;
     ServerId server_id;
 
-    MediaSessionEnded(SessionKey key, ServerId id)
-        : session_key(std::move(key)), server_id(std::move(id)) {}
-};
+    // Constructor for Started
+    static MediaSessionStateChanged started(MediaInfo info, ServerId id) {
+        MediaSessionStateChanged event;
+        event.change_type = ChangeType::Started;
+        event.current_info = std::move(info);
+        event.session_key = event.current_info->session_key;
+        event.server_id = std::move(id);
+        return event;
+    }
 
-struct MediaPlaybackPaused : Event {
-    MediaInfo media_info;
+    // Constructor for Updated
+    static MediaSessionStateChanged updated(MediaInfo prev, MediaInfo curr) {
+        MediaSessionStateChanged event;
+        event.change_type = ChangeType::Updated;
+        event.previous_info = std::move(prev);
+        event.current_info = std::move(curr);
+        event.session_key = event.current_info->session_key;
+        event.server_id = event.current_info->server_id;
+        return event;
+    }
 
-    explicit MediaPlaybackPaused(MediaInfo info)
-        : media_info(std::move(info)) {}
-};
+    // Constructor for Ended
+    static MediaSessionStateChanged ended(SessionKey key, ServerId id) {
+        MediaSessionStateChanged event;
+        event.change_type = ChangeType::Ended;
+        event.session_key = std::move(key);
+        event.server_id = std::move(id);
+        return event;
+    }
 
-struct MediaPlaybackResumed : Event {
-    MediaInfo media_info;
-
-    explicit MediaPlaybackResumed(MediaInfo info)
-        : media_info(std::move(info)) {}
+private:
+    MediaSessionStateChanged() = default;
 };
 
 struct MediaError : Event {
@@ -86,29 +96,51 @@ struct MediaError : Event {
         : error(err), message(std::move(msg)), server_id(std::move(id)) {}
 };
 
-struct ServerConnectionEstablished : Event {
+// Consolidated server connection event
+struct ServerConnectionStateChanged : Event {
+    enum class ConnectionState {
+        Established,
+        Lost,
+        Reconnecting
+    };
+
+    ConnectionState state;
     ServerId server_id;
-    std::string server_name;
+    std::string server_name;              // for Established
+    std::string reason;                   // for Lost
+    int attempt_number = 0;               // for Reconnecting
+    std::chrono::seconds next_retry_in{}; // for Reconnecting
 
-    ServerConnectionEstablished(ServerId id, std::string name)
-        : server_id(std::move(id)), server_name(std::move(name)) {}
-};
+    // Constructor for Established
+    static ServerConnectionStateChanged established(ServerId id, std::string name) {
+        ServerConnectionStateChanged event;
+        event.state = ConnectionState::Established;
+        event.server_id = std::move(id);
+        event.server_name = std::move(name);
+        return event;
+    }
 
-struct ServerConnectionLost : Event {
-    ServerId server_id;
-    std::string reason;
+    // Constructor for Lost
+    static ServerConnectionStateChanged lost(ServerId id, std::string reason_msg) {
+        ServerConnectionStateChanged event;
+        event.state = ConnectionState::Lost;
+        event.server_id = std::move(id);
+        event.reason = std::move(reason_msg);
+        return event;
+    }
 
-    ServerConnectionLost(ServerId id, std::string r)
-        : server_id(std::move(id)), reason(std::move(r)) {}
-};
+    // Constructor for Reconnecting
+    static ServerConnectionStateChanged reconnecting(ServerId id, int attempt, std::chrono::seconds retry) {
+        ServerConnectionStateChanged event;
+        event.state = ConnectionState::Reconnecting;
+        event.server_id = std::move(id);
+        event.attempt_number = attempt;
+        event.next_retry_in = retry;
+        return event;
+    }
 
-struct ServerReconnecting : Event {
-    ServerId server_id;
-    int attempt_number;
-    std::chrono::seconds next_retry_in;
-
-    ServerReconnecting(ServerId id, int attempt, std::chrono::seconds retry)
-        : server_id(std::move(id)), attempt_number(attempt), next_retry_in(retry) {}
+private:
+    ServerConnectionStateChanged() = default;
 };
 
 
@@ -180,21 +212,6 @@ struct ApplicationErrorEvent : Event {
         : error(err), message(std::move(msg)), fatal(is_fatal) {}
 };
 
-struct ServiceRegistered : Event {
-    std::string service_name;
-    std::string service_type;
-
-    ServiceRegistered(std::string name, std::string type)
-        : service_name(std::move(name)), service_type(std::move(type)) {}
-};
-
-struct ServiceInitialized : Event {
-    std::string service_name;
-
-    explicit ServiceInitialized(std::string name)
-        : service_name(std::move(name)) {}
-};
-
 struct ServiceError : Event {
     std::string service_name;
     std::string error_message;
@@ -204,28 +221,49 @@ struct ServiceError : Event {
         : service_name(std::move(name)), error_message(std::move(msg)), recoverable(recover) {}
 };
 
-struct AuthenticationRequired : Event {
+// Consolidated authentication event
+struct AuthenticationStateChanged : Event {
+    enum class AuthState {
+        Required,
+        Succeeded,
+        Failed
+    };
+
+    AuthState state;
     std::string service_name;
-    std::string auth_url;
+    std::string auth_url;         // for Required
+    std::string user_identifier;  // for Succeeded
+    std::string reason;           // for Failed
 
-    AuthenticationRequired(std::string name, std::string url)
-        : service_name(std::move(name)), auth_url(std::move(url)) {}
-};
+    // Constructor for Required
+    static AuthenticationStateChanged required(std::string name, std::string url) {
+        AuthenticationStateChanged event;
+        event.state = AuthState::Required;
+        event.service_name = std::move(name);
+        event.auth_url = std::move(url);
+        return event;
+    }
 
-struct AuthenticationSucceeded : Event {
-    std::string service_name;
-    std::string user_identifier;
+    // Constructor for Succeeded
+    static AuthenticationStateChanged succeeded(std::string name, std::string user) {
+        AuthenticationStateChanged event;
+        event.state = AuthState::Succeeded;
+        event.service_name = std::move(name);
+        event.user_identifier = std::move(user);
+        return event;
+    }
 
-    AuthenticationSucceeded(std::string name, std::string user)
-        : service_name(std::move(name)), user_identifier(std::move(user)) {}
-};
+    // Constructor for Failed
+    static AuthenticationStateChanged failed(std::string name, std::string reason_msg) {
+        AuthenticationStateChanged event;
+        event.state = AuthState::Failed;
+        event.service_name = std::move(name);
+        event.reason = std::move(reason_msg);
+        return event;
+    }
 
-struct AuthenticationFailed : Event {
-    std::string service_name;
-    std::string reason;
-
-    AuthenticationFailed(std::string name, std::string r)
-        : service_name(std::move(name)), reason(std::move(r)) {}
+private:
+    AuthenticationStateChanged() = default;
 };
 
 

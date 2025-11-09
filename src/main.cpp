@@ -33,17 +33,6 @@ namespace {
 #endif
     }
 
-    presence_for_plex::utils::LogLevel parse_log_level(const std::string& level_str) {
-        using namespace presence_for_plex::utils;
-
-        if (level_str == "debug") return LogLevel::Debug;
-        if (level_str == "info") return LogLevel::Info;
-        if (level_str == "warning" || level_str == "warn") return LogLevel::Warning;
-        if (level_str == "error") return LogLevel::Error;
-        if (level_str == "none") return LogLevel::None;
-        return LogLevel::Info;
-    }
-
     void register_signal_handlers() {
         std::signal(SIGINT, handle_shutdown_signal);
         std::signal(SIGTERM, handle_shutdown_signal);
@@ -55,7 +44,7 @@ namespace {
     std::unique_ptr<presence_for_plex::utils::Logger> setup_logging(const std::string& log_level_str) {
         using namespace presence_for_plex::utils;
 
-        auto log_level = parse_log_level(log_level_str);
+        auto log_level = log_level_from_string(log_level_str);
         auto logger = std::make_unique<Logger>(log_level);
 
         logger->add_sink(std::make_unique<ConsoleSink>(true));
@@ -135,7 +124,7 @@ int main(int argc, char* argv[]) {
     setup_qt_application(qt_app);
 #endif
 
-    auto config_service = presence_for_plex::core::ConfigurationService::create("");
+    auto config_service = std::make_shared<presence_for_plex::core::ConfigManager>();
     if (!config_service->load()) {
         std::cerr << "Using default configuration" << std::endl;
     }
@@ -158,7 +147,7 @@ int main(int argc, char* argv[]) {
         (void)single_instance->try_acquire_instance("PresenceForPlex");
 
         LOG_INFO("Main", "Creating application...");
-        auto app_result = presence_for_plex::core::ApplicationFactory::create_default_application();
+        auto app_result = presence_for_plex::core::create_application();
         if (!app_result) {
             LOG_ERROR("Main", "Application creation failed");
             return 1;

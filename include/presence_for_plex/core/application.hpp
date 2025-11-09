@@ -11,47 +11,42 @@
 namespace presence_for_plex {
 namespace core {
     class EventBus;
-    class AuthenticationService;
 }
 
 namespace services {
-    class MediaService;
-    class PresenceService;
+    class PlexService;
+    class DiscordPresenceService;
+    class PlexAuthStorage;
 }
 
 namespace platform {
     class UiService;
-}
-
-namespace utils {
-    class ThreadPool;
 }
 }
 
 namespace presence_for_plex {
 namespace core {
 
-// Configuration service interface
-class ConfigurationService {
+// Configuration manager
+class ConfigManager {
 public:
-    virtual ~ConfigurationService() = default;
+    explicit ConfigManager(const std::filesystem::path& config_path = {});
+    ~ConfigManager();
 
     // Core operations
-    virtual std::expected<void, ConfigError> load() = 0;
-    virtual std::expected<void, ConfigError> save() = 0;
+    std::expected<void, ConfigError> load();
+    std::expected<void, ConfigError> save();
 
     // Configuration access
-    virtual const ApplicationConfig& get() const = 0;
-    virtual std::expected<void, ConfigError> update(const ApplicationConfig& config) = 0;
+    const ApplicationConfig& get() const;
+    std::expected<void, ConfigError> update(const ApplicationConfig& config);
 
     // Event notifications
-    virtual void set_event_bus(std::shared_ptr<EventBus> bus) = 0;
+    void set_event_bus(std::shared_ptr<EventBus> bus);
 
-    // Factory
-    static std::unique_ptr<ConfigurationService> create(
-        const std::filesystem::path& config_path = {},
-        std::shared_ptr<EventBus> event_bus = nullptr
-    );
+private:
+    class Impl;
+    std::unique_ptr<Impl> m_impl;
 };
 
 // Main application interface
@@ -75,38 +70,23 @@ public:
     virtual void quit() = 0;
 
     // Service access
-    virtual std::expected<std::reference_wrapper<services::MediaService>, ApplicationError> get_media_service() = 0;
-    virtual std::expected<std::reference_wrapper<services::PresenceService>, ApplicationError> get_presence_service() = 0;
+    virtual std::expected<std::reference_wrapper<services::PlexService>, ApplicationError> get_media_service() = 0;
+    virtual std::expected<std::reference_wrapper<services::DiscordPresenceService>, ApplicationError> get_presence_service() = 0;
     virtual std::expected<std::reference_wrapper<platform::UiService>, ApplicationError> get_ui_service() = 0;
-    virtual std::expected<std::reference_wrapper<ConfigurationService>, ApplicationError> get_configuration_service() = 0;
-    virtual std::expected<std::reference_wrapper<const ConfigurationService>, ApplicationError> get_configuration_service() const = 0;
+    virtual std::expected<std::shared_ptr<ConfigManager>, ApplicationError> get_configuration_service() = 0;
+    virtual std::expected<std::shared_ptr<const ConfigManager>, ApplicationError> get_configuration_service() const = 0;
     virtual std::expected<std::reference_wrapper<const ApplicationConfig>, ApplicationError> get_config() const = 0;
-    virtual std::expected<std::reference_wrapper<AuthenticationService>, ApplicationError> get_authentication_service() = 0;
+    virtual std::expected<std::reference_wrapper<services::PlexAuthStorage>, ApplicationError> get_authentication_service() = 0;
 
     // Additional features
     virtual void check_for_updates() = 0;
 
     // Event bus access
     virtual std::expected<std::reference_wrapper<EventBus>, ApplicationError> get_event_bus() = 0;
-
-    // Utilities
-    virtual std::expected<std::reference_wrapper<utils::ThreadPool>, ApplicationError> get_thread_pool() = 0;
 };
 
-// Application factory
-class ApplicationFactory {
-public:
-    virtual ~ApplicationFactory() = default;
-
-    // Factory methods
-    static std::expected<std::unique_ptr<Application>, ApplicationError> create_default_application(
-        const std::filesystem::path& config_path = {}
-    );
-
-    static std::expected<std::unique_ptr<Application>, ApplicationError> create_application_with_config(
-        const ApplicationConfig& config
-    );
-};
+// Application creation
+std::expected<std::unique_ptr<Application>, ApplicationError> create_application();
 
 } // namespace core
 } // namespace presence_for_plex

@@ -1,4 +1,4 @@
-#include "presence_for_plex/services/network_service.hpp"
+#include "presence_for_plex/services/network/http_client.hpp"
 #include "presence_for_plex/utils/logger.hpp"
 #include <curl/curl.h>
 #include <fstream>
@@ -674,29 +674,9 @@ private:
     }
 };
 
-// Factory implementation
-class DefaultHttpClientFactory : public HttpClientFactory {
-public:
-    std::unique_ptr<HttpClient> create_client(
-        ClientType type,
-        const HttpClientConfig& config) override {
-        switch (type) {
-            case ClientType::Curl:
-                return std::make_unique<CurlHttpClient>(config);
-            case ClientType::Native:
-                // For now, fallback to curl
-                return std::make_unique<CurlHttpClient>(config);
-            case ClientType::Mock:
-                // TODO: Implement mock client for testing
-                return std::make_unique<CurlHttpClient>(config);
-            default:
-                return nullptr;
-        }
-    }
-};
-
-std::unique_ptr<HttpClientFactory> HttpClientFactory::create_default_factory() {
-    return std::make_unique<DefaultHttpClientFactory>();
+// Factory function implementation
+std::unique_ptr<HttpClient> create_http_client(const HttpClientConfig& config) {
+    return std::make_unique<CurlHttpClient>(config);
 }
 
 } // namespace services

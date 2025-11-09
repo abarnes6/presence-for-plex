@@ -8,40 +8,6 @@
 namespace presence_for_plex::services {
 
 /**
- * @brief Interface for rate limiting implementations
- *
- * Follows the Interface Segregation Principle by providing a focused interface
- * for rate limiting operations.
- */
-class IRateLimiter {
-public:
-    virtual ~IRateLimiter() = default;
-
-    /**
-     * @brief Check if an operation can be performed now
-     * @return true if operation is allowed, false if rate limited
-     */
-    virtual bool can_proceed() = 0;
-
-    /**
-     * @brief Record that an operation was performed
-     * Should be called after successful operation
-     */
-    virtual void record_operation() = 0;
-
-    /**
-     * @brief Reset the rate limiter state
-     */
-    virtual void reset() = 0;
-
-    /**
-     * @brief Get time until next operation is allowed
-     * @return Duration to wait, or zero if immediate operation is allowed
-     */
-    virtual std::chrono::milliseconds time_until_next_allowed() const = 0;
-};
-
-/**
  * @brief Configuration for Discord rate limiting
  *
  * Based on Discord's documented rate limits and observed behavior
@@ -77,14 +43,14 @@ struct DiscordRateLimitConfig {
  * Implements both primary and burst rate limiting using sliding windows.
  * Thread-safe and follows Single Responsibility Principle.
  */
-class DiscordRateLimiter : public IRateLimiter {
+class DiscordRateLimiter {
 public:
     explicit DiscordRateLimiter(DiscordRateLimitConfig config = {});
 
-    bool can_proceed() override;
-    void record_operation() override;
-    void reset() override;
-    std::chrono::milliseconds time_until_next_allowed() const override;
+    bool can_proceed();
+    void record_operation();
+    void reset();
+    std::chrono::milliseconds time_until_next_allowed() const;
 
     // Additional methods for monitoring
     size_t operations_in_window() const;
@@ -103,17 +69,6 @@ private:
     bool check_burst_window() const;
 
     std::chrono::milliseconds calculate_wait_time() const;
-};
-
-/**
- * @brief No-operation rate limiter for testing and debugging
- */
-class NoOpRateLimiter : public IRateLimiter {
-public:
-    bool can_proceed() override { return true; }
-    void record_operation() override {}
-    void reset() override {}
-    std::chrono::milliseconds time_until_next_allowed() const override { return std::chrono::milliseconds{0}; }
 };
 
 } // namespace presence_for_plex::services

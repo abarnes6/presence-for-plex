@@ -1,4 +1,5 @@
-#include "presence_for_plex/services/connection_manager.hpp"
+#include "presence_for_plex/services/discord/connection_manager.hpp"
+#include "presence_for_plex/services/discord/discord_ipc.hpp"
 #include "presence_for_plex/utils/logger.hpp"
 #include <algorithm>
 #include <cassert>
@@ -8,9 +9,9 @@
 namespace presence_for_plex::services {
 
 ConnectionManager::ConnectionManager(
-    std::unique_ptr<IConnectionStrategy> strategy,
+    std::unique_ptr<DiscordIPC> ipc,
     ConnectionRetryConfig config)
-    : m_strategy(std::move(strategy))
+    : m_ipc(std::move(ipc))
     , m_config(std::move(config)) {
 
     if (!m_config.is_valid()) {
@@ -18,7 +19,7 @@ ConnectionManager::ConnectionManager(
         m_config = ConnectionRetryConfig{};
     }
 
-    assert(m_strategy && "Connection strategy cannot be null");
+    assert(m_ipc && "DiscordIPC cannot be null");
 
     LOG_DEBUG("ConnectionManager",
         "Initialized with backoff " + std::to_string(m_config.initial_delay.count()) +
@@ -62,8 +63,8 @@ void ConnectionManager::stop() {
         m_management_thread.join();
     }
 
-    if (m_strategy) {
-        m_strategy->disconnect();
+    if (m_ipc) {
+        m_ipc->disconnect();
     }
 
     m_connected = false;
@@ -71,7 +72,7 @@ void ConnectionManager::stop() {
 }
 
 bool ConnectionManager::is_connected() const {
-    return m_connected && m_strategy && m_strategy->is_connected();
+    return m_connected && m_ipc && m_ipc->is_connected();
 }
 
 void ConnectionManager::force_reconnect() {
@@ -105,8 +106,8 @@ void ConnectionManager::management_loop() {
             // Handle force reconnect
             if (m_force_reconnect.exchange(false)) {
                 LOG_INFO("ConnectionManager", "Processing force reconnect");
-                if (m_strategy) {
-                    m_strategy->disconnect();
+                if (m_ipc) {
+                    m_ipc->disconnect();
                 }
                 m_connected = false;
                 reset_retry_state();
@@ -139,8 +140,8 @@ void ConnectionManager::management_loop() {
                                 "Max health check failures (" +
                                 std::to_string(failed_health_checks) + ") reached, disconnecting");
 
-                            if (m_strategy) {
-                                m_strategy->disconnect();
+                            if (m_ipc) {
+                                m_ipc->disconnect();
                             }
                             m_connected = false;
                             notify_connection_state(false);
@@ -165,14 +166,14 @@ void ConnectionManager::management_loop() {
 }
 
 bool ConnectionManager::attempt_connection() {
-    if (!m_strategy) {
+    if (!m_ipc) {
         return false;
     }
 
     LOG_DEBUG("ConnectionManager", "Attempting connection");
 
     try {
-        bool success = m_strategy->connect();
+        bool success = m_ipc->connect();
         if (success) {
             LOG_INFO("ConnectionManager", "Connection successful");
             return true;
@@ -243,12 +244,12 @@ void ConnectionManager::handle_connection_failure() {
 }
 
 bool ConnectionManager::perform_health_check() {
-    if (!m_strategy) {
+    if (!m_ipc) {
         return false;
     }
 
     try {
-        bool healthy = m_strategy->send_health_check();
+        bool healthy = m_ipc->send_health_check();
         LOG_DEBUG("ConnectionManager", "Health check: " + std::string(healthy ? "OK" : "FAILED"));
         return healthy;
     } catch (const std::exception& e) {
@@ -302,7 +303,7 @@ std::chrono::seconds ConnectionManager::calculate_next_delay() {
     auto jitter = (std::rand() % (2 * jitter_range + 1)) - jitter_range;
     delay += std::chrono::seconds(jitter);
 
-    return std::max(delay, m_config.initial_delay);
+    return (delay > m_config.initial_delay) ? delay : m_config.initial_delay;
 }
 
 void ConnectionManager::reset_retry_state() {

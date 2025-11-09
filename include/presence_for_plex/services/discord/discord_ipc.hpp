@@ -1,6 +1,5 @@
 #pragma once
 
-#include "presence_for_plex/services/connection_manager.hpp"
 #include <atomic>
 #include <string>
 #include <nlohmann/json.hpp>
@@ -11,7 +10,7 @@
 
 namespace presence_for_plex::services {
 
-class DiscordIPC : public IConnectionStrategy {
+class DiscordIPC {
  public:
   explicit DiscordIPC(std::string client_id);
   ~DiscordIPC();
@@ -20,11 +19,11 @@ class DiscordIPC : public IConnectionStrategy {
   DiscordIPC(const DiscordIPC&) = delete;
   DiscordIPC& operator=(const DiscordIPC&) = delete;
 
-  // IConnectionStrategy implementation
-  bool connect() override;
-  void disconnect() override;
-  [[nodiscard]] bool is_connected() const override;
-  bool send_health_check() override;
+  // Connection management
+  bool connect();
+  void disconnect();
+  [[nodiscard]] bool is_connected() const;
+  bool send_health_check();
 
   // Discord Rich Presence operations
   bool send_presence(const nlohmann::json& presence_data);

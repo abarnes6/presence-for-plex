@@ -1,17 +1,9 @@
 #include "presence_for_plex/utils/yaml_config.hpp"
 #include "presence_for_plex/utils/logger.hpp"
 #include <fstream>
-#include <algorithm>
 
 namespace presence_for_plex {
 namespace utils {
-
-namespace {
-    template<typename T>
-    T clamp_to_limits(T value, T min, T max) {
-        return std::clamp(value, min, max);
-    }
-}
 
 std::expected<core::ApplicationConfig, core::ConfigError>
 YamlConfigHelper::load_from_file(const std::filesystem::path& path) {

@@ -1,4 +1,4 @@
-#include "presence_for_plex/services/discord_ipc.hpp"
+#include "presence_for_plex/services/discord/discord_ipc.hpp"
 #include "presence_for_plex/utils/logger.hpp"
 
 #include <chrono>

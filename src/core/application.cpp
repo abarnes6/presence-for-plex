@@ -1,12 +1,15 @@
 #include "presence_for_plex/core/application.hpp"
 #include "presence_for_plex/core/event_bus.hpp"
 #include "presence_for_plex/core/events.hpp"
-#include "presence_for_plex/core/authentication_service.hpp"
-#include "presence_for_plex/services/presence_service.hpp"
-#include "presence_for_plex/services/media_service.hpp"
+#include "presence_for_plex/services/plex/plex_auth_storage.hpp"
+#include "presence_for_plex/services/discord/discord_presence_service.hpp"
+#include "presence_for_plex/services/plex/plex_service.hpp"
+#include "presence_for_plex/services/plex/plex_authenticator.hpp"
+#include "presence_for_plex/services/plex/plex_client.hpp"
+#include "presence_for_plex/services/plex/plex_connection_manager.hpp"
+#include "presence_for_plex/services/network/http_client.hpp"
 #include "presence_for_plex/services/update_service.hpp"
 #include "presence_for_plex/utils/logger.hpp"
-#include "presence_for_plex/utils/threading.hpp"
 #ifdef USE_QT_UI
 #include "presence_for_plex/platform/qt/qt_settings_dialog.hpp"
 #include "presence_for_plex/platform/qt/qt_ui_service.hpp"
@@ -55,7 +58,6 @@ public:
                 return std::unexpected(ApplicationError::ConfigurationError);
             }
 
-            initialize_thread_pool();
             initialize_ui_service();
             initialize_media_service();
             initialize_presence_service();
@@ -111,10 +113,6 @@ public:
         wait_for_service_tasks();
         stop_services();
 
-        if (m_thread_pool) {
-            m_thread_pool->shutdown();
-        }
-
         m_state = ApplicationState::Stopped;
         LOG_INFO("Application", "Shutdown complete");
     }
@@ -148,14 +146,14 @@ public:
         shutdown();
     }
 
-    std::expected<std::reference_wrapper<services::MediaService>, ApplicationError> get_media_service() override {
+    std::expected<std::reference_wrapper<services::PlexService>, ApplicationError> get_media_service() override {
         if (!m_media_service) {
             return std::unexpected(ApplicationError::ServiceUnavailable);
         }
         return std::ref(*m_media_service);
     }
 
-    std::expected<std::reference_wrapper<services::PresenceService>, ApplicationError> get_presence_service() override {
+    std::expected<std::reference_wrapper<services::DiscordPresenceService>, ApplicationError> get_presence_service() override {
         if (!m_presence_service) {
             return std::unexpected(ApplicationError::ServiceUnavailable);
         }
@@ -169,18 +167,18 @@ public:
         return std::ref(*m_ui_service);
     }
 
-    std::expected<std::reference_wrapper<ConfigurationService>, ApplicationError> get_configuration_service() override {
+    std::expected<std::shared_ptr<ConfigManager>, ApplicationError> get_configuration_service() override {
         if (!m_config_service) {
             return std::unexpected(ApplicationError::ServiceUnavailable);
         }
-        return std::ref(*m_config_service);
+        return m_config_service;
     }
 
-    std::expected<std::reference_wrapper<const ConfigurationService>, ApplicationError> get_configuration_service() const override {
+    std::expected<std::shared_ptr<const ConfigManager>, ApplicationError> get_configuration_service() const override {
         if (!m_config_service) {
             return std::unexpected(ApplicationError::ServiceUnavailable);
         }
-        return std::ref(*m_config_service);
+        return m_config_service;
     }
 
     std::expected<std::reference_wrapper<const ApplicationConfig>, ApplicationError> get_config() const override {
@@ -190,18 +188,11 @@ public:
         return std::ref(m_config_service->get());
     }
 
-    std::expected<std::reference_wrapper<AuthenticationService>, ApplicationError> get_authentication_service() override {
+    std::expected<std::reference_wrapper<services::PlexAuthStorage>, ApplicationError> get_authentication_service() override {
         if (!m_auth_service) {
             return std::unexpected(ApplicationError::ServiceUnavailable);
         }
         return std::ref(*m_auth_service);
-    }
-
-    std::expected<std::reference_wrapper<utils::ThreadPool>, ApplicationError> get_thread_pool() override {
-        if (!m_thread_pool) {
-            return std::unexpected(ApplicationError::ServiceUnavailable);
-        }
-        return std::ref(*m_thread_pool);
     }
 
     std::expected<std::reference_wrapper<EventBus>, ApplicationError> get_event_bus() override {
@@ -219,7 +210,7 @@ public:
 
         LOG_INFO("Application", "Checking for updates...");
 
-        m_thread_pool->submit([this]() {
+        m_service_futures.push_back(std::async(std::launch::async, [this]() {
             auto result = m_update_service->check_for_updates();
             if (!result) {
                 LOG_ERROR("Application", "Update check failed");
@@ -232,25 +223,21 @@ public:
             } else {
                 LOG_INFO("Application", "No updates available");
             }
-        });
+        }));
     }
 
 private:
     bool initialize_configuration() {
-        // Initialize configuration service
-        m_config_service = ConfigurationService::create("", m_event_bus);
-        if (!m_config_service) {
-            LOG_ERROR("Application", "Failed to create configuration service");
-            m_state = ApplicationState::Error;
-            return false;
-        }
+        // Initialize configuration manager
+        m_config_service = std::make_shared<ConfigManager>();
+        m_config_service->set_event_bus(m_event_bus);
 
         if (!m_config_service->load()) {
             LOG_WARNING("Application", "Using default configuration");
         }
 
         // Initialize authentication service
-        m_auth_service = AuthenticationService::create();
+        m_auth_service = std::make_shared<services::PlexAuthStorage>();
         if (!m_auth_service) {
             LOG_ERROR("Application", "Failed to create authentication service");
             m_state = ApplicationState::Error;
@@ -258,10 +245,6 @@ private:
         }
 
         return true;
-    }
-
-    void initialize_thread_pool() {
-        m_thread_pool = std::make_unique<utils::ThreadPool>(4);
     }
 
     void initialize_ui_service() {
@@ -292,18 +275,39 @@ private:
         // Initialize Plex if enabled
         if (config.media_services.plex.enabled) {
             LOG_INFO("Application", "Initializing Plex media service");
-            auto service_result = services::MediaServiceFactory::create(
-                core::MediaServiceType::Plex,
-                std::shared_ptr<ConfigurationService>(m_config_service.get(), [](ConfigurationService*){}),
-                std::shared_ptr<AuthenticationService>(m_auth_service.get(), [](AuthenticationService*){}),
-                m_event_bus
-            );
 
-            if (service_result) {
-                m_media_service = std::move(*service_result);
-                LOG_INFO("Application", "Plex media service initialized");
-            } else {
-                LOG_ERROR("Application", "Plex media service creation failed");
+            try {
+                // Create HTTP client
+                std::shared_ptr<services::HttpClient> http_client = services::create_http_client();
+
+                // Create Plex service components
+                auto authenticator = std::make_shared<services::PlexAuthenticator>(
+                    http_client, m_auth_service, nullptr);
+                auto connection_manager = std::make_shared<services::PlexConnectionManager>(
+                    http_client, m_auth_service);
+
+                // Create unified Plex client (combines media fetching, caching, session management)
+                auto client = std::make_shared<services::PlexClient>(http_client);
+
+                // Add TMDB service if configured
+                if (!config.tmdb_access_token.empty()) {
+                    client->add_metadata_service(
+                        std::make_unique<services::TMDBService>(http_client, config.tmdb_access_token));
+                }
+
+                // Add Jikan service for anime metadata
+                client->add_metadata_service(std::make_unique<services::JikanService>(http_client));
+
+                // Create and configure the service
+                m_media_service = std::make_unique<services::PlexService>(
+                    authenticator, connection_manager, client,
+                    http_client, m_config_service, m_auth_service
+                );
+
+                m_media_service->set_event_bus(m_event_bus);
+                LOG_INFO("Application", "Plex media service initialized with unified client");
+            } catch (const std::exception& e) {
+                LOG_ERROR("Application", "Plex media service creation failed: " + std::string(e.what()));
             }
         }
 
@@ -318,13 +322,27 @@ private:
             return;
         }
 
-        auto service_result = services::PresenceServiceFactory::create(
-            config.presence.type,
-            config
-        );
+        auto service_result = services::DiscordPresenceService::create(config);
 
         if (service_result) {
             m_presence_service = std::move(*service_result);
+
+            // Configure the service
+            m_presence_service->set_show_buttons(config.presence.discord.show_buttons);
+            m_presence_service->set_show_progress(config.presence.discord.show_progress);
+            m_presence_service->set_show_artwork(config.presence.discord.show_artwork);
+
+            // Set format templates
+            m_presence_service->set_tv_details_format(config.presence.discord.tv_details_format);
+            m_presence_service->set_tv_state_format(config.presence.discord.tv_state_format);
+            m_presence_service->set_tv_large_image_text_format(config.presence.discord.tv_large_image_text_format);
+            m_presence_service->set_movie_details_format(config.presence.discord.movie_details_format);
+            m_presence_service->set_movie_state_format(config.presence.discord.movie_state_format);
+            m_presence_service->set_movie_large_image_text_format(config.presence.discord.movie_large_image_text_format);
+            m_presence_service->set_music_details_format(config.presence.discord.music_details_format);
+            m_presence_service->set_music_state_format(config.presence.discord.music_state_format);
+            m_presence_service->set_music_large_image_text_format(config.presence.discord.music_large_image_text_format);
+
             m_presence_service->set_event_bus(m_event_bus);
             LOG_INFO("Application", "Presence service initialized");
         } else {
@@ -333,18 +351,18 @@ private:
     }
 
     void initialize_update_service() {
-        m_update_service = services::UpdateServiceFactory::create_github_service(
+        // Create HTTP client for update service
+        auto http_client = services::create_http_client();
+
+        m_update_service = std::make_unique<services::GitHubUpdateService>(
             "abarnes6",
             "presence-for-plex",
-            VERSION_STRING
+            VERSION_STRING,
+            std::move(http_client)
         );
 
-        if (m_update_service) {
-            m_update_service->set_event_bus(m_event_bus);
-            LOG_INFO("Application", "Update service initialized");
-        } else {
-            LOG_WARNING("Application", "Update service creation failed");
-        }
+        m_update_service->set_event_bus(m_event_bus);
+        LOG_INFO("Application", "Update service initialized");
     }
 
     void connect_services() {
@@ -352,12 +370,17 @@ private:
             return;
         }
 
-        // Subscribe to media session updates
-        auto media_sub = m_event_bus->subscribe<events::MediaSessionUpdated>(
-            [this](const events::MediaSessionUpdated& event) {
-                LOG_DEBUG("Application", "Updating Discord presence");
-                if (!m_presence_service->update_from_media(event.current_info)) {
-                    LOG_WARNING("Application", "Discord update failed");
+        // Subscribe to media session state changes
+        auto media_sub = m_event_bus->subscribe<events::MediaSessionStateChanged>(
+            [this](const events::MediaSessionStateChanged& event) {
+                // Update Discord for Started and Updated states
+                if (event.change_type != events::MediaSessionStateChanged::ChangeType::Ended) {
+                    if (event.current_info) {
+                        LOG_DEBUG("Application", "Updating Discord presence");
+                        if (!m_presence_service->update_from_media(*event.current_info)) {
+                            LOG_WARNING("Application", "Discord update failed");
+                        }
+                    }
                 }
             }
         );
@@ -384,7 +407,7 @@ private:
     void start_services() {
         if (m_media_service) {
             m_service_futures.push_back(
-                m_thread_pool->submit([this]() {
+                std::async(std::launch::async, [this]() {
                     if (!m_media_service->start()) {
                         LOG_WARNING("Application", "Media service start failed");
                     } else {
@@ -396,7 +419,7 @@ private:
 
         if (m_presence_service) {
             m_service_futures.push_back(
-                m_thread_pool->submit([this]() {
+                std::async(std::launch::async, [this]() {
                     if (!m_presence_service->initialize()) {
                         LOG_WARNING("Application", "Presence service start failed");
                     } else {
@@ -430,7 +453,7 @@ private:
                 initialize_media_service();
                 if (m_media_service && m_running) {
                     m_service_futures.push_back(
-                        m_thread_pool->submit([this]() {
+                        std::async(std::launch::async, [this]() {
                             if (!m_media_service->start()) {
                                 LOG_WARNING("Application", "Plex service start failed");
                             } else {
@@ -457,7 +480,7 @@ private:
                 initialize_presence_service();
                 if (m_presence_service && m_running) {
                     m_service_futures.push_back(
-                        m_thread_pool->submit([this]() {
+                        std::async(std::launch::async, [this]() {
                             if (!m_presence_service->initialize()) {
                                 LOG_WARNING("Application", "Presence service start failed");
                             } else {
@@ -614,41 +637,25 @@ private:
     std::atomic<bool> m_running;
     std::atomic<bool> m_shutdown_requested;
 
-    std::unique_ptr<ConfigurationService> m_config_service;
-    std::unique_ptr<AuthenticationService> m_auth_service;
-    std::unique_ptr<services::MediaService> m_media_service;
-    std::unique_ptr<services::PresenceService> m_presence_service;
-    std::unique_ptr<services::UpdateService> m_update_service;
+    std::shared_ptr<ConfigManager> m_config_service;
+    std::shared_ptr<services::PlexAuthStorage> m_auth_service;
+    std::unique_ptr<services::PlexService> m_media_service;
+    std::unique_ptr<services::DiscordPresenceService> m_presence_service;
+    std::unique_ptr<services::GitHubUpdateService> m_update_service;
     std::unique_ptr<platform::UiService> m_ui_service;
     std::unique_ptr<platform::SystemTray> m_system_tray;
-    std::unique_ptr<utils::ThreadPool> m_thread_pool;
     std::shared_ptr<EventBus> m_event_bus;
     std::vector<EventBus::HandlerId> m_event_subscriptions;
     std::vector<std::future<void>> m_service_futures;
 };
 
-std::expected<std::unique_ptr<Application>, ApplicationError>
-ApplicationFactory::create_default_application(const std::filesystem::path& config_path) {
-    (void)config_path;
-    LOG_INFO("ApplicationFactory", "Creating application");
+std::expected<std::unique_ptr<Application>, ApplicationError> create_application() {
+    LOG_INFO("Application", "Creating application");
 
     try {
         return std::make_unique<ApplicationImpl>();
     } catch (const std::exception& e) {
-        LOG_ERROR("ApplicationFactory", "Creation failed: " + std::string(e.what()));
-        return std::unexpected(ApplicationError::InitializationFailed);
-    }
-}
-
-std::expected<std::unique_ptr<Application>, ApplicationError>
-ApplicationFactory::create_application_with_config(const ApplicationConfig& config) {
-    (void)config;
-    LOG_INFO("ApplicationFactory", "Creating configured application");
-
-    try {
-        return std::make_unique<ApplicationImpl>();
-    } catch (const std::exception& e) {
-        LOG_ERROR("ApplicationFactory", "Creation failed: " + std::string(e.what()));
+        LOG_ERROR("Application", "Creation failed: " + std::string(e.what()));
         return std::unexpected(ApplicationError::InitializationFailed);
     }
 }

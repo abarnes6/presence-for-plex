@@ -16,14 +16,8 @@ public:
     bool is_initialized() const override;
 
     std::unique_ptr<SystemTray> create_system_tray() override;
-    std::unique_ptr<NotificationManager> create_notification_manager() override;
-    std::unique_ptr<WindowManager> create_window_manager() override;
-    std::unique_ptr<DialogManager> create_dialog_manager() override;
 
     bool supports_system_tray() const override;
-    bool supports_notifications() const override;
-    bool supports_window_management() const override;
-    bool supports_dialogs() const override;
 
     void process_events() override;
     void quit_event_loop() override;
