@@ -111,19 +111,38 @@ jobs:
           choco install cmake ninja nsis -y
 
       # ======================================================================
+      # Setup MSVC Environment - Windows
+      # ======================================================================
+      - name: Setup MSVC environment (Windows)
+        if: matrix.os == 'windows-latest'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      # ======================================================================
       # Configure CMake
       # ======================================================================
       - name: Configure CMake
         shell: bash
         run: |
-          cmake_args=(
-            -B "${{ steps.strings.outputs.build-output-dir }}"
-            -S "${{ github.workspace }}"
-            -G Ninja
-            -DCMAKE_CXX_COMPILER="${{ matrix.cpp_compiler }}"
-            -DCMAKE_BUILD_TYPE="${{ env.BUILD_TYPE }}"
-            -DBUILD_TESTING=OFF
-          )
+          if [ "${{ matrix.os }}" == "windows-latest" ]; then
+            # Windows: Don't specify compiler, let CMake find MSVC
+            cmake_args=(
+              -B "${{ steps.strings.outputs.build-output-dir }}"
+              -S "${{ github.workspace }}"
+              -G Ninja
+              -DCMAKE_BUILD_TYPE="${{ env.BUILD_TYPE }}"
+              -DBUILD_TESTING=OFF
+            )
+          else
+            # Linux/macOS: Specify compiler explicitly
+            cmake_args=(
+              -B "${{ steps.strings.outputs.build-output-dir }}"
+              -S "${{ github.workspace }}"
+              -G Ninja
+              -DCMAKE_CXX_COMPILER="${{ matrix.cpp_compiler }}"
+              -DCMAKE_BUILD_TYPE="${{ env.BUILD_TYPE }}"
+              -DBUILD_TESTING=OFF
+            )
+          fi
 
           cmake "${cmake_args[@]}"
 

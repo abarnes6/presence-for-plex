@@ -102,13 +102,10 @@ endif()
 
 if(TARGET yaml-cpp)
     set_target_properties(yaml-cpp PROPERTIES AUTOMOC OFF AUTOUIC OFF AUTORCC OFF)
-    # Disable strict warnings for yaml-cpp dependency
-    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-        target_compile_options(yaml-cpp PRIVATE
-            -Wno-error
-            -Wno-sign-conversion
-            -Wno-conversion
-        )
+    # Mark yaml-cpp include directories as SYSTEM to suppress warnings
+    get_target_property(YAML_CPP_INCLUDE_DIRS yaml-cpp INTERFACE_INCLUDE_DIRECTORIES)
+    if(YAML_CPP_INCLUDE_DIRS)
+        set_target_properties(yaml-cpp PROPERTIES INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${YAML_CPP_INCLUDE_DIRS}")
     endif()
 endif()
 if(TARGET curlu)

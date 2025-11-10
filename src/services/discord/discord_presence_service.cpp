@@ -93,7 +93,7 @@ std::expected<void, core::DiscordError> DiscordPresenceService::initialize() {
     }
 
     // Start update thread
-    m_update_thread = std::jthread([this](std::stop_token) { update_loop(); });
+    m_update_thread = std::thread([this]() { update_loop(); });
 
     LOG_DEBUG("DiscordPresenceService", "Discord presence service initialized");
     return {};
@@ -116,6 +116,11 @@ void DiscordPresenceService::shutdown() {
     // Signal update thread to exit
     m_shutdown_cv.notify_all();
     m_update_cv.notify_all();
+
+    // Wait for update thread to finish
+    if (m_update_thread.joinable()) {
+        m_update_thread.join();
+    }
 
     // Clear any pending frame
     {
