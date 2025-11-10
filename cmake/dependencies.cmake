@@ -102,6 +102,14 @@ endif()
 
 if(TARGET yaml-cpp)
     set_target_properties(yaml-cpp PROPERTIES AUTOMOC OFF AUTOUIC OFF AUTORCC OFF)
+    # Disable strict warnings for yaml-cpp dependency
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+        target_compile_options(yaml-cpp PRIVATE
+            -Wno-error
+            -Wno-sign-conversion
+            -Wno-conversion
+        )
+    endif()
 endif()
 if(TARGET curlu)
     set_target_properties(curlu PROPERTIES AUTOMOC OFF AUTOUIC OFF AUTORCC OFF)

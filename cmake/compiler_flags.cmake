@@ -130,9 +130,8 @@ function(apply_compiler_flags target)
 
     # C++ standard library selection
     if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND NOT WIN32)
-        # Use libstdc++ with Clang on non-Windows platforms for better compatibility
-        target_compile_options(${target} PRIVATE -stdlib=libstdc++)
-        target_link_options(${target} PRIVATE -stdlib=libstdc++)
+        target_compile_options(${target} PRIVATE -stdlib=libc++)
+        target_link_options(${target} PRIVATE -stdlib=libc++)
     endif()
 
 endfunction()

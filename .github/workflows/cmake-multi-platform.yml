@@ -87,7 +87,9 @@ jobs:
             libxkbcommon-dev \
             libxcb-cursor0 \
             rpm \
-            dpkg-dev
+            dpkg-dev \
+            libc++-dev \
+            libc++abi-dev
 
       # ======================================================================
       # Install Build Tools - macOS
