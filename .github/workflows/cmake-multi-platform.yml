@@ -70,7 +70,6 @@ jobs:
           version: ${{ env.QT_VERSION }}
           arch: ${{ matrix.qt_arch }}
           cache: true
-          modules: 'qtbase'
 
       # ======================================================================
       # Install Build Tools - Ubuntu
