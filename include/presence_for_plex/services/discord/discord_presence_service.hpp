@@ -225,7 +225,7 @@ private:
     std::optional<nlohmann::json> m_pending_frame;
 
     // Threading
-    std::thread m_update_thread;
+    std::jthread m_update_thread;
     std::atomic<bool> m_update_requested{false};
 
     // Synchronization

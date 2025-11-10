@@ -33,7 +33,7 @@ set(CMAKE_AUTOUIC ON)
 
 # Platform-specific Qt settings
 if(APPLE)
-    set(CMAKE_OSX_DEPLOYMENT_TARGET "10.15")
+    set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0")
     set(MACOSX_BUNDLE TRUE)
 elseif(LINUX)
     set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)

@@ -21,16 +21,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-24.04, windows-latest, macos-latest]
         include:
-          - os: ubuntu-latest
+          - os: ubuntu-24.04
             cpp_compiler: g++
             label: gcc
             package_artifact: 'packages-linux-gcc'
             cpack_generator: 'DEB;RPM;TGZ'
             qt_arch: 'gcc_64'
 
-          - os: ubuntu-latest
+          - os: ubuntu-24.04
             cpp_compiler: clang++
             label: clang
             package_artifact: 'packages-linux-clang'
@@ -75,7 +75,7 @@ jobs:
       # Install Build Tools - Ubuntu
       # ======================================================================
       - name: Install build tools (Ubuntu)
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-24.04'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
