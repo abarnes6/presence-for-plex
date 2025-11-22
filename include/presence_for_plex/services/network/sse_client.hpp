@@ -60,7 +60,7 @@ private:
 
     // Connection tracking
     int m_connection_attempts{0};
-    static constexpr int MAX_INITIAL_CONNECTION_ATTEMPTS = 3;
+    static constexpr int MAX_INITIAL_CONNECTION_ATTEMPTS = 5;
 
     // SSE event parsing state
     std::string m_current_event_data;

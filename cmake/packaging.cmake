@@ -40,7 +40,7 @@ if(WIN32)
     # NSIS-specific configuration
     set(CPACK_NSIS_PACKAGE_NAME "Presence For Plex")
     set(CPACK_NSIS_DISPLAY_NAME "Presence For Plex ${PROJECT_VERSION}")
-    set(CPACK_NSIS_INSTALLED_ICON_NAME "PresenceForPlex.exe")
+    set(CPACK_NSIS_INSTALLED_ICON_NAME "bin\\\\PresenceForPlex.exe")
     set(CPACK_NSIS_HELP_LINK "https://github.com/abarnes6/presence-for-plex")
     set(CPACK_NSIS_URL_INFO_ABOUT "https://github.com/abarnes6/presence-for-plex")
     set(CPACK_NSIS_CONTACT "andrew@example.com")
@@ -56,11 +56,11 @@ if(WIN32)
     # Installation commands - Create shortcuts and optional auto-start
     set(CPACK_NSIS_EXTRA_INSTALL_COMMANDS "
         ; Create desktop shortcut
-        CreateShortCut \\\"$DESKTOP\\\\Presence For Plex.lnk\\\" \\\"$INSTDIR\\\\PresenceForPlex.exe\\\"
+        CreateShortCut \\\"$DESKTOP\\\\Presence For Plex.lnk\\\" \\\"$INSTDIR\\\\bin\\\\PresenceForPlex.exe\\\"
 
         ; Create start menu folder and shortcut
         CreateDirectory \\\"$SMPROGRAMS\\\\Presence For Plex\\\"
-        CreateShortCut \\\"$SMPROGRAMS\\\\Presence For Plex\\\\Presence For Plex.lnk\\\" \\\"$INSTDIR\\\\PresenceForPlex.exe\\\"
+        CreateShortCut \\\"$SMPROGRAMS\\\\Presence For Plex\\\\Presence For Plex.lnk\\\" \\\"$INSTDIR\\\\bin\\\\PresenceForPlex.exe\\\"
         CreateShortCut \\\"$SMPROGRAMS\\\\Presence For Plex\\\\Uninstall.lnk\\\" \\\"$INSTDIR\\\\Uninstall.exe\\\"
 
         ; Optional: Add to startup (user can disable via Windows settings)
@@ -82,8 +82,9 @@ if(WIN32)
         ; Users may want to keep their settings for future reinstalls
     ")
 
-    # Component-based installation
-    set(CPACK_NSIS_COMPONENT_INSTALL ON)
+    # Monolithic installation (no component selection UI)
+    set(CPACK_NSIS_COMPONENT_INSTALL OFF)
+    set(CPACK_MONOLITHIC_INSTALL ON)
 
     # ZIP archive naming
     set(CPACK_ARCHIVE_FILE_NAME "PresenceForPlex-${PROJECT_VERSION}-win64-portable")

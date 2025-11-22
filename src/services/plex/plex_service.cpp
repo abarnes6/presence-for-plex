@@ -411,16 +411,16 @@ std::expected<void, core::PlexError> PlexService::parse_server_json(const std::s
             bool is_local = utils::JsonHelper::get_optional<bool>(connection, "local", false);
 
             if (is_local && !uri.empty()) {
-                server->local_uri = uri;
+                server->local_uris.push_back(uri);
                 LOG_INFO("PlexService", "  Local URI: " + uri);
             } else if (!is_local && !uri.empty()) {
-                server->public_uri = uri;
+                server->public_uris.push_back(uri);
                 LOG_INFO("PlexService", "  Public URI: " + uri);
             }
         });
 
         // Add server if it has at least one valid URI
-        if (!server->local_uri.empty() || !server->public_uri.empty()) {
+        if (!server->local_uris.empty() || !server->public_uris.empty()) {
             auto add_result = add_server(std::move(server));
             if (add_result) {
                 server_count++;
@@ -499,10 +499,10 @@ std::expected<void, core::PlexError> PlexService::add_manual_server(const std::s
         server_url.find("localhost") != std::string::npos ||
         server_url.find("192.168.") != std::string::npos ||
         server_url.find("10.") != std::string::npos) {
-        server->local_uri = server_url;
+        server->local_uris.push_back(server_url);
         LOG_DEBUG("PlexService", "Added as local URI");
     } else {
-        server->public_uri = server_url;
+        server->public_uris.push_back(server_url);
         LOG_DEBUG("PlexService", "Added as public URI");
     }
 

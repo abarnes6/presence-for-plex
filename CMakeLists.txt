@@ -186,10 +186,39 @@ if(WIN32)
     )
 
     # Install runtime DLLs (Qt, MSVC runtime, etc.)
-    install(FILES $<TARGET_RUNTIME_DLLS:PresenceForPlex>
-        DESTINATION bin
-        COMPONENT application
-    )
+    if(TARGET_RUNTIME_DLLS)
+        install(FILES $<TARGET_RUNTIME_DLLS:PresenceForPlex>
+            DESTINATION bin
+            COMPONENT application
+        )
+    endif()
+
+    # Install Qt plugins and dependencies for Qt-based UI
+    if(USE_QT_UI)
+        # Deploy Qt dependencies using windeployqt
+        get_target_property(_qt6_qmake_location Qt6::qmake IMPORTED_LOCATION)
+        get_filename_component(_qt6_bin_dir "${_qt6_qmake_location}" DIRECTORY)
+        find_program(WINDEPLOYQT_EXECUTABLE windeployqt HINTS "${_qt6_bin_dir}")
+
+        if(WINDEPLOYQT_EXECUTABLE)
+            install(CODE "
+                execute_process(
+                    COMMAND \"${WINDEPLOYQT_EXECUTABLE}\"
+                        --no-translations
+                        --no-system-d3d-compiler
+                        --no-opengl-sw
+                        --no-compiler-runtime
+                        --no-quick-import
+                        \"\${CMAKE_INSTALL_PREFIX}/bin/PresenceForPlex.exe\"
+                )
+                # Remove DirectX shader compiler DLLs (only needed for QML/Quick)
+                file(REMOVE
+                    \"\${CMAKE_INSTALL_PREFIX}/bin/dxcompiler.dll\"
+                    \"\${CMAKE_INSTALL_PREFIX}/bin/dxil.dll\"
+                )
+            " COMPONENT application)
+        endif()
+    endif()
 
     # Install documentation
     install(FILES LICENSE README.md

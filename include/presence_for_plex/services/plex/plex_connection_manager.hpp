@@ -25,12 +25,20 @@ using SSEEventCallback = std::function<void(const core::ServerId&, const std::st
 // Connection state callback
 using ConnectionStateCallback = std::function<void(const core::ServerId&, bool connected, const std::string& uri)>;
 
-// Server runtime info - each server has its own SSE event thread
+// SSE connection attempt for a specific URI
+struct SSEConnectionAttempt {
+    std::string uri;
+    std::unique_ptr<SSEClient> sse_client;
+    std::atomic<bool> connected{false};
+};
+
+// Server runtime info - manages multiple concurrent connection attempts
 struct PlexServerRuntime {
     std::unique_ptr<core::PlexServer> server;
-    std::unique_ptr<SSEClient> sse_client;  // Manages dedicated thread internally
-    std::atomic<bool> sse_running{false};
-    std::atomic<bool> initial_connection_succeeded{false};
+    std::vector<std::unique_ptr<SSEConnectionAttempt>> connection_attempts;
+    std::atomic<int> active_connection_index{-1};  // Index of the winning connection, -1 if none
+    std::atomic<bool> should_restart_race{false};  // Signal to restart the URI race
+    std::unique_ptr<std::jthread> monitor_thread;  // Monitors active connection health
 };
 
 class PlexConnectionManager {

@@ -36,14 +36,17 @@ std::expected<void, core::PlexError> PlexConnectionManager::add_server(std::uniq
     core::ServerId server_id(server->client_identifier);
 
     LOG_DEBUG("PlexConnectionManager", "Adding server: " + server->name + " (" + server_id.get() + ")");
-    LOG_DEBUG("PlexConnectionManager", "Server details - Local URI: " + server->local_uri + ", Public URI: " + server->public_uri + ", Owned: " + (server->owned ? "true" : "false"));
+    LOG_DEBUG("PlexConnectionManager", "Server details - " +
+              std::to_string(server->local_uris.size()) + " local URI(s), " +
+              std::to_string(server->public_uris.size()) + " public URI(s), Owned: " +
+              (server->owned ? "true" : "false"));
 
     std::lock_guard<std::mutex> lock(m_servers_mutex);
 
     // Create runtime info
     auto runtime = std::make_shared<PlexServerRuntime>();
     runtime->server = std::move(server);
-    runtime->sse_client = std::make_unique<SSEClient>(m_http_client);
+    runtime->active_connection_index = -1;
 
     m_servers[server_id] = runtime;
 
@@ -73,9 +76,13 @@ std::vector<core::ServerId> PlexConnectionManager::get_connected_servers() const
 
     std::vector<core::ServerId> connected_servers;
     for (const auto& [server_id, runtime] : m_servers) {
-        // Only consider servers that have successfully connected at least once
-        if (runtime->initial_connection_succeeded && runtime->sse_client && runtime->sse_client->is_connected()) {
-            connected_servers.push_back(server_id);
+        // Check if there's an active connection
+        int active_idx = runtime->active_connection_index.load();
+        if (active_idx >= 0 && active_idx < static_cast<int>(runtime->connection_attempts.size())) {
+            if (runtime->connection_attempts[active_idx]->sse_client &&
+                runtime->connection_attempts[active_idx]->sse_client->is_connected()) {
+                connected_servers.push_back(server_id);
+            }
         }
     }
 
@@ -96,9 +103,14 @@ std::expected<void, core::PlexError> PlexConnectionManager::connect_to_server(co
 
     auto runtime = it->second;
 
-    if (runtime->sse_client->is_connected()) {
-        LOG_DEBUG("PlexConnectionManager", "Server already connected: " + server_id.get());
-        return {};
+    // Check if already connected
+    int active_idx = runtime->active_connection_index.load();
+    if (active_idx >= 0 && active_idx < static_cast<int>(runtime->connection_attempts.size())) {
+        if (runtime->connection_attempts[active_idx]->sse_client &&
+            runtime->connection_attempts[active_idx]->sse_client->is_connected()) {
+            LOG_DEBUG("PlexConnectionManager", "Server already connected: " + server_id.get());
+            return {};
+        }
     }
 
     setup_server_sse_connection(runtime);
@@ -114,10 +126,15 @@ void PlexConnectionManager::disconnect_from_server(const core::ServerId& server_
     if (it != m_servers.end()) {
         auto& runtime = *it->second;
 
-        runtime.sse_running = false;
-        if (runtime.sse_client) {
-            runtime.sse_client->disconnect();
+        // Disconnect all connection attempts
+        for (auto& attempt : runtime.connection_attempts) {
+            if (attempt->sse_client) {
+                attempt->sse_client->disconnect();
+            }
         }
+
+        runtime.active_connection_index = -1;
+        runtime.should_restart_race = true;
 
         LOG_DEBUG("PlexConnectionManager", "Server disconnected: " + server_id.get());
     }
@@ -129,12 +146,17 @@ bool PlexConnectionManager::is_server_connected(const core::ServerId& server_id)
 
     auto it = m_servers.find(server_id);
     if (it != m_servers.end()) {
-        // Only report as connected if initial connection succeeded and currently connected
-        bool connected = it->second->initial_connection_succeeded &&
-                        it->second->sse_client &&
-                        it->second->sse_client->is_connected();
-        LOG_DEBUG("PlexConnectionManager", "Server " + server_id.get() + " connection status: " + (connected ? "connected" : "disconnected"));
-        return connected;
+        // Check if there's an active connection
+        int active_idx = it->second->active_connection_index.load();
+        if (active_idx >= 0 && active_idx < static_cast<int>(it->second->connection_attempts.size())) {
+            bool connected = it->second->connection_attempts[active_idx]->sse_client &&
+                           it->second->connection_attempts[active_idx]->sse_client->is_connected();
+            LOG_DEBUG("PlexConnectionManager", "Server " + server_id.get() + " connection status: " +
+                     (connected ? "connected" : "disconnected"));
+            return connected;
+        }
+        LOG_DEBUG("PlexConnectionManager", "Server " + server_id.get() + " has no active connection");
+        return false;
     }
 
     LOG_DEBUG("PlexConnectionManager", "Server " + server_id.get() + " not found in server map");
@@ -153,23 +175,23 @@ std::string PlexConnectionManager::get_preferred_server_uri(const core::ServerId
 
     const auto& server = it->second->server;
 
-    // Test local URI first if available
-    if (!server->local_uri.empty()) {
-        LOG_DEBUG("PlexConnectionManager", "Testing local URI: " + server->local_uri);
-        auto test_result = test_uri_accessibility(server->local_uri, server->access_token);
+    // Test all local URIs first
+    for (const auto& uri : server->local_uris) {
+        LOG_DEBUG("PlexConnectionManager", "Testing local URI: " + uri);
+        auto test_result = test_uri_accessibility(uri, server->access_token);
         if (test_result && test_result.value()) {
-            LOG_INFO("PlexConnectionManager", "Using local URI for " + server->name + ": " + server->local_uri);
-            return server->local_uri;
+            LOG_INFO("PlexConnectionManager", "Using local URI for " + server->name + ": " + uri);
+            return uri;
         }
     }
 
-    // Test public URI as fallback
-    if (!server->public_uri.empty()) {
-        LOG_DEBUG("PlexConnectionManager", "Testing public URI: " + server->public_uri);
-        auto test_result = test_uri_accessibility(server->public_uri, server->access_token);
+    // Test all public URIs as fallback
+    for (const auto& uri : server->public_uris) {
+        LOG_DEBUG("PlexConnectionManager", "Testing public URI: " + uri);
+        auto test_result = test_uri_accessibility(uri, server->access_token);
         if (test_result && test_result.value()) {
-            LOG_INFO("PlexConnectionManager", "Using public URI for " + server->name + ": " + server->public_uri);
-            return server->public_uri;
+            LOG_INFO("PlexConnectionManager", "Using public URI for " + server->name + ": " + uri);
+            return uri;
         }
     }
 
@@ -193,7 +215,18 @@ void PlexConnectionManager::start_all_connections() {
 
     size_t started = 0;
     for (const auto& [server_id, runtime] : m_servers) {
-        if (!runtime->sse_client->is_connected()) {
+        // Check if already connected
+        int active_idx = runtime->active_connection_index.load();
+        bool is_connected = false;
+
+        if (active_idx >= 0 && active_idx < static_cast<int>(runtime->connection_attempts.size())) {
+            if (runtime->connection_attempts[active_idx]->sse_client &&
+                runtime->connection_attempts[active_idx]->sse_client->is_connected()) {
+                is_connected = true;
+            }
+        }
+
+        if (!is_connected) {
             LOG_DEBUG("PlexConnectionManager", "Starting connection for server: " + server_id.get());
             setup_server_sse_connection(runtime);
             ++started;
@@ -214,10 +247,13 @@ void PlexConnectionManager::stop_all_connections() {
 
     // Signal all SSE clients to disconnect
     for (const auto& [server_id, runtime] : m_servers) {
-        runtime->sse_running = false;
-        if (runtime->sse_client) {
-            runtime->sse_client->disconnect();
+        runtime->should_restart_race = true;
+        for (auto& attempt : runtime->connection_attempts) {
+            if (attempt->sse_client) {
+                attempt->sse_client->disconnect();
+            }
         }
+        runtime->active_connection_index = -1;
     }
 
     m_servers.clear();
@@ -229,7 +265,21 @@ void PlexConnectionManager::setup_server_sse_connection(std::shared_ptr<PlexServ
     const auto& server = runtime_ptr->server;
     core::ServerId server_id(server->client_identifier);
 
-    LOG_DEBUG("PlexConnectionManager", "Setting up SSE connection to: " + server->name);
+    LOG_DEBUG("PlexConnectionManager", "Setting up parallel SSE connections for: " + server->name);
+
+    // Build list of all URIs to try (local URIs first, then public URIs)
+    std::vector<std::string> uris_to_try;
+    uris_to_try.insert(uris_to_try.end(), server->local_uris.begin(), server->local_uris.end());
+    uris_to_try.insert(uris_to_try.end(), server->public_uris.begin(), server->public_uris.end());
+
+    if (uris_to_try.empty()) {
+        LOG_ERROR("PlexConnectionManager", "No URIs configured for server: " + server->name);
+        runtime_ptr->active_connection_index = -1;
+        return;
+    }
+
+    LOG_INFO("PlexConnectionManager", "Starting connection race for " + std::to_string(uris_to_try.size()) +
+             " URIs for server: " + server->name);
 
     // Prepare headers using server-specific client identifier
     HttpHeaders headers = {
@@ -241,60 +291,103 @@ void PlexConnectionManager::setup_server_sse_connection(std::shared_ptr<PlexServ
         {"X-Plex-Token", server->access_token}
     };
 
-    // Set up SSE callback
-    SSEBasicEventCallback sse_callback = [this, server_id](const std::string& event) {
-        if (m_sse_callback && !m_shutting_down) {
-            m_sse_callback(server_id, event);
+    // Clear any existing connection attempts
+    runtime_ptr->connection_attempts.clear();
+    runtime_ptr->active_connection_index = -1;
+
+    // Create connection attempt for each URI and start them all in parallel
+    for (size_t i = 0; i < uris_to_try.size(); ++i) {
+        const auto& uri = uris_to_try[i];
+
+        auto attempt = std::make_unique<SSEConnectionAttempt>();
+        attempt->uri = uri;
+        attempt->sse_client = std::make_unique<SSEClient>(m_http_client);
+        attempt->connected = false;
+
+        LOG_INFO("PlexConnectionManager", "Starting connection attempt " + std::to_string(i) +
+                 " to " + server->name + ": " + uri);
+
+        // Construct SSE endpoint URL
+        std::string sse_url = uri + "/:/eventsource/notifications?filters=playing";
+
+        // Set up SSE callback that checks if this is the first to connect
+        SSEBasicEventCallback sse_callback = [this, server_id, runtime_ptr, index = i](const std::string& event) {
+            // Only process events if this is the active connection
+            if (runtime_ptr->active_connection_index == static_cast<int>(index)) {
+                if (m_sse_callback && !m_shutting_down) {
+                    m_sse_callback(server_id, event);
+                }
+            }
+        };
+
+        // Start SSE connection (async)
+        auto connect_result = attempt->sse_client->connect(sse_url, headers, sse_callback);
+
+        if (connect_result.has_value()) {
+            runtime_ptr->connection_attempts.push_back(std::move(attempt));
+        } else {
+            LOG_WARNING("PlexConnectionManager", "Failed to initiate connection attempt for: " + uri);
         }
-    };
-
-    // Prefer local URI, fall back to public URI
-    std::string uri_to_use = !server->local_uri.empty() ? server->local_uri : server->public_uri;
-
-    if (uri_to_use.empty()) {
-        LOG_ERROR("PlexConnectionManager", "No URI configured for server: " + server->name);
-        runtime_ptr->sse_running = false;
-        runtime_ptr->initial_connection_succeeded = false;
-        return;
     }
 
-    LOG_INFO("PlexConnectionManager", "Attempting SSE connection to " + server->name + ": " + uri_to_use);
+    // Start monitoring thread to detect the first successful connection
+    auto conn_callback = m_connection_state_callback;
+    runtime_ptr->monitor_thread = std::make_unique<std::jthread>([this, runtime_ptr, server_id,
+                                                                    server_name = server->name,
+                                                                    conn_callback]() {
+        while (!m_shutting_down && !runtime_ptr->should_restart_race) {
+            // Check if any connection succeeded (and we haven't picked a winner yet)
+            if (runtime_ptr->active_connection_index == -1) {
+                for (size_t i = 0; i < runtime_ptr->connection_attempts.size(); ++i) {
+                    auto& attempt = runtime_ptr->connection_attempts[i];
 
-    // Construct SSE endpoint URL
-    std::string sse_url = uri_to_use + "/:/eventsource/notifications?filters=playing";
+                    if (attempt->sse_client && attempt->sse_client->is_connected()) {
+                        // This one won the race!
+                        LOG_INFO("PlexConnectionManager", "Connection established to " + server_name +
+                                " via: " + attempt->uri);
 
-    // Start SSE connection (this is async and runs in its own thread)
-    auto connect_result = runtime_ptr->sse_client->connect(sse_url, headers, sse_callback);
+                        runtime_ptr->active_connection_index = static_cast<int>(i);
+                        attempt->connected = true;
 
-    if (connect_result.has_value()) {
-        LOG_DEBUG("PlexConnectionManager", "SSE connection initiated for: " + server->name + " at: " + sse_url);
-        runtime_ptr->sse_running = true;
+                        // Stop all other connection attempts
+                        for (size_t j = 0; j < runtime_ptr->connection_attempts.size(); ++j) {
+                            if (j != i && runtime_ptr->connection_attempts[j]->sse_client) {
+                                runtime_ptr->connection_attempts[j]->sse_client->disconnect();
+                            }
+                        }
 
-        auto conn_callback = m_connection_state_callback;
-        std::thread([runtime_ptr, server_id, server_name = server->name, sse_url, shutdown_flag = &m_shutting_down, conn_callback = std::move(conn_callback)]() {
-            for (int wait = 0; wait < 300 && !(*shutdown_flag); ++wait) {
-                if (runtime_ptr->sse_client && runtime_ptr->sse_client->is_connected()) {
-                    LOG_DEBUG("PlexConnectionManager", "SSE connection confirmed for: " + server_name);
-                    runtime_ptr->initial_connection_succeeded = true;
+                        // Notify via callback
+                        if (conn_callback && !m_shutting_down) {
+                            conn_callback(server_id, true, attempt->uri);
+                        }
 
-                    if (conn_callback && !(*shutdown_flag)) {
-                        std::string uri = sse_url.substr(0, sse_url.find("/:/eventsource"));
-                        conn_callback(server_id, true, uri);
+                        break;
                     }
+                }
+            } else {
+                // Monitor the active connection
+                auto& active_attempt = runtime_ptr->connection_attempts[runtime_ptr->active_connection_index];
+
+                if (!active_attempt->sse_client->is_connected()) {
+                    // Active connection dropped!
+                    LOG_WARNING("PlexConnectionManager", "Active connection dropped for " + server_name +
+                               ", restarting URI race");
+
+                    if (conn_callback && !m_shutting_down) {
+                        conn_callback(server_id, false, active_attempt->uri);
+                    }
+
+                    // Restart the race
+                    setup_server_sse_connection(runtime_ptr);
                     return;
                 }
-                std::this_thread::sleep_for(std::chrono::milliseconds(100));
             }
 
-            if (!(*shutdown_flag)) {
-                LOG_WARNING("PlexConnectionManager", "SSE connection timeout for: " + server_name);
-            }
-        }).detach();
-    } else {
-        LOG_ERROR("PlexConnectionManager", "Failed to initiate SSE connection for: " + server->name);
-        runtime_ptr->sse_running = false;
-        runtime_ptr->initial_connection_succeeded = false;
-    }
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        }
+    });
+
+    LOG_DEBUG("PlexConnectionManager", "Connection race started for: " + server->name);
 }
 
 std::expected<bool, core::PlexError> PlexConnectionManager::test_uri_accessibility(const std::string& uri, const core::PlexToken& token) {

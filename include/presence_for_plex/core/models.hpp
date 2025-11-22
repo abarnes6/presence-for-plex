@@ -134,8 +134,8 @@ struct SessionKey {
 struct PlexServer {
     std::string name;
     ClientId client_identifier;
-    std::string local_uri;
-    std::string public_uri;
+    std::vector<std::string> local_uris;   // All local network URIs
+    std::vector<std::string> public_uris;  // All public/remote URIs
     PlexToken access_token;
     std::chrono::system_clock::time_point last_updated;
     // Note: HTTP client will be managed separately to avoid forward declaration issues
@@ -147,11 +147,11 @@ struct PlexServer {
     PlexServer(const PlexServer&) = delete;
     PlexServer& operator=(const PlexServer&) = delete;
     
-    PlexServer(PlexServer&& other) noexcept 
+    PlexServer(PlexServer&& other) noexcept
         : name(std::move(other.name))
         , client_identifier(std::move(other.client_identifier))
-        , local_uri(std::move(other.local_uri))
-        , public_uri(std::move(other.public_uri))
+        , local_uris(std::move(other.local_uris))
+        , public_uris(std::move(other.public_uris))
         , access_token(std::move(other.access_token))
         , last_updated(other.last_updated)
         , running(other.running.load())
@@ -165,13 +165,13 @@ struct PlexServer {
         if (this != &other) {
             name = std::move(other.name);
             client_identifier = std::move(other.client_identifier);
-            local_uri = std::move(other.local_uri);
-            public_uri = std::move(other.public_uri);
+            local_uris = std::move(other.local_uris);
+            public_uris = std::move(other.public_uris);
             access_token = std::move(other.access_token);
             last_updated = other.last_updated;
             running.store(other.running.load());
             owned = other.owned;
-            
+
             other.running.store(false);
             other.owned = false;
         }
