@@ -23,11 +23,11 @@ public:
     static YAML::Node to_yaml(const core::ApplicationConfig& config);
 
     // Partial updates
-    static void merge_presence_config(YAML::Node& node, const core::PresenceServiceConfig& config);
+    static void merge_discord_config(YAML::Node& node, const core::DiscordServiceConfig& config);
     static void merge_plex_config(YAML::Node& node, const core::PlexConfig& config);
 
 private:
-    static core::PresenceServiceConfig parse_presence_config(const YAML::Node& node);
+    static core::DiscordServiceConfig parse_discord_config(const YAML::Node& node);
     static core::PlexConfig parse_plex_config(const YAML::Node& node);
 };
 

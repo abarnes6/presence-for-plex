@@ -14,9 +14,9 @@ namespace core {
 }
 
 namespace services {
-    class PlexService;
+    class Plex;
     class DiscordPresenceService;
-    class PlexAuthStorage;
+    class PlexAuth;
 }
 
 namespace platform {
@@ -70,13 +70,13 @@ public:
     virtual void quit() = 0;
 
     // Service access
-    virtual std::expected<std::reference_wrapper<services::PlexService>, ApplicationError> get_media_service() = 0;
-    virtual std::expected<std::reference_wrapper<services::DiscordPresenceService>, ApplicationError> get_presence_service() = 0;
+    virtual std::expected<std::reference_wrapper<services::Plex>, ApplicationError> get_plex_service() = 0;
+    virtual std::expected<std::reference_wrapper<services::DiscordPresenceService>, ApplicationError> get_discord_service() = 0;
     virtual std::expected<std::reference_wrapper<platform::UiService>, ApplicationError> get_ui_service() = 0;
     virtual std::expected<std::shared_ptr<ConfigManager>, ApplicationError> get_configuration_service() = 0;
     virtual std::expected<std::shared_ptr<const ConfigManager>, ApplicationError> get_configuration_service() const = 0;
     virtual std::expected<std::reference_wrapper<const ApplicationConfig>, ApplicationError> get_config() const = 0;
-    virtual std::expected<std::reference_wrapper<services::PlexAuthStorage>, ApplicationError> get_authentication_service() = 0;
+    virtual std::expected<std::reference_wrapper<services::PlexAuth>, ApplicationError> get_authentication_service() = 0;
 
     // Additional features
     virtual void check_for_updates() = 0;

@@ -40,11 +40,11 @@ set(CORE_SOURCES
 
 set(SERVICES_SOURCES
     src/services/update_service.cpp
-    src/services/plex/plex_auth_storage.cpp
-    src/services/plex/plex_authenticator.cpp
-    src/services/plex/plex_service.cpp
-    src/services/plex/plex_client.cpp
-    src/services/plex/plex_connection_manager.cpp
+    src/services/plex/plex.cpp
+    src/services/plex/plex_auth.cpp
+    src/services/plex/plex_sse.cpp
+    src/services/plex/metadata/tmdb.cpp
+    src/services/plex/metadata/jikan.cpp
     src/services/discord/discord_ipc.cpp
     src/services/discord/rate_limiter.cpp
     src/services/discord/connection_manager.cpp

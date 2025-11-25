@@ -13,9 +13,7 @@
 namespace presence_for_plex {
 namespace services {
 
-class PlexAuthStorage;
-
-// Forward declarations
+class PlexAuth;
 class HttpClient;
 class SSEClient;
 
@@ -36,15 +34,15 @@ struct SSEConnectionAttempt {
 struct PlexServerRuntime {
     std::unique_ptr<core::PlexServer> server;
     std::vector<std::unique_ptr<SSEConnectionAttempt>> connection_attempts;
-    std::atomic<int> active_connection_index{-1};  // Index of the winning connection, -1 if none
-    std::atomic<bool> should_restart_race{false};  // Signal to restart the URI race
-    std::unique_ptr<std::jthread> monitor_thread;  // Monitors active connection health
+    std::atomic<int> active_connection_index{-1};
+    std::atomic<bool> should_restart_race{false};
+    std::unique_ptr<std::jthread> monitor_thread;
 };
 
-class PlexConnectionManager {
+class PlexSSE {
 public:
-    explicit PlexConnectionManager(std::shared_ptr<HttpClient> http_client, std::shared_ptr<PlexAuthStorage> auth_service);
-    ~PlexConnectionManager();
+    explicit PlexSSE(std::shared_ptr<HttpClient> http_client, std::shared_ptr<PlexAuth> auth);
+    ~PlexSSE();
 
     std::expected<void, core::PlexError> add_server(std::unique_ptr<core::PlexServer> server);
     void remove_server(const core::ServerId& server_id);
@@ -66,7 +64,7 @@ private:
     std::expected<bool, core::PlexError> test_uri_accessibility(const std::string& uri, const core::PlexToken& token);
 
     std::shared_ptr<HttpClient> m_http_client;
-    std::shared_ptr<PlexAuthStorage> m_auth_service;
+    std::shared_ptr<PlexAuth> m_auth;
     mutable std::mutex m_servers_mutex;
     std::map<core::ServerId, std::shared_ptr<PlexServerRuntime>> m_servers;
     SSEEventCallback m_sse_callback;

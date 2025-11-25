@@ -237,7 +237,7 @@ struct DiscordConfig {
     std::string music_large_image_text_format = "{title}";
 };
 
-struct PresenceServiceConfig {
+struct DiscordServiceConfig {
     bool enabled = true;
     DiscordConfig discord;
 };
@@ -256,7 +256,7 @@ struct PlexConfig {
 };
 
 struct ApplicationConfig {
-    PresenceServiceConfig presence;
+    DiscordServiceConfig discord;
     PlexConfig plex;
 
     presence_for_plex::utils::LogLevel log_level = presence_for_plex::utils::LogLevel::Info;

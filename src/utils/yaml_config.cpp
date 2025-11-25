@@ -56,8 +56,8 @@ core::ApplicationConfig YamlConfigHelper::from_yaml(const YAML::Node& node) {
         config.start_at_boot = node["start_at_boot"].as<bool>();
     }
 
-    if (node["presence"] || node["discord"]) {
-        config.presence = parse_presence_config(node["presence"] ? node["presence"] : node["discord"]);
+    if (node["discord"] || node["presence"]) {
+        config.discord = parse_discord_config(node["discord"] ? node["discord"] : node["presence"]);
     }
 
     if (node["plex"]) {
@@ -86,7 +86,7 @@ YAML::Node YamlConfigHelper::to_yaml(const core::ApplicationConfig& config) {
     node["log_level"] = to_string(config.log_level);
     node["start_at_boot"] = config.start_at_boot;
 
-    merge_presence_config(node, config.presence);
+    merge_discord_config(node, config.discord);
     merge_plex_config(node, config.plex);
 
     node["tmdb"]["access_token"] = config.tmdb_access_token;
@@ -97,31 +97,31 @@ YAML::Node YamlConfigHelper::to_yaml(const core::ApplicationConfig& config) {
     return node;
 }
 
-void YamlConfigHelper::merge_presence_config(YAML::Node& node, const core::PresenceServiceConfig& config) {
-    node["presence"]["enabled"] = config.enabled;
-    node["presence"]["discord"]["client_id"] = config.discord.client_id;
-    node["presence"]["discord"]["show_buttons"] = config.discord.show_buttons;
-    node["presence"]["discord"]["show_progress"] = config.discord.show_progress;
-    node["presence"]["discord"]["show_artwork"] = config.discord.show_artwork;
+void YamlConfigHelper::merge_discord_config(YAML::Node& node, const core::DiscordServiceConfig& config) {
+    node["discord"]["enabled"] = config.enabled;
+    node["discord"]["client_id"] = config.discord.client_id;
+    node["discord"]["show_buttons"] = config.discord.show_buttons;
+    node["discord"]["show_progress"] = config.discord.show_progress;
+    node["discord"]["show_artwork"] = config.discord.show_artwork;
 
     // TV Show formats
-    node["presence"]["discord"]["tv_details_format"] = config.discord.tv_details_format;
-    node["presence"]["discord"]["tv_state_format"] = config.discord.tv_state_format;
-    node["presence"]["discord"]["tv_large_image_text_format"] = config.discord.tv_large_image_text_format;
+    node["discord"]["tv_details_format"] = config.discord.tv_details_format;
+    node["discord"]["tv_state_format"] = config.discord.tv_state_format;
+    node["discord"]["tv_large_image_text_format"] = config.discord.tv_large_image_text_format;
 
     // Movie formats
-    node["presence"]["discord"]["movie_details_format"] = config.discord.movie_details_format;
-    node["presence"]["discord"]["movie_state_format"] = config.discord.movie_state_format;
-    node["presence"]["discord"]["movie_large_image_text_format"] = config.discord.movie_large_image_text_format;
+    node["discord"]["movie_details_format"] = config.discord.movie_details_format;
+    node["discord"]["movie_state_format"] = config.discord.movie_state_format;
+    node["discord"]["movie_large_image_text_format"] = config.discord.movie_large_image_text_format;
 
     // Music formats
-    node["presence"]["discord"]["music_details_format"] = config.discord.music_details_format;
-    node["presence"]["discord"]["music_state_format"] = config.discord.music_state_format;
-    node["presence"]["discord"]["music_large_image_text_format"] = config.discord.music_large_image_text_format;
+    node["discord"]["music_details_format"] = config.discord.music_details_format;
+    node["discord"]["music_state_format"] = config.discord.music_state_format;
+    node["discord"]["music_large_image_text_format"] = config.discord.music_large_image_text_format;
 }
 
-core::PresenceServiceConfig YamlConfigHelper::parse_presence_config(const YAML::Node& node) {
-    core::PresenceServiceConfig config;
+core::DiscordServiceConfig YamlConfigHelper::parse_discord_config(const YAML::Node& node) {
+    core::DiscordServiceConfig config;
 
     if (node["enabled"]) {
         config.enabled = node["enabled"].as<bool>();

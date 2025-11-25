@@ -156,7 +156,7 @@ void QtSettingsDialog::setup_ui() {
     auto* plex_group = new QGroupBox("Plex Media Server");
     auto* plex_form = new QFormLayout(plex_group);
 
-    m_plex_enabled_check = new QCheckBox("Enable Plex Media Service");
+    m_plex_enabled_check = new QCheckBox("Enable Plex");
     plex_form->addRow(m_plex_enabled_check);
 
     m_auto_discover_check = new QCheckBox("Auto-discover local servers");
@@ -507,26 +507,26 @@ void QtSettingsDialog::load_config(const core::ApplicationConfig& config) {
         m_start_at_boot_check->setChecked(config.start_at_boot);
     }
 
-    m_discord_enabled_check->setChecked(config.presence.enabled);
-    m_discord_client_id_edit->setText(QString::fromStdString(config.presence.discord.client_id));
-    m_show_buttons_check->setChecked(config.presence.discord.show_buttons);
-    m_show_progress_check->setChecked(config.presence.discord.show_progress);
-    m_show_artwork_check->setChecked(config.presence.discord.show_artwork);
+    m_discord_enabled_check->setChecked(config.discord.enabled);
+    m_discord_client_id_edit->setText(QString::fromStdString(config.discord.discord.client_id));
+    m_show_buttons_check->setChecked(config.discord.discord.show_buttons);
+    m_show_progress_check->setChecked(config.discord.discord.show_progress);
+    m_show_artwork_check->setChecked(config.discord.discord.show_artwork);
 
     // TV Shows format
-    m_tv_details_format_edit->setText(QString::fromStdString(config.presence.discord.tv_details_format));
-    m_tv_state_format_edit->setText(QString::fromStdString(config.presence.discord.tv_state_format));
-    m_tv_large_image_text_format_edit->setText(QString::fromStdString(config.presence.discord.tv_large_image_text_format));
+    m_tv_details_format_edit->setText(QString::fromStdString(config.discord.discord.tv_details_format));
+    m_tv_state_format_edit->setText(QString::fromStdString(config.discord.discord.tv_state_format));
+    m_tv_large_image_text_format_edit->setText(QString::fromStdString(config.discord.discord.tv_large_image_text_format));
 
     // Movies format
-    m_movie_details_format_edit->setText(QString::fromStdString(config.presence.discord.movie_details_format));
-    m_movie_state_format_edit->setText(QString::fromStdString(config.presence.discord.movie_state_format));
-    m_movie_large_image_text_format_edit->setText(QString::fromStdString(config.presence.discord.movie_large_image_text_format));
+    m_movie_details_format_edit->setText(QString::fromStdString(config.discord.discord.movie_details_format));
+    m_movie_state_format_edit->setText(QString::fromStdString(config.discord.discord.movie_state_format));
+    m_movie_large_image_text_format_edit->setText(QString::fromStdString(config.discord.discord.movie_large_image_text_format));
 
     // Music format
-    m_music_details_format_edit->setText(QString::fromStdString(config.presence.discord.music_details_format));
-    m_music_state_format_edit->setText(QString::fromStdString(config.presence.discord.music_state_format));
-    m_music_large_image_text_format_edit->setText(QString::fromStdString(config.presence.discord.music_large_image_text_format));
+    m_music_details_format_edit->setText(QString::fromStdString(config.discord.discord.music_details_format));
+    m_music_state_format_edit->setText(QString::fromStdString(config.discord.discord.music_state_format));
+    m_music_large_image_text_format_edit->setText(QString::fromStdString(config.discord.discord.music_large_image_text_format));
 
     m_plex_enabled_check->setChecked(config.plex.enabled);
     m_auto_discover_check->setChecked(config.plex.auto_discover);
@@ -557,25 +557,25 @@ core::ApplicationConfig QtSettingsDialog::get_config() const {
     config.log_level = static_cast<utils::LogLevel>(m_log_level_combo->currentIndex());
     config.start_at_boot = m_start_at_boot_check->isChecked();
 
-    config.presence.enabled = m_discord_enabled_check->isChecked();
-    config.presence.discord.client_id = m_discord_client_id_edit->text().toStdString();
-    config.presence.discord.show_buttons = m_show_buttons_check->isChecked();
-    config.presence.discord.show_progress = m_show_progress_check->isChecked();
-    config.presence.discord.show_artwork = m_show_artwork_check->isChecked();
+    config.discord.enabled = m_discord_enabled_check->isChecked();
+    config.discord.discord.client_id = m_discord_client_id_edit->text().toStdString();
+    config.discord.discord.show_buttons = m_show_buttons_check->isChecked();
+    config.discord.discord.show_progress = m_show_progress_check->isChecked();
+    config.discord.discord.show_artwork = m_show_artwork_check->isChecked();
     // TV Shows format
-    config.presence.discord.tv_details_format = m_tv_details_format_edit->text().toStdString();
-    config.presence.discord.tv_state_format = m_tv_state_format_edit->text().toStdString();
-    config.presence.discord.tv_large_image_text_format = m_tv_large_image_text_format_edit->text().toStdString();
+    config.discord.discord.tv_details_format = m_tv_details_format_edit->text().toStdString();
+    config.discord.discord.tv_state_format = m_tv_state_format_edit->text().toStdString();
+    config.discord.discord.tv_large_image_text_format = m_tv_large_image_text_format_edit->text().toStdString();
 
     // Movies format
-    config.presence.discord.movie_details_format = m_movie_details_format_edit->text().toStdString();
-    config.presence.discord.movie_state_format = m_movie_state_format_edit->text().toStdString();
-    config.presence.discord.movie_large_image_text_format = m_movie_large_image_text_format_edit->text().toStdString();
+    config.discord.discord.movie_details_format = m_movie_details_format_edit->text().toStdString();
+    config.discord.discord.movie_state_format = m_movie_state_format_edit->text().toStdString();
+    config.discord.discord.movie_large_image_text_format = m_movie_large_image_text_format_edit->text().toStdString();
 
     // Music format
-    config.presence.discord.music_details_format = m_music_details_format_edit->text().toStdString();
-    config.presence.discord.music_state_format = m_music_state_format_edit->text().toStdString();
-    config.presence.discord.music_large_image_text_format = m_music_large_image_text_format_edit->text().toStdString();
+    config.discord.discord.music_details_format = m_music_details_format_edit->text().toStdString();
+    config.discord.discord.music_state_format = m_music_state_format_edit->text().toStdString();
+    config.discord.discord.music_large_image_text_format = m_music_large_image_text_format_edit->text().toStdString();
 
     config.plex.enabled = m_plex_enabled_check->isChecked();
     config.plex.auto_discover = m_auto_discover_check->isChecked();

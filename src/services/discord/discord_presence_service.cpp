@@ -202,20 +202,20 @@ void DiscordPresenceService::set_event_bus(std::shared_ptr<core::EventBus> bus) 
     if (m_event_bus) {
         m_event_bus->subscribe<core::events::ConfigurationUpdated>(
             [this](const core::events::ConfigurationUpdated& event) {
-                set_show_buttons(event.new_config.presence.discord.show_buttons);
-                set_show_progress(event.new_config.presence.discord.show_progress);
-                set_show_artwork(event.new_config.presence.discord.show_artwork);
+                set_show_buttons(event.new_config.discord.discord.show_buttons);
+                set_show_progress(event.new_config.discord.discord.show_progress);
+                set_show_artwork(event.new_config.discord.discord.show_artwork);
 
                 // Update format templates
-                set_tv_details_format(event.new_config.presence.discord.tv_details_format);
-                set_tv_state_format(event.new_config.presence.discord.tv_state_format);
-                set_tv_large_image_text_format(event.new_config.presence.discord.tv_large_image_text_format);
-                set_movie_details_format(event.new_config.presence.discord.movie_details_format);
-                set_movie_state_format(event.new_config.presence.discord.movie_state_format);
-                set_movie_large_image_text_format(event.new_config.presence.discord.movie_large_image_text_format);
-                set_music_details_format(event.new_config.presence.discord.music_details_format);
-                set_music_state_format(event.new_config.presence.discord.music_state_format);
-                set_music_large_image_text_format(event.new_config.presence.discord.music_large_image_text_format);
+                set_tv_details_format(event.new_config.discord.discord.tv_details_format);
+                set_tv_state_format(event.new_config.discord.discord.tv_state_format);
+                set_tv_large_image_text_format(event.new_config.discord.discord.tv_large_image_text_format);
+                set_movie_details_format(event.new_config.discord.discord.movie_details_format);
+                set_movie_state_format(event.new_config.discord.discord.movie_state_format);
+                set_movie_large_image_text_format(event.new_config.discord.discord.movie_large_image_text_format);
+                set_music_details_format(event.new_config.discord.discord.music_details_format);
+                set_music_state_format(event.new_config.discord.discord.music_state_format);
+                set_music_large_image_text_format(event.new_config.discord.discord.music_large_image_text_format);
 
                 LOG_INFO("DiscordPresenceService", "Configuration updated from event");
             }
@@ -605,13 +605,13 @@ void DiscordPresenceService::on_error_occurred(core::DiscordError error, const s
 
 std::expected<std::unique_ptr<DiscordPresenceService>, core::ConfigError>
 DiscordPresenceService::create(const core::ApplicationConfig& app_config) {
-    if (app_config.presence.discord.client_id.empty()) {
+    if (app_config.discord.discord.client_id.empty()) {
         return std::unexpected(core::ConfigError::ValidationError);
     }
 
     Config config;
-    config.client_id = app_config.presence.discord.client_id;
-    config.update_interval = app_config.presence.discord.update_interval;
+    config.client_id = app_config.discord.discord.client_id;
+    config.update_interval = app_config.discord.discord.update_interval;
 
     config.rate_limit_config = DiscordRateLimitConfig{};
     config.connection_config = ConnectionRetryConfig{};

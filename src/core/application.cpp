@@ -1,12 +1,12 @@
 #include "presence_for_plex/core/application.hpp"
 #include "presence_for_plex/core/event_bus.hpp"
 #include "presence_for_plex/core/events.hpp"
-#include "presence_for_plex/services/plex/plex_auth_storage.hpp"
+#include "presence_for_plex/services/plex/plex.hpp"
+#include "presence_for_plex/services/plex/plex_auth.hpp"
+#include "presence_for_plex/services/plex/plex_sse.hpp"
+#include "presence_for_plex/services/plex/metadata/tmdb.hpp"
+#include "presence_for_plex/services/plex/metadata/jikan.hpp"
 #include "presence_for_plex/services/discord/discord_presence_service.hpp"
-#include "presence_for_plex/services/plex/plex_service.hpp"
-#include "presence_for_plex/services/plex/plex_authenticator.hpp"
-#include "presence_for_plex/services/plex/plex_client.hpp"
-#include "presence_for_plex/services/plex/plex_connection_manager.hpp"
 #include "presence_for_plex/services/network/http_client.hpp"
 #include "presence_for_plex/services/update_service.hpp"
 #include "presence_for_plex/utils/logger.hpp"
@@ -59,8 +59,8 @@ public:
             }
 
             initialize_ui_service();
-            initialize_media_service();
-            initialize_presence_service();
+            initialize_plex_service();
+            initialize_discord_service();
             initialize_update_service();
             connect_services();
 
@@ -146,18 +146,18 @@ public:
         shutdown();
     }
 
-    std::expected<std::reference_wrapper<services::PlexService>, ApplicationError> get_media_service() override {
-        if (!m_media_service) {
+    std::expected<std::reference_wrapper<services::Plex>, ApplicationError> get_plex_service() override {
+        if (!m_plex_service) {
             return std::unexpected(ApplicationError::ServiceUnavailable);
         }
-        return std::ref(*m_media_service);
+        return std::ref(*m_plex_service);
     }
 
-    std::expected<std::reference_wrapper<services::DiscordPresenceService>, ApplicationError> get_presence_service() override {
-        if (!m_presence_service) {
+    std::expected<std::reference_wrapper<services::DiscordPresenceService>, ApplicationError> get_discord_service() override {
+        if (!m_discord_service) {
             return std::unexpected(ApplicationError::ServiceUnavailable);
         }
-        return std::ref(*m_presence_service);
+        return std::ref(*m_discord_service);
     }
 
     std::expected<std::reference_wrapper<platform::UiService>, ApplicationError> get_ui_service() override {
@@ -188,7 +188,7 @@ public:
         return std::ref(m_config_service->get());
     }
 
-    std::expected<std::reference_wrapper<services::PlexAuthStorage>, ApplicationError> get_authentication_service() override {
+    std::expected<std::reference_wrapper<services::PlexAuth>, ApplicationError> get_authentication_service() override {
         if (!m_auth_service) {
             return std::unexpected(ApplicationError::ServiceUnavailable);
         }
@@ -236,8 +236,9 @@ private:
             LOG_WARNING("Application", "Using default configuration");
         }
 
-        // Initialize authentication service
-        m_auth_service = std::make_shared<services::PlexAuthStorage>();
+        // Initialize authentication service (PlexAuth needs HttpClient)
+        std::shared_ptr<services::HttpClient> http_client = services::create_http_client();
+        m_auth_service = std::make_shared<services::PlexAuth>(http_client);
         if (!m_auth_service) {
             LOG_ERROR("Application", "Failed to create authentication service");
             m_state = ApplicationState::Error;
@@ -263,90 +264,74 @@ private:
         LOG_DEBUG("Application", "UI service initialized");
     }
 
-    void initialize_media_service() {
+    void initialize_plex_service() {
         const auto& config = m_config_service->get();
 
-        // Check if any media service is enabled
         if (!config.plex.enabled) {
-            LOG_INFO("Application", "No media services enabled in configuration");
+            LOG_INFO("Application", "Plex disabled in configuration");
             return;
         }
 
-        // Initialize Plex if enabled
-        if (config.plex.enabled) {
-            LOG_DEBUG("Application", "Initializing Plex media service");
+        LOG_DEBUG("Application", "Initializing Plex");
 
-            try {
-                // Create HTTP client
-                std::shared_ptr<services::HttpClient> http_client = services::create_http_client();
+        try {
+            std::shared_ptr<services::HttpClient> http_client = services::create_http_client();
 
-                // Create Plex service components
-                auto authenticator = std::make_shared<services::PlexAuthenticator>(
-                    http_client, m_auth_service, nullptr);
-                auto connection_manager = std::make_shared<services::PlexConnectionManager>(
-                    http_client, m_auth_service);
+            // Create SSE manager
+            auto sse = std::make_shared<services::PlexSSE>(http_client, m_auth_service);
 
-                // Create unified Plex client (combines media fetching, caching, session management)
-                auto client = std::make_shared<services::PlexClient>(http_client);
+            // Create Plex service
+            m_plex_service = std::make_unique<services::Plex>(
+                m_auth_service, sse, http_client, m_config_service
+            );
 
-                // Add TMDB service if configured
-                if (!config.tmdb_access_token.empty()) {
-                    client->add_metadata_service(
-                        std::make_unique<services::TMDBService>(http_client, config.tmdb_access_token));
-                }
-
-                // Add Jikan service for anime metadata
-                client->add_metadata_service(std::make_unique<services::JikanService>(http_client));
-
-                // Create and configure the service
-                m_media_service = std::make_unique<services::PlexService>(
-                    authenticator, connection_manager, client,
-                    http_client, m_config_service, m_auth_service
-                );
-
-                m_media_service->set_event_bus(m_event_bus);
-                LOG_DEBUG("Application", "Plex media service initialized with unified client");
-            } catch (const std::exception& e) {
-                LOG_ERROR("Application", "Plex media service creation failed: " + std::string(e.what()));
+            // Add metadata services
+            if (!config.tmdb_access_token.empty()) {
+                m_plex_service->add_metadata_service(
+                    std::make_unique<services::TMDB>(http_client, config.tmdb_access_token));
             }
-        }
+            m_plex_service->add_metadata_service(std::make_unique<services::Jikan>(http_client));
 
-        // Future: Initialize other media services here (Jellyfin, Emby, etc.)
+            m_plex_service->set_event_bus(m_event_bus);
+            LOG_DEBUG("Application", "Plex initialized");
+        } catch (const std::exception& e) {
+            LOG_ERROR("Application", "Plex initialization failed: " + std::string(e.what()));
+        }
     }
 
-    void initialize_presence_service() {
+    void initialize_discord_service() {
         const auto& config = m_config_service->get();
 
-        if (!config.presence.enabled) {
-            LOG_INFO("Application", "Presence service disabled in configuration");
+        if (!config.discord.enabled) {
+            LOG_INFO("Application", "Discord disabled in configuration");
             return;
         }
 
         auto service_result = services::DiscordPresenceService::create(config);
 
         if (service_result) {
-            m_presence_service = std::move(*service_result);
+            m_discord_service = std::move(*service_result);
 
             // Configure the service
-            m_presence_service->set_show_buttons(config.presence.discord.show_buttons);
-            m_presence_service->set_show_progress(config.presence.discord.show_progress);
-            m_presence_service->set_show_artwork(config.presence.discord.show_artwork);
+            m_discord_service->set_show_buttons(config.discord.discord.show_buttons);
+            m_discord_service->set_show_progress(config.discord.discord.show_progress);
+            m_discord_service->set_show_artwork(config.discord.discord.show_artwork);
 
             // Set format templates
-            m_presence_service->set_tv_details_format(config.presence.discord.tv_details_format);
-            m_presence_service->set_tv_state_format(config.presence.discord.tv_state_format);
-            m_presence_service->set_tv_large_image_text_format(config.presence.discord.tv_large_image_text_format);
-            m_presence_service->set_movie_details_format(config.presence.discord.movie_details_format);
-            m_presence_service->set_movie_state_format(config.presence.discord.movie_state_format);
-            m_presence_service->set_movie_large_image_text_format(config.presence.discord.movie_large_image_text_format);
-            m_presence_service->set_music_details_format(config.presence.discord.music_details_format);
-            m_presence_service->set_music_state_format(config.presence.discord.music_state_format);
-            m_presence_service->set_music_large_image_text_format(config.presence.discord.music_large_image_text_format);
+            m_discord_service->set_tv_details_format(config.discord.discord.tv_details_format);
+            m_discord_service->set_tv_state_format(config.discord.discord.tv_state_format);
+            m_discord_service->set_tv_large_image_text_format(config.discord.discord.tv_large_image_text_format);
+            m_discord_service->set_movie_details_format(config.discord.discord.movie_details_format);
+            m_discord_service->set_movie_state_format(config.discord.discord.movie_state_format);
+            m_discord_service->set_movie_large_image_text_format(config.discord.discord.movie_large_image_text_format);
+            m_discord_service->set_music_details_format(config.discord.discord.music_details_format);
+            m_discord_service->set_music_state_format(config.discord.discord.music_state_format);
+            m_discord_service->set_music_large_image_text_format(config.discord.discord.music_large_image_text_format);
 
-            m_presence_service->set_event_bus(m_event_bus);
-            LOG_DEBUG("Application", "Presence service initialized");
+            m_discord_service->set_event_bus(m_event_bus);
+            LOG_DEBUG("Application", "Discord initialized");
         } else {
-            LOG_ERROR("Application", "Presence service creation failed");
+            LOG_ERROR("Application", "Discord initialization failed");
         }
     }
 
@@ -366,7 +351,7 @@ private:
     }
 
     void connect_services() {
-        if (!m_media_service || !m_presence_service) {
+        if (!m_plex_service || !m_discord_service) {
             return;
         }
 
@@ -376,8 +361,8 @@ private:
                 // Update Discord for Started and Updated states
                 if (event.change_type != events::MediaSessionStateChanged::ChangeType::Ended) {
                     if (event.current_info) {
-                        LOG_DEBUG("Application", "Updating Discord presence");
-                        if (!m_presence_service->update_from_media(*event.current_info)) {
+                        LOG_DEBUG("Application", "Updating Discord");
+                        if (!m_discord_service->update_from_media(*event.current_info)) {
                             LOG_WARNING("Application", "Discord update failed");
                         }
                     }
@@ -405,25 +390,25 @@ private:
     }
 
     void start_services() {
-        if (m_media_service) {
+        if (m_plex_service) {
             m_service_futures.push_back(
                 std::async(std::launch::async, [this]() {
-                    if (!m_media_service->start()) {
-                        LOG_WARNING("Application", "Media service start failed");
+                    if (!m_plex_service->start()) {
+                        LOG_WARNING("Application", "Plex start failed");
                     } else {
-                        LOG_DEBUG("Application", "Media service started");
+                        LOG_DEBUG("Application", "Plex started");
                     }
                 })
             );
         }
 
-        if (m_presence_service) {
+        if (m_discord_service) {
             m_service_futures.push_back(
                 std::async(std::launch::async, [this]() {
-                    if (!m_presence_service->initialize()) {
-                        LOG_WARNING("Application", "Presence service start failed");
+                    if (!m_discord_service->initialize()) {
+                        LOG_WARNING("Application", "Discord start failed");
                     } else {
-                        LOG_DEBUG("Application", "Presence service started");
+                        LOG_DEBUG("Application", "Discord started");
                     }
                 })
             );
@@ -446,68 +431,66 @@ private:
     }
 
     void handle_service_config_changes(const ApplicationConfig& old_config, const ApplicationConfig& new_config) {
-        // Handle Plex media service enable/disable
+        // Handle Plex enable/disable
         if (old_config.plex.enabled != new_config.plex.enabled) {
             if (new_config.plex.enabled) {
-                LOG_INFO("Application", "Enabling Plex media service");
-                initialize_media_service();
-                if (m_media_service && m_running) {
+                LOG_INFO("Application", "Enabling Plex");
+                initialize_plex_service();
+                if (m_plex_service && m_running) {
                     m_service_futures.push_back(
                         std::async(std::launch::async, [this]() {
-                            if (!m_media_service->start()) {
-                                LOG_WARNING("Application", "Plex service start failed");
+                            if (!m_plex_service->start()) {
+                                LOG_WARNING("Application", "Plex start failed");
                             } else {
-                                LOG_INFO("Application", "Plex service started");
+                                LOG_INFO("Application", "Plex started");
                             }
                         })
                     );
                 }
             } else {
-                LOG_INFO("Application", "Disabling Plex media service");
-                if (m_media_service) {
-                    m_media_service->stop();
-                    m_media_service.reset();
+                LOG_INFO("Application", "Disabling Plex");
+                if (m_plex_service) {
+                    m_plex_service->stop();
+                    m_plex_service.reset();
                 }
             }
         }
 
-        // Future: Handle other media services here (Jellyfin, Emby, etc.)
-
-        // Handle presence service enable/disable
-        if (old_config.presence.enabled != new_config.presence.enabled) {
-            if (new_config.presence.enabled) {
-                LOG_INFO("Application", "Enabling presence service");
-                initialize_presence_service();
-                if (m_presence_service && m_running) {
+        // Handle Discord enable/disable
+        if (old_config.discord.enabled != new_config.discord.enabled) {
+            if (new_config.discord.enabled) {
+                LOG_INFO("Application", "Enabling Discord");
+                initialize_discord_service();
+                if (m_discord_service && m_running) {
                     m_service_futures.push_back(
                         std::async(std::launch::async, [this]() {
-                            if (!m_presence_service->initialize()) {
-                                LOG_WARNING("Application", "Presence service start failed");
+                            if (!m_discord_service->initialize()) {
+                                LOG_WARNING("Application", "Discord start failed");
                             } else {
-                                LOG_INFO("Application", "Presence service started");
+                                LOG_INFO("Application", "Discord started");
                             }
                         })
                     );
                 }
             } else {
-                LOG_INFO("Application", "Disabling presence service");
-                if (m_presence_service) {
-                    m_presence_service->shutdown();
-                    m_presence_service.reset();
+                LOG_INFO("Application", "Disabling Discord");
+                if (m_discord_service) {
+                    m_discord_service->shutdown();
+                    m_discord_service.reset();
                 }
             }
         }
     }
 
     void stop_services() {
-        if (m_media_service) {
-            m_media_service->stop();
-            LOG_INFO("Application", "Media service stopped");
+        if (m_plex_service) {
+            m_plex_service->stop();
+            LOG_INFO("Application", "Plex stopped");
         }
 
-        if (m_presence_service) {
-            m_presence_service->shutdown();
-            LOG_INFO("Application", "Presence service stopped");
+        if (m_discord_service) {
+            m_discord_service->shutdown();
+            LOG_INFO("Application", "Discord stopped");
         }
 
         if (m_system_tray) {
@@ -638,9 +621,9 @@ private:
     std::atomic<bool> m_shutdown_requested;
 
     std::shared_ptr<ConfigManager> m_config_service;
-    std::shared_ptr<services::PlexAuthStorage> m_auth_service;
-    std::unique_ptr<services::PlexService> m_media_service;
-    std::unique_ptr<services::DiscordPresenceService> m_presence_service;
+    std::shared_ptr<services::PlexAuth> m_auth_service;
+    std::unique_ptr<services::Plex> m_plex_service;
+    std::unique_ptr<services::DiscordPresenceService> m_discord_service;
     std::unique_ptr<services::GitHubUpdateService> m_update_service;
     std::unique_ptr<platform::UiService> m_ui_service;
     std::unique_ptr<platform::SystemTray> m_system_tray;
