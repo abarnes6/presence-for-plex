@@ -82,10 +82,7 @@ public:
             content << "# update_interval: Seconds between presence updates (1-300)\n";
             content << "# details_format: Custom format for details line (use tokens like {title})\n";
             content << "# state_format: Custom format for state line (use tokens like {state})\n\n";
-            content << "# Media Services Configuration\n";
-            content << "# Configure each media service separately under media_services:\n";
-            content << "#\n";
-            content << "# Plex Media Server (media_services.plex)\n";
+            content << "# Plex Configuration\n";
             content << "# enabled: Enable/disable Plex media service\n";
             content << "# auto_discover: Automatically find local Plex servers\n";
             content << "# poll_interval: Seconds between server status checks (1-60)\n";
@@ -93,9 +90,7 @@ public:
             content << "# server_urls: Manual server URLs (optional)\n";
             content << "# enable_movies: Show presence for movies (default: true)\n";
             content << "# enable_tv_shows: Show presence for TV shows (default: true)\n";
-            content << "# enable_music: Show presence for music (default: true)\n";
-            content << "#\n";
-            content << "# Future services (Jellyfin, Emby, etc.) will be added here\n\n";
+            content << "# enable_music: Show presence for music (default: true)\n\n";
             content << "# External Services\n";
             content << "# tmdb.access_token: TMDB API key for enhanced metadata\n";
             content << "# tmdb.enabled: Enable/disable TMDB integration\n";

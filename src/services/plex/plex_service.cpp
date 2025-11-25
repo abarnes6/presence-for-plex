@@ -123,7 +123,7 @@ std::expected<void, core::PlexError> PlexService::start() {
         }
 
         // Discover servers from Plex API if auto-discovery is enabled
-        if (m_config_service && m_config_service->get().media_services.plex.auto_discover) {
+        if (m_config_service && m_config_service->get().plex.auto_discover) {
             LOG_INFO("PlexService", "Auto-discovery enabled, discovering servers from Plex API");
             auto discovery_result = discover_servers(token);
             if (!discovery_result) {
@@ -135,7 +135,7 @@ std::expected<void, core::PlexError> PlexService::start() {
 
         // Add manual servers from config
         if (m_config_service) {
-            const auto& manual_urls = m_config_service->get().media_services.plex.server_urls;
+            const auto& manual_urls = m_config_service->get().plex.server_urls;
             if (!manual_urls.empty()) {
                 LOG_INFO("PlexService", "Adding " + std::to_string(manual_urls.size()) + " manual server(s)");
                 for (const auto& url : manual_urls) {
@@ -519,11 +519,11 @@ bool PlexService::is_media_type_enabled(core::MediaType type) const {
 
     switch (type) {
         case core::MediaType::Movie:
-            return config.media_services.plex.enable_movies;
+            return config.plex.enable_movies;
         case core::MediaType::TVShow:
-            return config.media_services.plex.enable_tv_shows;
+            return config.plex.enable_tv_shows;
         case core::MediaType::Music:
-            return config.media_services.plex.enable_music;
+            return config.plex.enable_music;
         case core::MediaType::Unknown:
         default:
             return true;

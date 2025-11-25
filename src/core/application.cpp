@@ -267,13 +267,13 @@ private:
         const auto& config = m_config_service->get();
 
         // Check if any media service is enabled
-        if (!config.media_services.plex.enabled) {
+        if (!config.plex.enabled) {
             LOG_INFO("Application", "No media services enabled in configuration");
             return;
         }
 
         // Initialize Plex if enabled
-        if (config.media_services.plex.enabled) {
+        if (config.plex.enabled) {
             LOG_DEBUG("Application", "Initializing Plex media service");
 
             try {
@@ -447,8 +447,8 @@ private:
 
     void handle_service_config_changes(const ApplicationConfig& old_config, const ApplicationConfig& new_config) {
         // Handle Plex media service enable/disable
-        if (old_config.media_services.plex.enabled != new_config.media_services.plex.enabled) {
-            if (new_config.media_services.plex.enabled) {
+        if (old_config.plex.enabled != new_config.plex.enabled) {
+            if (new_config.plex.enabled) {
                 LOG_INFO("Application", "Enabling Plex media service");
                 initialize_media_service();
                 if (m_media_service && m_running) {

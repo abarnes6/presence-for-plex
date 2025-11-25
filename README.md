@@ -45,16 +45,6 @@ cmake --build build/release
 
 Build distributable packages for your platform:
 
-**Quick Method:**
-```bash
-# Linux/macOS
-./scripts/package.sh
-
-# Windows
-scripts\package.bat
-```
-
-**Manual Method:**
 ```bash
 # After building, run CPack
 cd build/release
@@ -69,7 +59,7 @@ cpack -C Release -G "DragNDrop;ZIP"
 cpack -C Release -G "DEB;RPM;TGZ"
 ```
 
-Packages will be generated in `build/release/packages/`. See [PACKAGING.md](PACKAGING.md) for detailed packaging documentation.
+Packages will be generated in `build/release/packages/`.
 
 ## Troubleshooting
 

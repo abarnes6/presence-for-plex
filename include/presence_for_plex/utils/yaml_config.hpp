@@ -24,13 +24,11 @@ public:
 
     // Partial updates
     static void merge_presence_config(YAML::Node& node, const core::PresenceServiceConfig& config);
-    static void merge_plex_config(YAML::Node& node, const core::PlexServiceConfig& config);
-    static void merge_media_services_config(YAML::Node& node, const core::MediaServicesConfig& config);
+    static void merge_plex_config(YAML::Node& node, const core::PlexConfig& config);
 
 private:
     static core::PresenceServiceConfig parse_presence_config(const YAML::Node& node);
-    static core::PlexServiceConfig parse_plex_config(const YAML::Node& node);
-    static core::MediaServicesConfig parse_media_services_config(const YAML::Node& node);
+    static core::PlexConfig parse_plex_config(const YAML::Node& node);
 };
 
 } // namespace utils

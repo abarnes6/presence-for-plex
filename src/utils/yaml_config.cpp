@@ -60,10 +60,8 @@ core::ApplicationConfig YamlConfigHelper::from_yaml(const YAML::Node& node) {
         config.presence = parse_presence_config(node["presence"] ? node["presence"] : node["discord"]);
     }
 
-    if (node["media_services"]) {
-        config.media_services = parse_media_services_config(node["media_services"]);
-    } else if (node["plex"]) {
-        config.media_services.plex = parse_plex_config(node["plex"]);
+    if (node["plex"]) {
+        config.plex = parse_plex_config(node["plex"]);
     }
 
     if (node["tmdb"]) {
@@ -89,7 +87,7 @@ YAML::Node YamlConfigHelper::to_yaml(const core::ApplicationConfig& config) {
     node["start_at_boot"] = config.start_at_boot;
 
     merge_presence_config(node, config.presence);
-    merge_media_services_config(node, config.media_services);
+    merge_plex_config(node, config.plex);
 
     node["tmdb"]["access_token"] = config.tmdb_access_token;
     node["tmdb"]["enabled"] = config.enable_tmdb;
@@ -202,8 +200,8 @@ core::PresenceServiceConfig YamlConfigHelper::parse_presence_config(const YAML::
     return config;
 }
 
-core::PlexServiceConfig YamlConfigHelper::parse_plex_config(const YAML::Node& node) {
-    core::PlexServiceConfig config;
+core::PlexConfig YamlConfigHelper::parse_plex_config(const YAML::Node& node) {
+    core::PlexConfig config;
 
     if (node["enabled"]) {
         config.enabled = node["enabled"].as<bool>();
@@ -234,36 +232,17 @@ core::PlexServiceConfig YamlConfigHelper::parse_plex_config(const YAML::Node& no
     return config;
 }
 
-core::MediaServicesConfig YamlConfigHelper::parse_media_services_config(const YAML::Node& node) {
-    core::MediaServicesConfig config;
+void YamlConfigHelper::merge_plex_config(YAML::Node& node, const core::PlexConfig& config) {
+    node["plex"]["enabled"] = config.enabled;
+    node["plex"]["auto_discover"] = config.auto_discover;
 
-    if (node["plex"]) {
-        config.plex = parse_plex_config(node["plex"]);
-    }
-
-    // Future: Parse other service configs here
-    // if (node["jellyfin"]) { config.jellyfin = parse_jellyfin_config(node["jellyfin"]); }
-
-    return config;
-}
-
-void YamlConfigHelper::merge_plex_config(YAML::Node& node, const core::PlexServiceConfig& config) {
-    node["enabled"] = config.enabled;
-    node["auto_discover"] = config.auto_discover;
-
-    node["enable_movies"] = config.enable_movies;
-    node["enable_tv_shows"] = config.enable_tv_shows;
-    node["enable_music"] = config.enable_music;
+    node["plex"]["enable_movies"] = config.enable_movies;
+    node["plex"]["enable_tv_shows"] = config.enable_tv_shows;
+    node["plex"]["enable_music"] = config.enable_music;
 
     if (!config.server_urls.empty()) {
-        node["server_urls"] = config.server_urls;
+        node["plex"]["server_urls"] = config.server_urls;
     }
-}
-
-void YamlConfigHelper::merge_media_services_config(YAML::Node& node, const core::MediaServicesConfig& config) {
-    YAML::Node plex_node = node["media_services"]["plex"];
-    merge_plex_config(plex_node, config.plex);
-    node["media_services"]["plex"] = plex_node;
 }
 
 } // namespace utils

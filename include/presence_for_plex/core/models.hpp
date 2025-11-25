@@ -7,7 +7,6 @@
 #include <vector>
 #include <atomic>
 #include <variant>
-#include <system_error>
 #include <functional>
 #include <expected>
 
@@ -40,20 +39,6 @@ enum class ConfigError {
     InvalidFormat,
     ValidationError,
     PermissionDenied
-};
-
-// ============================================================================
-// Service type identifiers
-// ============================================================================
-
-enum class MediaServiceType {
-    Plex,
-    // Future: Jellyfin, Emby, etc.
-};
-
-enum class PresenceServiceType {
-    Discord,
-    // Future: Slack, Teams, etc.
 };
 
 // ============================================================================
@@ -253,13 +238,11 @@ struct DiscordConfig {
 };
 
 struct PresenceServiceConfig {
-    PresenceServiceType type = PresenceServiceType::Discord;
     bool enabled = true;
     DiscordConfig discord;
 };
 
-// Plex-specific configuration
-struct PlexServiceConfig {
+struct PlexConfig {
     bool enabled = true;
     std::vector<std::string> server_urls;
     std::chrono::seconds poll_interval{5};
@@ -272,14 +255,9 @@ struct PlexServiceConfig {
     bool enable_music = true;
 };
 
-// Container for all media service configurations
-struct MediaServicesConfig {
-    PlexServiceConfig plex;
-};
-
 struct ApplicationConfig {
     PresenceServiceConfig presence;
-    MediaServicesConfig media_services;
+    PlexConfig plex;
 
     presence_for_plex::utils::LogLevel log_level = presence_for_plex::utils::LogLevel::Info;
     bool start_at_boot = false;
@@ -299,8 +277,6 @@ struct ApplicationConfig {
 // Event system types
 template<typename T>
 using EventCallback = std::function<void(const T&)>;
-
-using ErrorCallback = std::function<void(std::error_code, const std::string&)>;
 
 } // namespace core
 } // namespace presence_for_plex

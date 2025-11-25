@@ -73,7 +73,7 @@ namespace {
         return logger;
     }
 
-    bool check_single_instance() {
+    std::unique_ptr<presence_for_plex::platform::SingleInstanceManager> acquire_single_instance() {
         auto single_instance = presence_for_plex::platform::SingleInstanceManager::create("PresenceForPlex");
         auto result = single_instance->try_acquire_instance("PresenceForPlex");
 
@@ -86,11 +86,11 @@ namespace {
 #else
             std::cerr << message << std::endl;
 #endif
-            return false;
+            return nullptr;
         }
 
         LOG_DEBUG("Main", "Single instance lock acquired");
-        return true;
+        return single_instance;
     }
 
 #ifdef USE_QT_UI
@@ -139,12 +139,10 @@ int main(int argc, char* argv[]) {
     register_signal_handlers();
 
     try {
-        if (!check_single_instance()) {
+        auto single_instance = acquire_single_instance();
+        if (!single_instance) {
             return 1;
         }
-
-        auto single_instance = presence_for_plex::platform::SingleInstanceManager::create("PresenceForPlex");
-        (void)single_instance->try_acquire_instance("PresenceForPlex");
 
         LOG_DEBUG("Main", "Creating application...");
         auto app_result = presence_for_plex::core::create_application();

@@ -528,16 +528,16 @@ void QtSettingsDialog::load_config(const core::ApplicationConfig& config) {
     m_music_state_format_edit->setText(QString::fromStdString(config.presence.discord.music_state_format));
     m_music_large_image_text_format_edit->setText(QString::fromStdString(config.presence.discord.music_large_image_text_format));
 
-    m_plex_enabled_check->setChecked(config.media_services.plex.enabled);
-    m_auto_discover_check->setChecked(config.media_services.plex.auto_discover);
+    m_plex_enabled_check->setChecked(config.plex.enabled);
+    m_auto_discover_check->setChecked(config.plex.auto_discover);
 
-    m_enable_movies_check->setChecked(config.media_services.plex.enable_movies);
-    m_enable_tv_shows_check->setChecked(config.media_services.plex.enable_tv_shows);
-    m_enable_music_check->setChecked(config.media_services.plex.enable_music);
+    m_enable_movies_check->setChecked(config.plex.enable_movies);
+    m_enable_tv_shows_check->setChecked(config.plex.enable_tv_shows);
+    m_enable_music_check->setChecked(config.plex.enable_music);
 
-    if (!config.media_services.plex.server_urls.empty()) {
+    if (!config.plex.server_urls.empty()) {
         QString urls;
-        for (const auto& url : config.media_services.plex.server_urls) {
+        for (const auto& url : config.plex.server_urls) {
             urls += QString::fromStdString(url) + "\n";
         }
         m_server_urls_edit->setPlainText(urls.trimmed());
@@ -577,21 +577,21 @@ core::ApplicationConfig QtSettingsDialog::get_config() const {
     config.presence.discord.music_state_format = m_music_state_format_edit->text().toStdString();
     config.presence.discord.music_large_image_text_format = m_music_large_image_text_format_edit->text().toStdString();
 
-    config.media_services.plex.enabled = m_plex_enabled_check->isChecked();
-    config.media_services.plex.auto_discover = m_auto_discover_check->isChecked();
+    config.plex.enabled = m_plex_enabled_check->isChecked();
+    config.plex.auto_discover = m_auto_discover_check->isChecked();
 
-    config.media_services.plex.enable_movies = m_enable_movies_check->isChecked();
-    config.media_services.plex.enable_tv_shows = m_enable_tv_shows_check->isChecked();
-    config.media_services.plex.enable_music = m_enable_music_check->isChecked();
+    config.plex.enable_movies = m_enable_movies_check->isChecked();
+    config.plex.enable_tv_shows = m_enable_tv_shows_check->isChecked();
+    config.plex.enable_music = m_enable_music_check->isChecked();
 
-    config.media_services.plex.server_urls.clear();
+    config.plex.server_urls.clear();
     QString urls_text = m_server_urls_edit->toPlainText();
     if (!urls_text.isEmpty()) {
         QStringList urls = urls_text.split('\n', Qt::SkipEmptyParts);
         for (const auto& url : urls) {
             QString trimmed = url.trimmed();
             if (!trimmed.isEmpty()) {
-                config.media_services.plex.server_urls.push_back(trimmed.toStdString());
+                config.plex.server_urls.push_back(trimmed.toStdString());
             }
         }
     }

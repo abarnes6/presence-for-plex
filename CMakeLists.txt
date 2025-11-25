@@ -1,40 +1,22 @@
 cmake_minimum_required(VERSION 3.25)
 
-# Project configuration
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 project(PresenceForPlex VERSION 0.4.0 LANGUAGES CXX)
 
-# Set C++ standard
+# C++ standard
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# Enable modern CMake features
-set(CMAKE_SUPPRESS_REGENERATION true)
-set(CMAKE_BUILD_WITH_INSTALL_RPATH TRUE CACHE BOOL "Build with install RPATH")
-
-# Enable Hot Reload for MSVC compilers if supported
-if(POLICY CMP0141)
-    cmake_policy(SET CMP0141 NEW)
-    set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<IF:$<AND:$<C_COMPILER_ID:MSVC>,$<CXX_COMPILER_ID:MSVC>>,$<$<CONFIG:Debug,RelWithDebInfo>:EditAndContinue>,$<$<CONFIG:Debug,RelWithDebInfo>:ProgramDatabase>>")
-endif()
-
-# Include custom CMake modules
-list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules")
-
-# Options
-option(BUILD_TESTING "Build tests" OFF)
-option(USE_DYNAMIC_LINKS "Use system libraries instead of static linking" OFF)
-option(ENABLE_SANITIZERS "Enable sanitizers in debug builds" OFF)
-
-# Qt configuration (always enabled for UI)
+# Qt configuration
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
-# Platform-specific Qt settings
+# Platform settings
 if(APPLE)
     set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0")
-    set(MACOSX_BUNDLE TRUE)
 elseif(LINUX)
     set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 endif()
@@ -84,6 +66,7 @@ if(USE_QT_UI)
         src/platform/qt/qt_ui_service.cpp
         src/platform/qt/qt_system_tray.cpp
         src/platform/qt/qt_settings_dialog.cpp
+        include/presence_for_plex/platform/qt/qt_settings_dialog.hpp
     )
 endif()
 
@@ -96,9 +79,6 @@ set(UTILS_SOURCES
     src/utils/json_helper.cpp
     src/utils/plex_headers_builder.cpp
 )
-
-# Collect all headers
-file(GLOB_RECURSE HEADERS "include/presence_for_plex/*.hpp")
 
 # Main executable sources
 set(ALL_SOURCES
@@ -122,11 +102,11 @@ endif()
 
 # Create the main executable
 if(APPLE)
-    add_executable(PresenceForPlex MACOSX_BUNDLE ${ALL_SOURCES} ${HEADERS})
+    add_executable(PresenceForPlex MACOSX_BUNDLE ${ALL_SOURCES})
 elseif(WIN32)
-    add_executable(PresenceForPlex WIN32 ${ALL_SOURCES} ${HEADERS})
+    add_executable(PresenceForPlex WIN32 ${ALL_SOURCES})
 else()
-    add_executable(PresenceForPlex ${ALL_SOURCES} ${HEADERS})
+    add_executable(PresenceForPlex ${ALL_SOURCES})
 endif()
 
 # Include directories
@@ -271,7 +251,3 @@ endif()
 
 # Packaging configuration
 include(cmake/packaging.cmake)
-
-
-# Export compile commands for IDE integration
-set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
