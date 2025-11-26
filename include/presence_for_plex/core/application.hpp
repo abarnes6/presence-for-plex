@@ -15,7 +15,7 @@ namespace core {
 
 namespace services {
     class Plex;
-    class DiscordPresenceService;
+    class Discord;
     class PlexAuth;
 }
 
@@ -71,7 +71,7 @@ public:
 
     // Service access
     virtual std::expected<std::reference_wrapper<services::Plex>, ApplicationError> get_plex_service() = 0;
-    virtual std::expected<std::reference_wrapper<services::DiscordPresenceService>, ApplicationError> get_discord_service() = 0;
+    virtual std::expected<std::reference_wrapper<services::Discord>, ApplicationError> get_discord_service() = 0;
     virtual std::expected<std::reference_wrapper<platform::UiService>, ApplicationError> get_ui_service() = 0;
     virtual std::expected<std::shared_ptr<ConfigManager>, ApplicationError> get_configuration_service() = 0;
     virtual std::expected<std::shared_ptr<const ConfigManager>, ApplicationError> get_configuration_service() const = 0;

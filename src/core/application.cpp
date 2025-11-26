@@ -6,7 +6,7 @@
 #include "presence_for_plex/services/plex/plex_sse.hpp"
 #include "presence_for_plex/services/plex/metadata/tmdb.hpp"
 #include "presence_for_plex/services/plex/metadata/jikan.hpp"
-#include "presence_for_plex/services/discord/discord_presence_service.hpp"
+#include "presence_for_plex/services/discord/discord.hpp"
 #include "presence_for_plex/services/network/http_client.hpp"
 #include "presence_for_plex/services/update_service.hpp"
 #include "presence_for_plex/utils/logger.hpp"
@@ -153,7 +153,7 @@ public:
         return std::ref(*m_plex_service);
     }
 
-    std::expected<std::reference_wrapper<services::DiscordPresenceService>, ApplicationError> get_discord_service() override {
+    std::expected<std::reference_wrapper<services::Discord>, ApplicationError> get_discord_service() override {
         if (!m_discord_service) {
             return std::unexpected(ApplicationError::ServiceUnavailable);
         }
@@ -307,7 +307,7 @@ private:
             return;
         }
 
-        auto service_result = services::DiscordPresenceService::create(config);
+        auto service_result = services::Discord::create(config);
 
         if (service_result) {
             m_discord_service = std::move(*service_result);
@@ -623,7 +623,7 @@ private:
     std::shared_ptr<ConfigManager> m_config_service;
     std::shared_ptr<services::PlexAuth> m_auth_service;
     std::unique_ptr<services::Plex> m_plex_service;
-    std::unique_ptr<services::DiscordPresenceService> m_discord_service;
+    std::unique_ptr<services::Discord> m_discord_service;
     std::unique_ptr<services::GitHubUpdateService> m_update_service;
     std::unique_ptr<platform::UiService> m_ui_service;
     std::unique_ptr<platform::SystemTray> m_system_tray;

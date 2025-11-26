@@ -45,10 +45,9 @@ set(SERVICES_SOURCES
     src/services/plex/plex_sse.cpp
     src/services/plex/metadata/tmdb.cpp
     src/services/plex/metadata/jikan.cpp
+    src/services/discord/discord.cpp
     src/services/discord/discord_ipc.cpp
-    src/services/discord/rate_limiter.cpp
-    src/services/discord/connection_manager.cpp
-    src/services/discord/discord_presence_service.cpp
+    src/services/discord/presence_builder.cpp
     src/services/network/http_client.cpp
     src/services/network/curl_http_client.cpp
     src/services/network/sse_client.cpp
