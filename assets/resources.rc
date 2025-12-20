@@ -1,2 +1,0 @@
-#define IDI_APPICON 101
-IDI_APPICON ICON "icon.ico"
