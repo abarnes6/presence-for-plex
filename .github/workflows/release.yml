@@ -19,6 +19,7 @@ jobs:
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             artifact: presence-for-plex.exe
+            build_msi: true
           - os: macos-latest
             target: x86_64-apple-darwin
             artifact: presence-for-plex
@@ -29,7 +30,7 @@ jobs:
 
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libglib2.0-dev
+        run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -39,11 +40,19 @@ jobs:
       - name: Build
         run: cargo build --release --target ${{ matrix.target }}
 
+      - name: Build MSI installer
+        if: matrix.build_msi
+        run: |
+          cargo install cargo-wix
+          cargo wix --no-build --nocapture --target ${{ matrix.target }}
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.target }}
-          path: target/${{ matrix.target }}/release/${{ matrix.artifact }}
+          path: |
+            target/${{ matrix.target }}/release/${{ matrix.artifact }}
+            target/wix/*.msi
 
   release:
     needs: build
