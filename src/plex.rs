@@ -61,7 +61,7 @@ pub struct MediaInfo {
     pub mal_id: Option<String>,
     pub art_url: Option<String>,
     grandparent_key: Option<String>,
-    pub rating_key: Option<String>,
+    key: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -95,7 +95,7 @@ impl PlaybackTracker {
     }
 
     fn is_duplicate(&self, info: &MediaInfo) -> bool {
-        if self.rating_key != info.rating_key || self.state != Some(info.state.clone()) {
+        if self.rating_key != info.key || self.state != Some(info.state.clone()) {
             return false;
         }
 
@@ -108,7 +108,7 @@ impl PlaybackTracker {
     }
 
     fn update(&mut self, info: &MediaInfo) {
-        self.rating_key = info.rating_key.clone();
+        self.rating_key = info.key.clone();
         self.state = Some(info.state.clone());
         self.view_offset = Some(info.view_offset_ms);
     }
@@ -442,8 +442,14 @@ impl PlexClient {
 
         let mut info = Self::parse_session(meta)?;
 
-        if info.media_type == MediaType::Episode {
-            Self::enrich_episode_metadata(client, server_uri, access_token, &mut info).await;
+        match info.media_type {
+            MediaType::Episode => {
+                Self::enrich_episode_metadata(client, server_uri, access_token, &mut info).await;
+            }
+            MediaType::Movie => {
+                Self::enrich_movie_metadata(client, server_uri, access_token, &mut info).await;
+            }
+            _ => {}
         }
 
         Some(info)
@@ -472,6 +478,29 @@ impl PlexClient {
         }
 
         info.genres = show_meta.genres.into_iter().map(|g| g.tag).collect();
+    }
+
+    async fn enrich_movie_metadata(
+        client: &Client,
+        server_uri: &str,
+        access_token: &str,
+        info: &mut MediaInfo,
+    ) {
+        let Some(key) = info.key.take() else {
+            return;
+        };
+
+        let Some(movie_meta) = Self::fetch_item_metadata(client, server_uri, access_token, &key).await else {
+            return;
+        };
+
+        for guid in &movie_meta.guids {
+            if let Some(id) = guid.id.strip_prefix("imdb://") {
+                info.imdb_id = Some(id.to_string());
+            } else if let Some(id) = guid.id.strip_prefix("tmdb://") {
+                info.tmdb_id = Some(id.to_string());
+            }
+        }
     }
 
     fn parse_session(meta: SessionMetadata) -> Option<MediaInfo> {
@@ -509,7 +538,7 @@ impl PlexClient {
             mal_id: None,
             art_url: None,
             grandparent_key: meta.grandparent_key,
-            rating_key: meta.rating_key,
+            key: meta.key,
         })
     }
 
@@ -777,7 +806,7 @@ struct SessionMetadata {
     parent_index: Option<u32>,
     index: Option<u32>,
     parent_title: Option<String>,
-    #[serde(default)]
+    #[serde(rename = "Genre", default)]
     genre: Vec<GenreTag>,
     #[serde(rename = "Player")]
     player: Option<PlayerInfo>,
@@ -787,7 +816,7 @@ struct SessionMetadata {
     guids: Vec<GuidTag>,
     #[serde(rename = "grandparentKey")]
     grandparent_key: Option<String>,
-    rating_key: Option<String>,
+    key: Option<String>,
 }
 
 #[derive(Deserialize)]

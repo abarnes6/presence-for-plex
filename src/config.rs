@@ -87,7 +87,7 @@ impl Config {
         Self::app_dir().join("presence-for-plex.log")
     }
 
-    fn app_dir() -> PathBuf {
+    pub fn app_dir() -> PathBuf {
         dirs::config_dir()
             .unwrap_or_else(|| PathBuf::from("."))
             .join("presence-for-plex")

@@ -7,6 +7,7 @@ mod tray;
 
 use config::Config;
 use discord::{ActivityType, Button, DiscordClient, Presence};
+use fs2::FileExt;
 use log::{error, info, warn};
 use plex::{MediaInfo, MediaType, PlaybackState, PlexClient, APP_NAME, SSE_RECONNECT_DELAY_SECS};
 use simplelog::{CombinedLogger, Config as LogConfig, LevelFilter, SimpleLogger, WriteLogger};
@@ -27,6 +28,24 @@ pub enum AppMessage {
 }
 
 fn main() {
+    let lock_path = Config::app_dir().join("presence-for-plex.lock");
+    if let Some(parent) = lock_path.parent() {
+        std::fs::create_dir_all(parent).ok();
+    }
+
+    let lock_file = match File::create(&lock_path) {
+        Ok(f) => f,
+        Err(_) => {
+            eprintln!("Failed to create lock file");
+            return;
+        }
+    };
+
+    if lock_file.try_lock_exclusive().is_err() {
+        eprintln!("Another instance is already running");
+        return;
+    }
+
     let log_path = Config::log_path();
     if let Some(parent) = log_path.parent() {
         std::fs::create_dir_all(parent).ok();
