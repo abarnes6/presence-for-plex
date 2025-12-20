@@ -49,7 +49,7 @@ impl Default for Config {
             movie_state: "{genres}".to_string(),
             movie_image_text: "{title}".to_string(),
             music_details: "{title}".to_string(),
-            music_state: "{artist} - {album}".to_string(),
+            music_state: "{artist}".to_string(),
             music_image_text: "{album}".to_string(),
         }
     }

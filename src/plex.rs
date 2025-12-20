@@ -13,6 +13,8 @@ const PLEX_API: &str = "https://plex.tv/api/v2";
 const TMDB_API: &str = "https://api.themoviedb.org/3";
 const TMDB_IMAGE_BASE: &str = "https://image.tmdb.org/t/p/w500";
 const JIKAN_API: &str = "https://api.jikan.moe/v4/anime";
+const MUSICBRAINZ_API: &str = "https://musicbrainz.org/ws/2";
+const COVERART_API: &str = "https://coverartarchive.org";
 const DEFAULT_TMDB_TOKEN: &str = "eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiIzNmMxOTI3ZjllMTlkMzUxZWFmMjAxNGViN2JmYjNkZiIsIm5iZiI6MTc0NTQzMTA3NC4yMjcsInN1YiI6IjY4MDkyYTIyNmUxYTc2OWU4MWVmMGJhOSIsInNjb3BlcyI6WyJhcGlfcmVhZCJdLCJ2ZXJzaW9uIjoxfQ.Td6eAbW7SgQOMmQpRDwVM-_3KIMybGRqWNK8Yqw1Zzs";
 
 const HTTP_TIMEOUT_SECS: u64 = 10;
@@ -596,6 +598,11 @@ impl PlexClient {
             return;
         }
 
+        if info.media_type == MediaType::Track {
+            self.try_musicbrainz_artwork(info, &cache_key).await;
+            return;
+        }
+
         if self.try_tmdb_artwork(info, &cache_key).await {
             return;
         }
@@ -604,12 +611,19 @@ impl PlexClient {
     }
 
     fn build_cache_key(info: &MediaInfo) -> String {
-        match &info.tmdb_id {
-            Some(tmdb_id) => format!("tmdb:{}:{:?}", tmdb_id, info.media_type),
-            None => {
-                let search_title = info.show_name.as_ref().unwrap_or(&info.title);
-                format!("jikan:{}:{:?}", search_title, info.year)
+        match info.media_type {
+            MediaType::Track => {
+                let artist = info.artist.as_deref().unwrap_or("");
+                let album = info.album.as_deref().unwrap_or("");
+                format!("musicbrainz:{}:{}", artist, album)
             }
+            _ => match &info.tmdb_id {
+                Some(tmdb_id) => format!("tmdb:{}:{:?}", tmdb_id, info.media_type),
+                None => {
+                    let search_title = info.show_name.as_ref().unwrap_or(&info.title);
+                    format!("jikan:{}:{:?}", search_title, info.year)
+                }
+            },
         }
     }
 
@@ -749,6 +763,78 @@ impl PlexClient {
             art_url,
             mal_id: Some(anime.mal_id.to_string()),
         })
+    }
+
+    async fn try_musicbrainz_artwork(&mut self, info: &mut MediaInfo, cache_key: &str) {
+        let (Some(artist), Some(album)) = (&info.artist, &info.album) else {
+            self.set_cached(cache_key, None);
+            return;
+        };
+
+        let result = Self::fetch_musicbrainz_artwork(&self.client, artist, album).await;
+
+        self.set_cached(
+            cache_key,
+            result.as_ref().map(|url| CachedArtwork {
+                art_url: url.clone(),
+                mal_id: None,
+            }),
+        );
+
+        if let Some(url) = result {
+            info!("Got MusicBrainz artwork: {}", url);
+            info.art_url = Some(url);
+        }
+    }
+
+    async fn fetch_musicbrainz_artwork(
+        client: &Client,
+        artist: &str,
+        album: &str,
+    ) -> Option<String> {
+        debug!("Searching MusicBrainz for: {} - {}", artist, album);
+
+        let query = format!(
+            "artist:\"{}\" AND release:\"{}\"",
+            artist.replace('"', ""),
+            album.replace('"', "")
+        );
+
+        let search_url = format!(
+            "{}/release?query={}&fmt=json&limit=1",
+            MUSICBRAINZ_API,
+            urlencoding::encode(&query)
+        );
+
+        let resp = client
+            .get(&search_url)
+            .header("User-Agent", concat!("PresenceForPlex/", env!("CARGO_PKG_VERSION"), " (https://github.com/abarnes6/presence-for-plex)"))
+            .header("Accept", "application/json")
+            .send()
+            .await
+            .ok()?;
+
+        let search_result: MusicBrainzSearchResponse = resp.json().await.ok()?;
+        let release = search_result.releases.first()?;
+        let mbid = &release.id;
+
+        debug!("Found MusicBrainz release: {}", mbid);
+
+        let cover_url = format!("{}/release/{}/front", COVERART_API, mbid);
+
+        let cover_resp = client
+            .head(&cover_url)
+            .header("User-Agent", concat!("PresenceForPlex/", env!("CARGO_PKG_VERSION"), " (https://github.com/abarnes6/presence-for-plex)"))
+            .send()
+            .await
+            .ok()?;
+
+        if cover_resp.status().is_success() || cover_resp.status().is_redirection() {
+            Some(cover_url)
+        } else {
+            debug!("No cover art found for release {}", mbid);
+            None
+        }
     }
 }
 
@@ -897,4 +983,15 @@ struct JikanImages {
 #[derive(Deserialize)]
 struct JikanJpg {
     large_image_url: Option<String>,
+}
+
+// MusicBrainz response types
+#[derive(Deserialize)]
+struct MusicBrainzSearchResponse {
+    releases: Vec<MusicBrainzRelease>,
+}
+
+#[derive(Deserialize)]
+struct MusicBrainzRelease {
+    id: String,
 }

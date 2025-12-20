@@ -53,9 +53,14 @@ impl DiscordClient {
 
         let now = current_unix_timestamp();
 
+        let status_display_type = match presence.activity_type {
+            ActivityType::Listening => activity::StatusDisplayType::State,
+            ActivityType::Watching => activity::StatusDisplayType::Details,
+        };
+
         let mut builder = activity::Activity::new()
             .activity_type(presence.activity_type.into())
-            .status_display_type(activity::StatusDisplayType::Details)
+            .status_display_type(status_display_type)
             .details(&presence.details)
             .state(&presence.state);
 
