@@ -463,7 +463,7 @@ impl PlexClient {
         access_token: &str,
         info: &mut MediaInfo,
     ) {
-        let Some(gp_key) = info.grandparent_key.take() else {
+        let Some(ref gp_key) = info.grandparent_key else {
             return;
         };
 
@@ -488,7 +488,7 @@ impl PlexClient {
         access_token: &str,
         info: &mut MediaInfo,
     ) {
-        let Some(key) = info.key.take() else {
+        let Some(ref key) = info.key else {
             return;
         };
 

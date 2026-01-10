@@ -8,7 +8,7 @@ use tray_icon::{
     Icon, TrayIcon, TrayIconBuilder,
 };
 
-use crate::AppMessage;
+use crate::{TrayCommand, TrayStatus};
 
 const ICON_BYTES: &[u8] = include_bytes!("../assets/icon.ico");
 const MENU_POLL_TIMEOUT: Duration = Duration::from_millis(100);
@@ -19,9 +19,10 @@ pub struct TrayHandle {
     pub auth_item: MenuItem,
 }
 
-pub fn setup(tx: UnboundedSender<AppMessage>, initial_status: &str, is_authenticated: bool) -> Option<TrayHandle> {
+pub fn setup(tx: UnboundedSender<TrayCommand>, is_authenticated: bool) -> Option<TrayHandle> {
     let menu = Menu::new();
-    let status_item = MenuItem::new(initial_status, false, None);
+    let initial_status = if is_authenticated { TrayStatus::Idle } else { TrayStatus::NotAuthenticated };
+    let status_item = MenuItem::new(initial_status.as_str(), false, None);
     let auth_text = if is_authenticated { "Reauthenticate" } else { "Authenticate with Plex" };
     let auth_item = MenuItem::new(auth_text, true, None);
     let quit_item = MenuItem::new("Quit", true, None);
@@ -55,10 +56,10 @@ pub fn setup(tx: UnboundedSender<AppMessage>, initial_status: &str, is_authentic
             match receiver.recv_timeout(MENU_POLL_TIMEOUT) {
                 Ok(event) => {
                     if event.id == quit_id {
-                        let _ = tx.send(AppMessage::Quit);
+                        let _ = tx.send(TrayCommand::Quit);
                         break;
                     } else if event.id == auth_id {
-                        let _ = tx.send(AppMessage::Authenticate);
+                        let _ = tx.send(TrayCommand::Authenticate);
                     }
                 }
                 Err(RecvTimeoutError::Timeout) => {
