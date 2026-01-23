@@ -274,7 +274,7 @@ impl PlexClient {
         access_token: &str,
         tx: &mpsc::UnboundedSender<Option<MediaInfo>>,
     ) -> Result<(), String> {
-        info!("Trying SSE connection to: {}", server_uri);
+        debug!("Trying SSE connection to: {}", server_uri);
 
         let sse_url = format!("{}/:/eventsource/notifications?filters=playing", server_uri);
 

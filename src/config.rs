@@ -5,7 +5,6 @@ use std::path::PathBuf;
 #[serde(default)]
 pub struct Config {
     pub discord_client_id: String,
-    pub discord_enabled: bool,
     pub show_buttons: bool,
     pub show_progress: bool,
     pub show_artwork: bool,
@@ -33,7 +32,6 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             discord_client_id: "1359742002618564618".to_string(),
-            discord_enabled: true,
             show_buttons: true,
             show_progress: true,
             show_artwork: true,

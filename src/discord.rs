@@ -21,6 +21,9 @@ impl DiscordClient {
     }
 
     pub fn connect(&mut self) -> bool {
+        if self.is_connected() {
+            self.disconnect();
+        } 
         match self.client.connect() {
             Ok(_) => {
                 info!("Connected to Discord");
@@ -76,6 +79,7 @@ impl DiscordClient {
 
         if let Err(e) = self.client.set_activity(builder) {
             error!("Failed to update presence: {}", e);
+            self.disconnect();
         }
     }
 

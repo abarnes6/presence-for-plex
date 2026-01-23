@@ -120,9 +120,7 @@ async fn main() {
     let tray_handle = tray::setup(tray_tx, config.plex_token.is_some());
 
     let mut discord = DiscordClient::new(&config.discord_client_id);
-    if config.discord_enabled {
-        discord.connect();
-    }
+    discord.connect();
     let discord = Arc::new(Mutex::new(discord));
 
     let initial_sse_cancel = app_cancel_token.child_token();
@@ -198,7 +196,6 @@ async fn handle_media_updates(
                 let presence = build_presence(&info, &config);
 
                 if enabled {
-                    info!("Now playing: {}", info.title);
                     let mut discord = discord.lock().await;
                     if !discord.is_connected() {
                         discord.connect();
