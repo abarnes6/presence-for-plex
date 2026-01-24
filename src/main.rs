@@ -2,15 +2,19 @@
 
 mod config;
 mod discord;
-mod plex;
+mod metadata;
+mod plex_account;
+mod plex_server;
 mod presence;
 mod tray;
 
 use config::Config;
 use discord::DiscordClient;
 use fs2::FileExt;
-use log::{error, info, warn};
-use plex::{MediaInfo, MediaType, PlaybackState, PlexClient, APP_NAME, SSE_RECONNECT_DELAY_SECS};
+use log::{debug, error, info, warn};
+use metadata::MetadataEnricher;
+use plex_account::{PlexAccount, APP_NAME};
+use plex_server::{MediaType, MediaUpdate, PlexServer, PlaybackState};
 use presence::build_presence;
 use simplelog::{CombinedLogger, Config as LogConfig, LevelFilter, SimpleLogger, WriteLogger};
 use std::fs::File;
@@ -114,7 +118,7 @@ async fn main() {
 
     // Channels
     let (tray_tx, tray_rx) = mpsc::unbounded_channel::<TrayCommand>();
-    let (media_tx, media_rx) = mpsc::unbounded_channel::<Option<MediaInfo>>();
+    let (media_tx, media_rx) = mpsc::unbounded_channel::<MediaUpdate>();
     let (status_tx, status_rx) = mpsc::unbounded_channel::<TrayStatus>();
 
     let tray_handle = tray::setup(tray_tx, config.plex_token.is_some());
@@ -125,13 +129,12 @@ async fn main() {
 
     let initial_sse_cancel = app_cancel_token.child_token();
     if let Some(ref token) = config.plex_token {
-        let token = token.clone();
-        let media_tx = media_tx.clone();
-        let tmdb_token = config.tmdb_token.clone();
-        let sse_cancel = initial_sse_cancel.clone();
-        tokio::spawn(async move {
-            run_sse_loop(token, tmdb_token, media_tx, sse_cancel).await;
-        });
+        begin_plex_monitoring(
+            token.clone(),
+            config.tmdb_token.clone(),
+            media_tx.clone(),
+            initial_sse_cancel.clone(),
+        ).await;
     }
 
     tokio::spawn({
@@ -156,66 +159,122 @@ async fn main() {
     info!("Shutting down");
 }
 
-async fn run_sse_loop(
+async fn begin_plex_monitoring(
     token: String,
     tmdb_token: Option<String>,
-    media_tx: mpsc::UnboundedSender<Option<MediaInfo>>,
+    media_tx: mpsc::UnboundedSender<MediaUpdate>,
     cancel_token: CancellationToken,
 ) {
-    let mut plex = PlexClient::new(tmdb_token);
-    loop {
-        tokio::select! {
-            _ = cancel_token.cancelled() => {
-                info!("SSE monitoring cancelled");
-                break;
-            }
-            _ = plex.start_sse_monitoring(&token, media_tx.clone()) => {
-                warn!("SSE connection lost, reconnecting in {}s...", SSE_RECONNECT_DELAY_SECS);
-                tokio::time::sleep(Duration::from_secs(SSE_RECONNECT_DELAY_SECS)).await;
-            }
+    debug!("Starting SSE loop");
+    let enricher = Arc::new(MetadataEnricher::new(tmdb_token));
+
+    let mut account = PlexAccount::new();
+    account.fetch_username(&token).await;
+
+    let servers = match account.get_servers(&token).await {
+        Some(s) if !s.is_empty() => s,
+        Some(_) => {
+            warn!("No Plex servers found");
+            return;
         }
+        None => {
+            error!("Failed to get servers");
+            return;
+        }
+    };
+
+    debug!("Found {} servers", servers.len());
+    let username = account.username().map(|s| s.to_string());
+    let mut spawned = 0;
+
+    for server_info in servers {
+        let Some(access_token) = server_info.access_token else {
+            warn!("Server {} has no access token, skipping", server_info.name);
+            continue;
+        };
+
+        debug!(
+            "Setting up monitoring for server: {} ({} connections)",
+            server_info.name,
+            server_info.connections.len()
+        );
+
+        let server = PlexServer::new(
+            server_info.name,
+            server_info.connections,
+            access_token,
+            username.clone(),
+        );
+
+        let tx = media_tx.clone();
+        let enricher = Arc::clone(&enricher);
+        let cancel = cancel_token.clone();
+
+        tokio::spawn(async move {
+            tokio::select! {
+                _ = cancel.cancelled() => {
+                    info!("SSE monitoring cancelled");
+                }
+                _ = server.start_monitoring(tx, enricher) => {}
+            }
+        });
+        spawned += 1;
     }
+
+    debug!("Spawned {} server monitoring tasks", spawned);
 }
 
 async fn handle_media_updates(
-    mut media_rx: mpsc::UnboundedReceiver<Option<MediaInfo>>,
+    mut media_rx: mpsc::UnboundedReceiver<MediaUpdate>,
     discord: Arc<Mutex<DiscordClient>>,
     config: Arc<Config>,
     status_tx: mpsc::UnboundedSender<TrayStatus>,
 ) {
+    debug!("Media update handler started");
     while let Some(update) = media_rx.recv().await {
         match update {
-            Some(info) => {
-                let _ = status_tx.send(TrayStatus::from(info.state.clone()));
+            MediaUpdate::Playing(boxed_info) => {
+                let info = *boxed_info;
+                debug!(
+                    "Media update: {:?} - {} ({:?})",
+                    info.media_type, info.title, info.state
+                );
+                let _ = status_tx.send(TrayStatus::from(info.state));
 
                 let enabled = match info.media_type {
                     MediaType::Movie => config.enable_movies,
                     MediaType::Episode => config.enable_tv_shows,
                     MediaType::Track => config.enable_music,
                 };
+                debug!("Media type {:?} enabled: {}", info.media_type, enabled);
+
                 let presence = build_presence(&info, &config);
 
                 if enabled {
                     let mut discord = discord.lock().await;
                     if !discord.is_connected() {
+                        debug!("Discord not connected, reconnecting");
                         discord.connect();
                     }
                     discord.update(&presence);
+                } else {
+                    debug!("Skipping Discord update, media type disabled");
                 }
             }
-            None => {
+            MediaUpdate::Stopped => {
                 let _ = status_tx.send(TrayStatus::Idle);
-                info!("Playback stopped");
+                debug!("Playback stopped, clearing Discord activity");
                 discord.lock().await.clear();
             }
         }
     }
+    debug!("Media update handler exiting");
 }
 
 struct EventLoopContext<'a> {
     config: &'a Arc<Config>,
     discord: &'a Arc<Mutex<DiscordClient>>,
-    media_tx: &'a mpsc::UnboundedSender<Option<MediaInfo>>,
+    media_tx: &'a mpsc::UnboundedSender<MediaUpdate>,
     app_cancel_token: &'a CancellationToken,
     tray_handle: Option<&'a tray::TrayHandle>,
     sse_cancel_token: Option<CancellationToken>,
@@ -226,7 +285,7 @@ async fn run_event_loop(
     mut rx: mpsc::UnboundedReceiver<TrayCommand>,
     config: &Arc<Config>,
     discord: &Arc<Mutex<DiscordClient>>,
-    media_tx: &mpsc::UnboundedSender<Option<MediaInfo>>,
+    media_tx: &mpsc::UnboundedSender<MediaUpdate>,
     app_cancel_token: &CancellationToken,
     tray_handle: Option<&tray::TrayHandle>,
     mut status_rx: mpsc::UnboundedReceiver<TrayStatus>,
@@ -284,15 +343,18 @@ async fn recv_auth_result(pending: &mut Option<oneshot::Receiver<Option<AuthResu
 }
 
 async fn handle_quit(ctx: &EventLoopContext<'_>) {
+    debug!("Handling quit command");
     ctx.app_cancel_token.cancel();
     ctx.discord.lock().await.disconnect();
 }
 
 fn handle_authenticate(ctx: &mut EventLoopContext<'_>) {
     if ctx.auth_pending.is_some() {
+        debug!("Authentication already pending, ignoring");
         return;
     }
 
+    debug!("Starting authentication flow");
     let config = Arc::clone(ctx.config);
     let (tx, rx) = oneshot::channel();
     ctx.auth_pending = Some(rx);
@@ -309,12 +371,15 @@ fn handle_auth_complete(ctx: &mut EventLoopContext<'_>, result: Option<AuthResul
         return;
     };
 
+    debug!("Authentication complete, starting SSE monitoring");
+
     if let Some(handle) = ctx.tray_handle {
         handle.auth_item.set_text("Reauthenticate");
         handle.status_item.set_text(TrayStatus::Idle.as_str());
     }
 
     if let Some(ref old_token) = ctx.sse_cancel_token {
+        debug!("Cancelling previous SSE monitoring");
         old_token.cancel();
     }
 
@@ -326,7 +391,7 @@ fn handle_auth_complete(ctx: &mut EventLoopContext<'_>, result: Option<AuthResul
     let media_tx = ctx.media_tx.clone();
 
     tokio::spawn(async move {
-        run_sse_loop(token, tmdb_token, media_tx, sse_cancel).await;
+        begin_plex_monitoring(token, tmdb_token, media_tx, sse_cancel).await;
     });
 }
 
@@ -347,8 +412,8 @@ fn pump_windows_messages() {
 async fn start_auth_flow(config: &Arc<Config>) -> Option<AuthResult> {
     info!("Starting Plex authentication");
 
-    let plex = PlexClient::new(None);
-    let token = run_auth_flow(&plex).await?;
+    let account = PlexAccount::new();
+    let token = run_auth_flow(&account).await?;
 
     // Save to disk
     let mut disk_config = Config::load();
@@ -364,8 +429,8 @@ async fn start_auth_flow(config: &Arc<Config>) -> Option<AuthResult> {
     })
 }
 
-async fn run_auth_flow(plex: &PlexClient) -> Option<String> {
-    let (pin_id, code) = plex.request_pin().await?;
+async fn run_auth_flow(account: &PlexAccount) -> Option<String> {
+    let (pin_id, code) = account.request_pin().await?;
 
     let auth_url = format!(
         "https://app.plex.tv/auth#?clientID={}&code={}&context%5Bdevice%5D%5Bproduct%5D=Presence%20for%20Plex",
@@ -379,19 +444,16 @@ async fn run_auth_flow(plex: &PlexClient) -> Option<String> {
     }
 
     info!("Waiting for authentication ({}s timeout)...", AUTH_TIMEOUT_SECS);
-    let deadline = std::time::Instant::now() + Duration::from_secs(AUTH_TIMEOUT_SECS);
 
-    loop {
-        if std::time::Instant::now() >= deadline {
-            return None;
+    tokio::time::timeout(Duration::from_secs(AUTH_TIMEOUT_SECS), async {
+        loop {
+            tokio::time::sleep(Duration::from_secs(AUTH_POLL_INTERVAL_SECS)).await;
+            if let Some(token) = account.check_pin(pin_id).await {
+                info!("Authentication successful");
+                return token;
+            }
         }
-
-        tokio::time::sleep(Duration::from_secs(AUTH_POLL_INTERVAL_SECS)).await;
-
-        if let Some(token) = plex.check_pin(pin_id).await {
-            info!("Authentication successful");
-            return Some(token);
-        }
-    }
+    })
+    .await
+    .ok()
 }
-

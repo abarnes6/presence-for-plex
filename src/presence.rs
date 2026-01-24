@@ -1,11 +1,15 @@
+use log::debug;
+
 use crate::config::Config;
 use crate::discord::{ActivityType, Button, Presence};
-use crate::plex::{MediaInfo, MediaType};
+use crate::plex_server::{MediaInfo, MediaType};
 
 const MAX_BUTTONS: usize = 2;
 const DEFAULT_IMAGE: &str = "plex_logo";
 
 pub fn build_presence(info: &MediaInfo, config: &Config) -> Presence {
+    debug!("Building presence for: {} ({:?})", info.title, info.media_type);
+
     let template_set = match info.media_type {
         MediaType::Episode => (&config.tv_details, &config.tv_state, &config.tv_image_text),
         MediaType::Movie => (&config.movie_details, &config.movie_state, &config.movie_image_text),
@@ -22,28 +26,43 @@ pub fn build_presence(info: &MediaInfo, config: &Config) -> Presence {
         false => DEFAULT_IMAGE.to_string(),
     };
 
+    let details = format_template(template_set.0, info);
+    let state = format_template(template_set.1, info);
+    let image_text = format_template(template_set.2, info);
+    let buttons = build_buttons(info, config.show_buttons);
+
+    debug!(
+        "Presence built: details={:?}, state={:?}, image={}, buttons={}",
+        details,
+        state,
+        large_image,
+        buttons.len()
+    );
+
     Presence {
-        details: format_template(template_set.0, info),
-        state: format_template(template_set.1, info),
+        details,
+        state,
         large_image: Some(large_image),
-        large_image_text: format_template(template_set.2, info),
+        large_image_text: image_text,
         progress_ms: info.view_offset_ms,
         duration_ms: info.duration_ms,
         show_timestamps: config.show_progress,
         activity_type,
-        playback_state: info.state.clone(),
-        buttons: build_buttons(info, config.show_buttons),
+        playback_state: info.state,
+        buttons,
     }
 }
 
 fn build_buttons(info: &MediaInfo, show_buttons: bool) -> Vec<Button> {
     if !show_buttons {
+        debug!("Buttons disabled in config");
         return Vec::new();
     }
 
     let mut buttons = Vec::with_capacity(MAX_BUTTONS);
 
     if let Some(ref mal_id) = info.mal_id {
+        debug!("Adding MAL button for id={}", mal_id);
         buttons.push(Button {
             label: "View on MyAnimeList".to_string(),
             url: format!("https://myanimelist.net/anime/{}", mal_id),
@@ -52,6 +71,7 @@ fn build_buttons(info: &MediaInfo, show_buttons: bool) -> Vec<Button> {
 
     if let Some(ref imdb_id) = info.imdb_id {
         if buttons.len() < MAX_BUTTONS {
+            debug!("Adding IMDB button for id={}", imdb_id);
             buttons.push(Button {
                 label: "View on IMDb".to_string(),
                 url: format!("https://www.imdb.com/title/{}", imdb_id),
