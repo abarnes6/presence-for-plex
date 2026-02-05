@@ -58,7 +58,7 @@ impl Config {
         let path = Self::config_path();
         if path.exists() {
             if let Ok(contents) = std::fs::read_to_string(&path) {
-                if let Ok(config) = serde_yaml::from_str(&contents) {
+                if let Ok(config) = serde_yml::from_str(&contents) {
                     return config;
                 }
             }
@@ -73,7 +73,7 @@ impl Config {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        let contents = serde_yaml::to_string(self).unwrap_or_default();
+        let contents = serde_yml::to_string(self).unwrap_or_default();
         std::fs::write(&path, contents)
     }
 

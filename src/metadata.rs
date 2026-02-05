@@ -1,9 +1,10 @@
-use log::{debug, info};
+use log::info;
+use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
 use reqwest::Client;
-use std::collections::HashMap;
-use std::time::{Duration, Instant};
-use tokio::sync::RwLock;
 use serde::Deserialize;
+use std::collections::HashMap;
+use std::sync::RwLock;
+use std::time::{Duration, Instant};
 
 use crate::plex_server::{MediaInfo, MediaType};
 
@@ -13,350 +14,167 @@ const JIKAN_API: &str = "https://api.jikan.moe/v4/anime";
 const MUSICBRAINZ_API: &str = "https://musicbrainz.org/ws/2";
 const COVERART_API: &str = "https://coverartarchive.org";
 const DEFAULT_TMDB_TOKEN: &str = "eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiIzNmMxOTI3ZjllMTlkMzUxZWFmMjAxNGViN2JmYjNkZiIsIm5iZiI6MTc0NTQzMTA3NC4yMjcsInN1YiI6IjY4MDkyYTIyNmUxYTc2OWU4MWVmMGJhOSIsInNjb3BlcyI6WyJhcGlfcmVhZCJdLCJ2ZXJzaW9uIjoxfQ.Td6eAbW7SgQOMmQpRDwVM-_3KIMybGRqWNK8Yqw1Zzs";
-
-const CACHE_TTL_SECS: u64 = 3600;
+const CACHE_TTL: Duration = Duration::from_secs(28800);
 const CACHE_CLEANUP_THRESHOLD: usize = 100;
 
 #[derive(Clone)]
 struct CacheEntry {
-    value: Option<CachedArtwork>,
+    value: Option<String>,
     timestamp: Instant,
-}
-
-#[derive(Clone)]
-pub struct CachedArtwork {
-    pub art_url: String,
-    pub mal_id: Option<String>,
 }
 
 pub struct MetadataEnricher {
     client: Client,
     tmdb_token: String,
-    cache: RwLock<HashMap<String, CacheEntry>>,
+    art_cache: RwLock<HashMap<String, CacheEntry>>,
+    mal_cache: RwLock<HashMap<String, CacheEntry>>,
 }
 
 impl MetadataEnricher {
     pub fn new(tmdb_token: Option<String>) -> Self {
-        debug!("Creating MetadataEnricher (custom TMDB token: {})", tmdb_token.is_some());
-        let client = Client::builder()
-            .user_agent("PresenceForPlex/1.0")
-            .timeout(Duration::from_secs(10))
-            .build()
-            .expect("Failed to create HTTP client");
-
         Self {
-            client,
+            client: Client::builder().user_agent("PresenceForPlex/1.0").timeout(Duration::from_secs(10)).build().expect("HTTP client"),
             tmdb_token: tmdb_token.unwrap_or_else(|| DEFAULT_TMDB_TOKEN.to_string()),
-            cache: RwLock::new(HashMap::new()),
+            art_cache: RwLock::new(HashMap::new()),
+            mal_cache: RwLock::new(HashMap::new()),
         }
     }
 
     pub async fn enrich(&self, info: &mut MediaInfo) {
-        let start = std::time::Instant::now();
-        debug!(
-            "Enriching: {} (tmdb_id: {:?}, genres: {:?})",
-            info.title, info.tmdb_id, info.genres
-        );
+        self.cleanup_cache();
+        let key = self.cache_key(info);
 
-        self.cleanup_cache().await;
+        let cached = self.get_art_cached(&key);
+        if let Some(Some(url)) = &cached {
+            info.art_url = Some(url.clone());
+        }
 
-        let cache_key = self.build_cache_key(info);
-
-        if let Some(cached) = self.get_cached(&cache_key).await {
-            debug!("Cache hit for {} in {:?}", cache_key, start.elapsed());
-            if let Some(artwork) = cached {
-                info.art_url = Some(artwork.art_url);
-                info.mal_id = artwork.mal_id;
+        // Fetch artwork if not cached
+        if cached.is_none() {
+            if info.media_type == MediaType::Track {
+                self.try_musicbrainz(info, &key).await;
+            } else {
+                self.try_tmdb(info, &key).await;
             }
-            return;
         }
 
-        if info.media_type == MediaType::Track {
-            self.try_musicbrainz_artwork(info, &cache_key).await;
-            debug!("Enrichment complete in {:?}", start.elapsed());
-            return;
+        // For anime, fetch MAL ID for the link
+        let is_anime = info.genres.iter().any(|g| matches!(g.to_lowercase().as_str(), "anime" | "animation"));
+        if is_anime && info.media_type != MediaType::Track {
+            self.fetch_mal_id(info).await;
         }
-
-        if self.try_tmdb_artwork(info, &cache_key).await {
-            debug!("Enrichment complete in {:?}", start.elapsed());
-            return;
-        }
-
-        self.try_jikan_artwork(info, &cache_key).await;
-        debug!("Enrichment complete in {:?}", start.elapsed());
     }
 
-    fn build_cache_key(&self, info: &MediaInfo) -> String {
+    fn cache_key(&self, info: &MediaInfo) -> String {
         match info.media_type {
-            MediaType::Track => {
-                let artist = info.artist.as_deref().unwrap_or("");
-                let album = info.album.as_deref().unwrap_or("");
-                format!("musicbrainz:{}:{}", artist, album)
-            }
-            _ => match &info.tmdb_id {
-                Some(tmdb_id) => format!("tmdb:{}:{:?}", tmdb_id, info.media_type),
-                None => {
-                    let search_title = info.show_name.as_ref().unwrap_or(&info.title);
-                    format!("jikan:{}:{:?}", search_title, info.year)
-                }
-            },
+            MediaType::Track => format!("mb:{}:{}", info.artist.as_deref().unwrap_or(""), info.album.as_deref().unwrap_or("")),
+            _ => info.tmdb_id.as_ref()
+                .map(|id| format!("tmdb:{}:{:?}", id, info.media_type))
+                .unwrap_or_else(|| format!("jikan:{}:{:?}", info.show_name.as_ref().unwrap_or(&info.title), info.year)),
         }
     }
 
-    async fn try_tmdb_artwork(&self, info: &mut MediaInfo, cache_key: &str) -> bool {
-        let Some(ref tmdb_id) = info.tmdb_id else {
-            debug!("No TMDB ID, skipping TMDB artwork fetch");
-            return false;
-        };
+    async fn try_tmdb(&self, info: &mut MediaInfo, key: &str) -> bool {
+        let Some(ref tmdb_id) = info.tmdb_id else { return false };
+        let path = match info.media_type { MediaType::Movie => "movie", MediaType::Episode => "tv", _ => return false };
 
-        let start = std::time::Instant::now();
-        debug!("Fetching TMDB artwork for id={}", tmdb_id);
-        let result = self.fetch_tmdb_artwork(tmdb_id, &info.media_type).await;
-        debug!("TMDB fetch completed in {:?}", start.elapsed());
+        let result = async {
+            let resp = self.client
+                .get(format!("{}/{}/{}/images", TMDB_API, path, tmdb_id))
+                .header("Authorization", format!("Bearer {}", self.tmdb_token))
+                .send().await.ok()?;
+            let images: TmdbImages = resp.json().await.ok()?;
+            images.posters.first().or(images.backdrops.first()).map(|i| format!("{}{}", TMDB_IMAGE_BASE, i.file_path))
+        }.await;
 
-        self.set_cached(
-            cache_key,
-            result.as_ref().map(|url| CachedArtwork {
-                art_url: url.clone(),
-                mal_id: None,
-            }),
-        )
-        .await;
-
-        if let Some(url) = result {
-            info!("Got TMDB artwork: {}", url);
-            info.art_url = Some(url);
-            return true;
-        }
-
-        false
+        self.set_art_cached(key, result.clone());
+        if let Some(url) = result { info!("TMDB artwork: {}", url); info.art_url = Some(url); true } else { false }
     }
 
-    async fn try_jikan_artwork(&self, info: &mut MediaInfo, cache_key: &str) {
-        let is_anime = info
-            .genres
-            .iter()
-            .any(|g| matches!(g.to_lowercase().as_str(), "anime" | "animation"));
+    async fn fetch_mal_id(&self, info: &mut MediaInfo) {
+        let title = info.show_name.as_ref().unwrap_or(&info.title);
+        let cache_key = format!("{}_{}", title, info.year.unwrap_or(0));
 
-        if !is_anime {
-            debug!("Not anime (genres: {:?}), skipping Jikan", info.genres);
-            self.set_cached(cache_key, None).await;
+        // Check cache first
+        if let Some(cached) = self.get_mal_cached(&cache_key) {
+            info.mal_id = cached;
             return;
         }
 
-        let search_title = info.show_name.as_ref().unwrap_or(&info.title);
-        debug!("Fetching Jikan artwork for: {}", search_title);
-        let result = self.fetch_jikan_artwork(search_title, info.year).await;
+        let url = format!("{}?q={}&limit=1", JIKAN_API, utf8_percent_encode(&cache_key, NON_ALPHANUMERIC));
 
-        self.set_cached(cache_key, result.clone()).await;
+        let mal_id = async {
+            let resp = self.client.get(&url).send().await.ok()?;
+            let data: JikanResponse = resp.json().await.ok()?;
+            Some(data.data.first()?.mal_id.to_string())
+        }.await;
 
-        if let Some(artwork) = result {
-            info!("Got Jikan artwork for MAL {:?}: {}", artwork.mal_id, artwork.art_url);
-            info.mal_id = artwork.mal_id;
-            info.art_url = Some(artwork.art_url);
-        }
+        self.set_mal_cached(&cache_key, mal_id.clone());
+        if let Some(id) = mal_id { info!("MAL ID: {}", id); info.mal_id = Some(id); }
     }
 
-    async fn try_musicbrainz_artwork(&self, info: &mut MediaInfo, cache_key: &str) {
-        let (Some(artist), Some(album)) = (&info.artist, &info.album) else {
-            debug!("Missing artist or album, skipping MusicBrainz");
-            self.set_cached(cache_key, None).await;
-            return;
-        };
+    async fn try_musicbrainz(&self, info: &mut MediaInfo, key: &str) {
+        let (Some(artist), Some(album)) = (&info.artist, &info.album) else { self.set_art_cached(key, None); return };
+        let query = format!("artist:\"{}\" AND release:\"{}\"", artist.replace('"', ""), album.replace('"', ""));
+        let ua = concat!("PresenceForPlex/", env!("CARGO_PKG_VERSION"), " (https://github.com/abarnes6/presence-for-plex)");
 
-        debug!("Fetching MusicBrainz artwork for: {} - {}", artist, album);
-        let result = self.fetch_musicbrainz_artwork(artist, album).await;
+        let mbid = async {
+            let resp = self.client
+                .get(format!("{}/release?query={}&fmt=json&limit=1", MUSICBRAINZ_API, utf8_percent_encode(&query, NON_ALPHANUMERIC)))
+                .header("User-Agent", ua)
+                .send().await.ok()?;
+            let data: MbSearch = resp.json().await.ok()?;
+            data.releases.first().map(|rel| rel.id.clone())
+        }.await;
 
-        self.set_cached(
-            cache_key,
-            result.as_ref().map(|url| CachedArtwork {
-                art_url: url.clone(),
-                mal_id: None,
-            }),
-        )
-        .await;
-
-        if let Some(url) = result {
-            info!("Got MusicBrainz artwork: {}", url);
-            info.art_url = Some(url);
-        }
-    }
-
-    async fn cleanup_cache(&self) {
-        let mut cache = self.cache.write().await;
-        if cache.len() < CACHE_CLEANUP_THRESHOLD {
-            return;
-        }
-        let ttl = Duration::from_secs(CACHE_TTL_SECS);
-        cache.retain(|_, entry| entry.timestamp.elapsed() < ttl);
-    }
-
-    async fn get_cached(&self, key: &str) -> Option<Option<CachedArtwork>> {
-        let cache = self.cache.read().await;
-        let entry = cache.get(key)?;
-        let ttl = Duration::from_secs(CACHE_TTL_SECS);
-
-        if entry.timestamp.elapsed() < ttl {
-            Some(entry.value.clone())
-        } else {
-            None
-        }
-    }
-
-    async fn set_cached(&self, key: &str, value: Option<CachedArtwork>) {
-        self.cache.write().await.insert(
-            key.to_string(),
-            CacheEntry {
-                value,
-                timestamp: Instant::now(),
-            },
-        );
-    }
-
-    async fn fetch_tmdb_artwork(&self, tmdb_id: &str, media_type: &MediaType) -> Option<String> {
-        let media_path = match media_type {
-            MediaType::Movie => "movie",
-            MediaType::Episode => "tv",
-            MediaType::Track => return None,
-        };
-
-        let endpoint = format!("{}/{}/{}/images", TMDB_API, media_path, tmdb_id);
-
-        let resp: TmdbImagesResponse = self.client
-            .get(&endpoint)
-            .header("Authorization", format!("Bearer {}", self.tmdb_token))
-            .header("Accept", "application/json")
-            .send()
-            .await
-            .ok()?
-            .json()
-            .await
-            .ok()?;
-
-        resp.posters
-            .first()
-            .or(resp.backdrops.first())
-            .map(|img| format!("{}{}", TMDB_IMAGE_BASE, img.file_path))
-    }
-
-    async fn fetch_jikan_artwork(&self, title: &str, year: Option<u32>) -> Option<CachedArtwork> {
-        debug!("Searching Jikan for: {}", title);
-
-        let mut url = format!("{}?q={}", JIKAN_API, urlencoding::encode(title));
-
-        if let Some(y) = year {
-            url.push_str(&format!("&start_date={y}-01-01&end_date={y}-12-31"));
-        }
-
-        let resp: JikanResponse = self.client.get(&url).send().await.ok()?.json().await.ok()?;
-
-        let anime = resp.data.first()?;
-        let art_url = anime
-            .images
-            .as_ref()?
-            .jpg
-            .as_ref()?
-            .large_image_url
-            .as_ref()?
-            .clone();
-
-        Some(CachedArtwork {
-            art_url,
-            mal_id: Some(anime.mal_id.to_string()),
-        })
-    }
-
-    async fn fetch_musicbrainz_artwork(&self, artist: &str, album: &str) -> Option<String> {
-        debug!("Searching MusicBrainz for: {} - {}", artist, album);
-
-        let query = format!(
-            "artist:\"{}\" AND release:\"{}\"",
-            artist.replace('"', ""),
-            album.replace('"', "")
-        );
-
-        let search_url = format!(
-            "{}/release?query={}&fmt=json&limit=1",
-            MUSICBRAINZ_API,
-            urlencoding::encode(&query)
-        );
-
-        let resp = self.client
-            .get(&search_url)
-            .header("User-Agent", concat!("PresenceForPlex/", env!("CARGO_PKG_VERSION"), " (https://github.com/abarnes6/presence-for-plex)"))
-            .header("Accept", "application/json")
-            .send()
-            .await
-            .ok()?;
-
-        let search_result: MusicBrainzSearchResponse = resp.json().await.ok()?;
-        let release = search_result.releases.first()?;
-        let mbid = &release.id;
-
-        debug!("Found MusicBrainz release: {}", mbid);
-
+        let Some(mbid) = mbid else { self.set_art_cached(key, None); return };
         let cover_url = format!("{}/release/{}/front", COVERART_API, mbid);
 
-        let cover_resp = self.client
-            .head(&cover_url)
-            .header("User-Agent", concat!("PresenceForPlex/", env!("CARGO_PKG_VERSION"), " (https://github.com/abarnes6/presence-for-plex)"))
-            .send()
-            .await
-            .ok()?;
+        let exists = self.client.head(&cover_url).header("User-Agent", ua).send().await
+            .map(|r| r.status().is_success() || r.status().is_redirection()).unwrap_or(false);
 
-        if cover_resp.status().is_success() || cover_resp.status().is_redirection() {
-            Some(cover_url)
-        } else {
-            debug!("No cover art found for release {}", mbid);
-            None
+        let result = if exists { Some(cover_url) } else { None };
+        self.set_art_cached(key, result.clone());
+        if let Some(url) = result { info!("MusicBrainz artwork: {}", url); info.art_url = Some(url); }
+    }
+
+    fn cleanup_cache(&self) {
+        for cache in [&self.art_cache, &self.mal_cache] {
+            let mut c = cache.write().unwrap();
+            if c.len() >= CACHE_CLEANUP_THRESHOLD {
+                c.retain(|_, e| e.timestamp.elapsed() < CACHE_TTL);
+            }
         }
+    }
+
+    fn get_art_cached(&self, key: &str) -> Option<Option<String>> {
+        let cache = self.art_cache.read().unwrap();
+        cache.get(key).filter(|e| e.timestamp.elapsed() < CACHE_TTL).map(|e| e.value.clone())
+    }
+
+    fn set_art_cached(&self, key: &str, value: Option<String>) {
+        self.art_cache.write().unwrap().insert(key.to_string(), CacheEntry { value, timestamp: Instant::now() });
+    }
+
+    fn get_mal_cached(&self, key: &str) -> Option<Option<String>> {
+        let cache = self.mal_cache.read().unwrap();
+        cache.get(key).filter(|e| e.timestamp.elapsed() < CACHE_TTL).map(|e| e.value.clone())
+    }
+
+    fn set_mal_cached(&self, key: &str, value: Option<String>) {
+        self.mal_cache.write().unwrap().insert(key.to_string(), CacheEntry { value, timestamp: Instant::now() });
     }
 }
 
-// TMDB response types
 #[derive(Deserialize)]
-struct TmdbImagesResponse {
-    #[serde(default)]
-    posters: Vec<TmdbImage>,
-    #[serde(default)]
-    backdrops: Vec<TmdbImage>,
-}
-
+struct TmdbImages { #[serde(default)] posters: Vec<TmdbImage>, #[serde(default)] backdrops: Vec<TmdbImage> }
 #[derive(Deserialize)]
-struct TmdbImage {
-    file_path: String,
-}
-
-// Jikan response types
+struct TmdbImage { file_path: String }
 #[derive(Deserialize)]
-struct JikanResponse {
-    #[serde(default)]
-    data: Vec<JikanAnime>,
-}
-
+struct JikanResponse { #[serde(default)] data: Vec<JikanAnime> }
 #[derive(Deserialize)]
-struct JikanAnime {
-    mal_id: u64,
-    images: Option<JikanImages>,
-}
-
+struct JikanAnime { mal_id: u64 }
 #[derive(Deserialize)]
-struct JikanImages {
-    jpg: Option<JikanJpg>,
-}
-
+struct MbSearch { releases: Vec<MbRelease> }
 #[derive(Deserialize)]
-struct JikanJpg {
-    large_image_url: Option<String>,
-}
-
-// MusicBrainz response types
-#[derive(Deserialize)]
-struct MusicBrainzSearchResponse {
-    releases: Vec<MusicBrainzRelease>,
-}
-
-#[derive(Deserialize)]
-struct MusicBrainzRelease {
-    id: String,
-}
+struct MbRelease { id: String }
