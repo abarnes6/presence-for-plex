@@ -68,34 +68,46 @@ impl MetadataEnricher {
     fn cache_key(&self, info: &MediaInfo) -> String {
         match info.media_type {
             MediaType::Track => format!("mb:{}:{}", info.artist.as_deref().unwrap_or(""), info.album.as_deref().unwrap_or("")),
+            MediaType::Episode => info.tmdb_id.as_ref()
+                .map(|id| format!("tmdb:{}:s{}", id, info.season.unwrap_or(1)))
+                .unwrap_or_else(|| format!("title:{}:s{}", info.show_name.as_ref().unwrap_or(&info.title), info.season.unwrap_or(1))),
             _ => info.tmdb_id.as_ref()
-                .map(|id| format!("tmdb:{}:{:?}", id, info.media_type))
-                .unwrap_or_else(|| format!("jikan:{}:{:?}", info.show_name.as_ref().unwrap_or(&info.title), info.year)),
+                .map(|id| format!("tmdb:{}", id))
+                .unwrap_or_else(|| format!("title:{}:{}", info.title, info.year.unwrap_or(0))),
         }
     }
 
     async fn try_tmdb(&self, info: &mut MediaInfo, key: &str) -> bool {
         let Some(ref tmdb_id) = info.tmdb_id else { return false };
-        let path = match info.media_type { MediaType::Movie => "movie", MediaType::Episode => "tv", _ => return false };
 
-        let result = async {
-            let resp = self.client
-                .get(format!("{}/{}/{}/images", TMDB_API, path, tmdb_id))
-                .header("Authorization", format!("Bearer {}", self.tmdb_token))
-                .send().await.ok()?;
-            let images: TmdbImages = resp.json().await.ok()?;
-            images.posters.first().or(images.backdrops.first()).map(|i| format!("{}{}", TMDB_IMAGE_BASE, i.file_path))
-        }.await;
+        let result = match info.media_type {
+            MediaType::Movie => self.fetch_tmdb_images(&format!("/movie/{}/images", tmdb_id)).await,
+            MediaType::Episode => {
+                // Try season-specific artwork first, fall back to show artwork
+                let season = info.season.unwrap_or(1);
+                self.fetch_tmdb_images(&format!("/tv/{}/season/{}/images", tmdb_id, season)).await
+                    .or(self.fetch_tmdb_images(&format!("/tv/{}/images", tmdb_id)).await)
+            }
+            _ => return false,
+        };
 
         self.set_art_cached(key, result.clone());
         if let Some(url) = result { info!("TMDB artwork: {}", url); info.art_url = Some(url); true } else { false }
+    }
+
+    async fn fetch_tmdb_images(&self, path: &str) -> Option<String> {
+        let resp = self.client
+            .get(format!("{}{}", TMDB_API, path))
+            .header("Authorization", format!("Bearer {}", self.tmdb_token))
+            .send().await.ok()?;
+        let images: TmdbImages = resp.json().await.ok()?;
+        images.posters.first().or(images.backdrops.first()).map(|i| format!("{}{}", TMDB_IMAGE_BASE, i.file_path))
     }
 
     async fn fetch_mal_id(&self, info: &mut MediaInfo) {
         let title = info.show_name.as_ref().unwrap_or(&info.title);
         let cache_key = format!("{}_{}", title, info.year.unwrap_or(0));
 
-        // Check cache first
         if let Some(cached) = self.get_mal_cached(&cache_key) {
             info.mal_id = cached;
             return;

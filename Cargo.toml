@@ -1,63 +1,42 @@
 [package]
 name = "presence-for-plex"
 version = "0.4.0"
-edition = "2021"
+edition = "2024"
 authors = ["abarnes6"]
-description = "Discord Rich Presence for Plex Media Server"
+description = "Discord Rich Presence for Plex"
 license = "MIT"
+repository = "https://github.com/abarnes6/presence-for-plex"
 
 [dependencies]
 tokio = { version = "1.49", features = ["rt-multi-thread", "sync", "time", "macros"] }
-tokio-util = "0.7.18"
-reqwest = { version = "0.12", features = ["json", "stream"] }
-reqwest-eventsource = "0.6"
-futures-util = "0.3.31"
-serde = { version = "1.0.228", features = ["derive"] }
-serde_json = "1.0.149"
+tokio-util = "0.7"
+reqwest = { version = "0.13", features = ["json", "stream", "query"] }
+eventsource-client = "0.16"
+futures-util = "0.3"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
 serde_yml = "0.0.12"
 discord-rich-presence = "1.1"
-log = "0.4.29"
-simplelog = "0.12.2"
+log = "0.4"
+simplelog = "0.12"
 dirs = "6"
-fs2 = "0.4.3"
-tray-icon = "0.21.3"
-crossbeam-channel = "0.5.15"
-image = { version = "0.25.9", default-features = false, features = ["ico"] }
-open = "5.3.3"
-percent-encoding = "2.3.2"
+fs2 = "0.4"
+tray-icon = "0.21"
+crossbeam-channel = "0.5"
+image = { version = "0.25", default-features = false, features = ["ico"] }
+open = "5.3"
+percent-encoding = "2.3"
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61.2", features = ["Win32_UI_WindowsAndMessaging"] }
+windows-sys = { version = "0.61", features = ["Win32_UI_WindowsAndMessaging"] }
 
 [profile.release]
 opt-level = 3
 lto = true
 strip = true
 
-# Linux .deb packaging (cargo-deb)
-[package.metadata.deb]
-maintainer = "abarnes6"
-copyright = "2024, abarnes6"
-depends = "$auto"
-section = "utility"
-priority = "optional"
-assets = [
-    ["target/release/presence-for-plex", "usr/bin/", "755"],
-    ["assets/icon.ico", "usr/share/pixmaps/presence-for-plex.ico", "644"],
-]
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"
 
-# Windows MSI packaging (cargo-wix)
-[package.metadata.wix]
-upgrade-guid = "A1B2C3D4-E5F6-7890-ABCD-EF1234567890"
-path-guid = "B2C3D4E5-F6A7-8901-BCDE-F12345678901"
-license = false
-eula = false
-
-# macOS .app bundle (cargo-bundle)
-[package.metadata.bundle]
-name = "Presence for Plex"
-identifier = "com.abarnes6.presence-for-plex"
-icon = ["assets/icon.ico"]
-category = "public.app-category.utilities"
-short_description = "Discord Rich Presence for Plex Media Server"
-long_description = "Shows what you're watching on Plex as your Discord status"

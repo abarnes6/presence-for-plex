@@ -1,38 +1,84 @@
 # Presence for Plex
 
-A lightweight and efficient application written in Rust that displays what you are watching on Plex in your Discord client.
+A lightweight Discord Rich Presence client for Plex. Shows what you're watching with artwork, progress, and interactive links.
+
+## Features
+
+- Movies, TV shows, and music support
+- Artwork from TMDB and MusicBrainz
+- IMDb and MyAnimeList links as clickable buttons (thank you Jikan for MAL search)
+- Progress timestamps
+- Customizable display templates
+- Multi-server support
 
 ## Installation
 
-Windows
-- Download the .msi on the releases page and run it
+### Windows
+Download the `.msi` from the [releases page](https://github.com/abarnes6/presence-for-plex/releases).
 
-## Building from source
+### Linux
+```bash
+# From releases (Debian/Ubuntu)
+sudo dpkg -i presence-for-plex_*.deb
 
-After downloading Rust, just `cargo build` and `cargo run`!
+# Or build from source
+cargo install cargo-deb
+cargo deb --install
+```
+
+### macOS
+```bash
+cargo install cargo-bundle
+cargo bundle --release
+# Move .app to Applications
+```
+
+## Building from Source
+
+```bash
+# Install Rust: https://rustup.rs
+
+# Linux only - install dependencies
+sudo apt-get install libgtk-3-dev libxdo-dev
+
+# Build and run
+cargo build --release
+cargo run --release
+```
+
+## Configuration
+
+Config file: `~/.config/presence-for-plex/config.yaml` (Windows: `%APPDATA%\presence-for-plex\config.yaml`)
+
+### Template Variables
+
+| Variable | Description |
+|----------|-------------|
+| `{title}` | Media title |
+| `{show}` | TV show name |
+| `{season}` | Season number |
+| `{episode}` | Episode number |
+| `{se}` | Formatted as S01E02 |
+| `{year}` | Release year |
+| `{genres}` | Genre list |
+| `{artist}` | Music artist |
+| `{album}` | Album name |
 
 ## Troubleshooting
 
-Check the log file located at:
-
--   Windows: `%APPDATA%\presence-for-plex\log.txt`
--   macOS/Linux: `~/.config/presence-for-plex/log.txt`
+Check the log file:
+- Windows: `%APPDATA%\presence-for-plex\log.txt`
+- macOS/Linux: `~/.config/presence-for-plex/log.txt`
 
 ## FAQ
 
-### Why do the buttons not work?
+### Why don't the buttons work for me?
 
-They do, but only for others! For some reason Discord doesn't like to show you your own rich presence buttons.
-
-### Failed to connect to Discord: failed to connect to IPC socket
-
-You need to have a Discord app running in the same machine as the application.
+Discord only shows Rich Presence buttons to others, not yourself.
 
 ## Attribution
 
-![blue_square_2-d537fb228cf3ded904ef09b136fe3fec72548ebc1fea3fbbd1ad9e36364db38b](https://github.com/user-attachments/assets/38abfb34-72cf-46d9-9d17-724761aa570a)
-
-(image API)
+![TMDB Logo](https://github.com/user-attachments/assets/38abfb34-72cf-46d9-9d17-724761aa570a)
 
 ## License
 

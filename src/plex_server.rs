@@ -1,7 +1,7 @@
-use futures_util::StreamExt;
+use eventsource_client::{self as es, Client as EsClient, SSE};
+use futures_util::TryStreamExt;
 use log::info;
 use reqwest::Client;
-use reqwest_eventsource::{Event, EventSource};
 use serde::Deserialize;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -121,33 +121,29 @@ impl PlexServer {
     }
 
     async fn try_connection(&self, uri: &str, tx: &mpsc::UnboundedSender<MediaUpdate>, enricher: &Arc<MetadataEnricher>) -> Result<(), ()> {
-        let request = Client::builder()
-            .user_agent("PresenceForPlex/1.0")
-            .connect_timeout(Duration::from_secs(5))
-            .pool_max_idle_per_host(0)
-            .build().map_err(|_| ())?
-            .get(format!("{}/:/eventsource/notifications?filters=playing", uri))
-            .header("Accept", "text/event-stream")
-            .header("X-Plex-Token", &self.access_token)
-            .header("X-Plex-Client-Identifier", APP_NAME);
+        let url = format!("{}/:/eventsource/notifications?filters=playing", uri);
+        let client = es::ClientBuilder::for_url(&url).map_err(|_| ())?
+            .header("Accept", "text/event-stream").map_err(|_| ())?
+            .header("X-Plex-Token", &self.access_token).map_err(|_| ())?
+            .header("X-Plex-Client-Identifier", APP_NAME).map_err(|_| ())?
+            .build();
 
-        let mut es = EventSource::new(request).map_err(|_| ())?;
+        let mut stream = Box::pin(client.stream());
         let tracker = RwLock::new(PlaybackTracker::default());
         let mut opened = false;
 
-        while let Some(event) = es.next().await {
+        while let Ok(Some(event)) = stream.try_next().await {
             match event {
-                Ok(Event::Open) => { opened = true; info!("SSE connected: {}", uri); }
-                Ok(Event::Message(msg)) => self.handle_message(&msg.data, uri, tx, enricher, &tracker).await,
-                Err(_) => {
-                    if opened && tracker.write().await.clear_if_server(uri) {
-                        let _ = tx.send(MediaUpdate::Stopped);
-                    }
-                    return Err(());
-                }
+                SSE::Connected(_) => { opened = true; info!("SSE connected: {}", uri); }
+                SSE::Event(ev) => self.handle_message(&ev.data, uri, tx, enricher, &tracker).await,
+                SSE::Comment(_) => {}
             }
         }
-        Ok(())
+
+        if opened && tracker.write().await.clear_if_server(uri) {
+            let _ = tx.send(MediaUpdate::Stopped);
+        }
+        Err(())
     }
 
     async fn handle_message(&self, data: &str, uri: &str, tx: &mpsc::UnboundedSender<MediaUpdate>, enricher: &Arc<MetadataEnricher>, tracker: &RwLock<PlaybackTracker>) {

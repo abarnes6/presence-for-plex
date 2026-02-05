@@ -44,13 +44,24 @@
                       package.
 -->
 
+<!--
+  Please do not remove these pre-processor If-Else blocks. These are used with
+  the `cargo wix` subcommand to automatically determine the installation
+  destination for 32-bit versus 64-bit installers. Removal of these lines will
+  cause installation errors.
+-->
+<?if $(sys.BUILDARCH) = x64 or $(sys.BUILDARCH) = arm64 ?>
+    <?define PlatformProgramFilesFolder = "ProgramFiles64Folder" ?>
+<?else ?>
+    <?define PlatformProgramFilesFolder = "ProgramFilesFolder" ?>
+<?endif ?>
 
 <Wix xmlns='http://schemas.microsoft.com/wix/2006/wi'>
 
     <Product
         Id='*'
         Name='Presence for Plex'
-        UpgradeCode='693fab55-1f25-4551-9a9d-acdd172a385c'
+        UpgradeCode='13C3844E-D918-40CC-9A2B-69DF06FB8AC1'
         Manufacturer='abarnes6'
         Language='1033'
         Codepage='1252'
@@ -58,7 +69,7 @@
 
         <Package Id='*'
             Keywords='Installer'
-            Description='Discord Rich Presence for Plex Media Server'
+            Description='Discord Rich Presence for Plex'
             Manufacturer='abarnes6'
             InstallerVersion='450'
             Languages='1033'
@@ -78,7 +89,7 @@
         <Directory Id='TARGETDIR' Name='SourceDir'>
             <Directory Id='LocalAppDataFolder'>
                 <Directory Id='APPLICATIONFOLDER' Name='presence-for-plex'>
-                    <Component Id='binary0' Guid='E5F6A7B8-C9D0-1234-EF01-234567890ABC'>
+                    <Component Id='binary0' Guid='56FEFE26-AA06-4D72-9DE1-C00E59650CFF'>
                         <File
                             Id='exe0'
                             Name='presence-for-plex.exe'
@@ -93,7 +104,7 @@
             <!-- Start Menu shortcut -->
             <Directory Id='ProgramMenuFolder'>
                 <Directory Id='ApplicationProgramsFolder' Name='Presence for Plex'>
-                    <Component Id='StartMenuShortcut' Guid='C3D4E5F6-A7B8-9012-CDEF-123456789012'>
+                    <Component Id='StartMenuShortcut' Guid='DC283EF4-6B88-4E86-B1C0-D9E9F6728857'>
                         <Shortcut
                             Id='ApplicationStartMenuShortcut'
                             Name='Presence for Plex'
@@ -109,7 +120,7 @@
         </Directory>
 
         <!-- Start with Windows registry entry -->
-        <Component Id='StartupEntry' Guid='D4E5F6A7-B8C9-0123-DEF0-123456789ABC' Directory='APPLICATIONFOLDER'>
+        <Component Id='StartupEntry' Guid='3440920C-9FBB-4669-AF59-9982E635C0DD' Directory='APPLICATIONFOLDER'>
             <RegistryValue
                 Root='HKCU'
                 Key='Software\Microsoft\Windows\CurrentVersion\Run'
@@ -144,22 +155,11 @@
 
         <SetProperty Id='ARPINSTALLLOCATION' Value='[APPLICATIONFOLDER]' After='CostFinalize'/>
 
-        
         <Icon Id='ProductICO' SourceFile='assets\icon.ico'/>
         <Property Id='ARPPRODUCTICON' Value='ProductICO'/>
 
+        <Property Id='ARPHELPLINK' Value='https://github.com/abarnes6/presence-for-plex'/>
         
-        <!--
-          Adding a URL to Add/Remove Programs control panel listing for the
-          application is a two step process:
-
-          1. Uncomment the following `Property` tag with the "ARPHELPLINK" Id
-             attribute value.
-          2. Change the value for `Value` attribute of the following
-             `Property` tag to a valid URL.
-        -->
-        <!--<Property Id='ARPHELPLINK' Value='ChangeMe'/>-->
-
         <UI>
             <UIRef Id='WixUI_FeatureTree'/>
             
