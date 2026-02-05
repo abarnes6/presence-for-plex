@@ -21,7 +21,7 @@ use simplelog::{CombinedLogger, Config as LogConfig, LevelFilter, SimpleLogger, 
 use std::fs::File;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::{mpsc, oneshot, Mutex};
+use tokio::sync::{mpsc, Mutex};
 use tokio_util::sync::CancellationToken;
 use tray::{TrayCommand, TrayStatus};
 
@@ -83,30 +83,30 @@ async fn main() {
     });
 
     let mut pump = tokio::time::interval(Duration::from_millis(16));
-    let mut auth_rx: Option<oneshot::Receiver<Option<(String, Option<String>)>>> = None;
+    let (auth_result_tx, mut auth_result_rx) = mpsc::channel::<(String, Option<String>)>(1);
+    let mut auth_in_progress = false;
 
     loop {
         tokio::select! {
             biased;
             _ = pump.tick() => { #[cfg(windows)] pump_messages(); }
-            Some(result) = async { match auth_rx.take() { Some(rx) => Some(rx.await.ok().flatten()), None => std::future::pending().await } } => {
-                if let Some((token, tmdb)) = result {
-                    if let Some(h) = tray.as_ref() { h.auth_item.set_text("Reauthenticate"); h.status_item.set_text(TrayStatus::Idle.as_str()); }
-                    if let Some(old) = sse_cancel.as_ref() { old.cancel(); }
-                    let c = cancel.child_token();
-                    sse_cancel = Some(c.clone());
-                    let tx = media_tx.clone();
-                    tokio::spawn(async move { begin_monitoring(token, tmdb, tx, c).await });
-                } else { warn!("Auth failed"); }
+            Some((token, tmdb)) = auth_result_rx.recv() => {
+                auth_in_progress = false;
+                if let Some(h) = tray.as_ref() { h.auth_item.set_text("Reauthenticate"); h.status_item.set_text(TrayStatus::Idle.as_str()); }
+                if let Some(old) = sse_cancel.as_ref() { old.cancel(); }
+                let c = cancel.child_token();
+                sse_cancel = Some(c.clone());
+                let tx = media_tx.clone();
+                tokio::spawn(async move { begin_monitoring(token, tmdb, tx, c).await });
             }
             Some(status) = status_rx.recv() => { if let Some(h) = tray.as_ref() { h.status_item.set_text(status.as_str()); } }
             msg = tray_rx.recv() => match msg {
                 Some(TrayCommand::Quit) => { cancel.cancel(); discord.lock().await.disconnect(); break; }
-                Some(TrayCommand::Authenticate) if auth_rx.is_none() => {
-                    let (tx, rx) = oneshot::channel();
-                    auth_rx = Some(rx);
+                Some(TrayCommand::Authenticate) if !auth_in_progress => {
+                    auth_in_progress = true;
+                    let auth_tx = auth_result_tx.clone();
                     let tmdb = config.tmdb_token.clone();
-                    tokio::spawn(async move { let _ = tx.send(run_auth(tmdb).await); });
+                    tokio::spawn(async move { if let Some(r) = run_auth(tmdb).await { let _ = auth_tx.send(r).await; } });
                 }
                 _ => {}
             }
