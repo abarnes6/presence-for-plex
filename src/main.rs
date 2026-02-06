@@ -56,6 +56,9 @@ async fn main() {
 
     init_logging();
 
+    #[cfg(target_os = "linux")]
+    gtk::init().expect("Failed to initialize GTK");
+
     let config = Arc::new(Config::load());
     let cancel = CancellationToken::new();
     let (tray_tx, mut tray_rx) = mpsc::unbounded_channel::<TrayCommand>();

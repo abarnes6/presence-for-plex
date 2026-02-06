@@ -1639,6 +1639,7 @@ dependencies = [
  "eventsource-client",
  "fs2",
  "futures-util",
+ "gtk",
  "image",
  "log",
  "open",
