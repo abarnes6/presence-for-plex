@@ -28,6 +28,7 @@ impl From<PlaybackState> for TrayStatus {
 #[derive(Debug)]
 pub enum TrayCommand { Quit, Authenticate }
 
+#[cfg(target_os = "linux")]
 enum MenuTextUpdate {
     Status(String),
     Auth(String),
