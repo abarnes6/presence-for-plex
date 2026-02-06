@@ -11,41 +11,6 @@ A lightweight Discord Rich Presence client for Plex. Shows what you're watching 
 - Customizable display templates
 - Multi-server support
 
-## Installation
-
-### Windows
-Download the `.msi` from the [releases page](https://github.com/abarnes6/presence-for-plex/releases).
-
-### Linux
-```bash
-# From releases (Debian/Ubuntu)
-sudo dpkg -i presence-for-plex_*.deb
-
-# Or build from source
-cargo install cargo-deb
-cargo deb --install
-```
-
-### macOS
-```bash
-cargo install cargo-bundle
-cargo bundle --release
-# Move .app to Applications
-```
-
-## Building from Source
-
-```bash
-# Install Rust: https://rustup.rs
-
-# Linux only - install dependencies
-sudo apt-get install libgtk-3-dev libxdo-dev
-
-# Build and run
-cargo build --release
-cargo run --release
-```
-
 ## Configuration
 
 Config file: `~/.config/presence-for-plex/config.yaml` (Windows: `%APPDATA%\presence-for-plex\config.yaml`)
