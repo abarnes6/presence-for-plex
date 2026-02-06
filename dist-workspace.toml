@@ -17,3 +17,7 @@ install-path = "CARGO_HOME"
 install-updater = false
 # Don't overwrite customized MSI template
 allow-dirty = ["msi"]
+
+[dist.dependencies.apt]
+libgtk-3-dev = "*"
+libayatana-appindicator3-dev = "*"
