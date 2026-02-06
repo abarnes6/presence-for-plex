@@ -56,9 +56,6 @@ async fn main() {
 
     init_logging();
 
-    #[cfg(target_os = "linux")]
-    gtk::init().expect("Failed to initialize GTK");
-
     let config = Arc::new(Config::load());
     let cancel = CancellationToken::new();
     let (tray_tx, mut tray_rx) = mpsc::unbounded_channel::<TrayCommand>();
@@ -95,19 +92,19 @@ async fn main() {
             _ = pump.tick() => {
                 #[cfg(windows)]
                 pump_messages();
-                #[cfg(target_os = "linux")]
-                while gtk::events_pending() { gtk::main_iteration(); }
+                #[cfg(target_os = "macos")]
+                pump_macos();
             }
             Some((token, tmdb)) = auth_result_rx.recv() => {
                 auth_in_progress = false;
-                if let Some(h) = tray.as_ref() { h.auth_item.set_text("Reauthenticate"); h.status_item.set_text(TrayStatus::Idle.as_str()); }
+                if let Some(h) = tray.as_ref() { h.set_auth_text("Reauthenticate"); h.set_status_text(TrayStatus::Idle.as_str()); }
                 if let Some(old) = sse_cancel.as_ref() { old.cancel(); }
                 let c = cancel.child_token();
                 sse_cancel = Some(c.clone());
                 let tx = media_tx.clone();
                 tokio::spawn(async move { begin_monitoring(token, tmdb, tx, c).await });
             }
-            Some(status) = status_rx.recv() => { if let Some(h) = tray.as_ref() { h.status_item.set_text(status.as_str()); } }
+            Some(status) = status_rx.recv() => { if let Some(h) = tray.as_ref() { h.set_status_text(status.as_str()); } }
             msg = tray_rx.recv() => match msg {
                 Some(TrayCommand::Quit) => { cancel.cancel(); discord.lock().await.disconnect(); break; }
                 Some(TrayCommand::Authenticate) if !auth_in_progress => {
@@ -173,6 +170,12 @@ fn pump_messages() {
             DispatchMessageW(&msg);
         }
     }
+}
+
+#[cfg(target_os = "macos")]
+fn pump_macos() {
+    use objc2_core_foundation::{CFRunLoop, kCFRunLoopDefaultMode};
+    CFRunLoop::run_in_mode(unsafe { kCFRunLoopDefaultMode.as_deref() }, 0.0, false);
 }
 
 async fn run_auth(tmdb: Option<String>) -> Option<(String, Option<String>)> {
