@@ -92,7 +92,12 @@ async fn main() {
     loop {
         tokio::select! {
             biased;
-            _ = pump.tick() => { #[cfg(windows)] pump_messages(); }
+            _ = pump.tick() => {
+                #[cfg(windows)]
+                pump_messages();
+                #[cfg(target_os = "linux")]
+                while gtk::events_pending() { gtk::main_iteration(); }
+            }
             Some((token, tmdb)) = auth_result_rx.recv() => {
                 auth_in_progress = false;
                 if let Some(h) = tray.as_ref() { h.auth_item.set_text("Reauthenticate"); h.status_item.set_text(TrayStatus::Idle.as_str()); }
