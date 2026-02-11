@@ -6,6 +6,7 @@ mod metadata;
 mod plex_account;
 mod plex_server;
 mod presence;
+#[cfg(feature = "tray")]
 mod tray;
 
 use config::Config;
@@ -23,6 +24,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{mpsc, Mutex};
 use tokio_util::sync::CancellationToken;
+#[cfg(feature = "tray")]
 use tray::{TrayCommand, TrayStatus};
 
 const AUTH_TIMEOUT: Duration = Duration::from_secs(300);
@@ -58,9 +60,13 @@ async fn main() {
 
     let config = Arc::new(Config::load());
     let cancel = CancellationToken::new();
-    let (tray_tx, mut tray_rx) = mpsc::unbounded_channel::<TrayCommand>();
+
     let (media_tx, media_rx) = mpsc::unbounded_channel::<MediaUpdate>();
+    #[cfg(feature = "tray")]
+    let (tray_tx, mut tray_rx) = mpsc::unbounded_channel::<TrayCommand>();
+    #[cfg(feature = "tray")]
     let (status_tx, mut status_rx) = mpsc::unbounded_channel::<TrayStatus>();
+    #[cfg(feature = "tray")]
     let tray = tray::setup(tray_tx, config.plex_token.is_some());
 
     let mut discord = DiscordClient::new(&config.discord_client_id);
@@ -76,16 +82,25 @@ async fn main() {
         cancel.child_token()
     });
 
+    #[cfg(feature = "tray")]
     tokio::spawn({
         let discord = Arc::clone(&discord);
         let config = Arc::clone(&config);
         async move { handle_media(media_rx, discord, config, status_tx).await }
     });
 
+    #[cfg(not(feature = "tray"))]
+    tokio::spawn({
+        let discord = Arc::clone(&discord);
+        let config = Arc::clone(&config);
+        async move { handle_media(media_rx, discord, config).await }
+    });
+
+    #[cfg(feature = "tray")]
+    {
     let mut pump = tokio::time::interval(Duration::from_millis(16));
     let (auth_result_tx, mut auth_result_rx) = mpsc::channel::<(String, Option<String>)>(1);
     let mut auth_in_progress = false;
-
     loop {
         tokio::select! {
             biased;
@@ -117,6 +132,11 @@ async fn main() {
             }
         }
     }
+    }
+
+    #[cfg(not(feature = "tray"))]
+    tokio::signal::ctrl_c().await.ok();
+
     info!("Shutting down");
 }
 
@@ -143,6 +163,7 @@ async fn begin_monitoring(token: String, tmdb: Option<String>, tx: mpsc::Unbound
     }
 }
 
+#[cfg(feature = "tray")]
 async fn handle_media(mut rx: mpsc::UnboundedReceiver<MediaUpdate>, discord: Arc<Mutex<DiscordClient>>, config: Arc<Config>, status_tx: mpsc::UnboundedSender<TrayStatus>) {
     while let Some(update) = rx.recv().await {
         match update {
@@ -156,6 +177,23 @@ async fn handle_media(mut rx: mpsc::UnboundedReceiver<MediaUpdate>, discord: Arc
                 }
             }
             MediaUpdate::Stopped => { let _ = status_tx.send(TrayStatus::Idle); discord.lock().await.clear(); }
+        }
+    }
+}
+
+#[cfg(not(feature = "tray"))]
+async fn handle_media(mut rx: mpsc::UnboundedReceiver<MediaUpdate>, discord: Arc<Mutex<DiscordClient>>, config: Arc<Config>) {
+    while let Some(update) = rx.recv().await {
+        match update {
+            MediaUpdate::Playing(info) => {
+                let enabled = match info.media_type { MediaType::Movie => config.enable_movies, MediaType::Episode => config.enable_tv_shows, MediaType::Track => config.enable_music };
+                if enabled {
+                    let mut d = discord.lock().await;
+                    if !d.is_connected() { d.connect(); }
+                    d.update(&build_presence(&info, &config));
+                }
+            }
+            MediaUpdate::Stopped => { discord.lock().await.clear(); }
         }
     }
 }

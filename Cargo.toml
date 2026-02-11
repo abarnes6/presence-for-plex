@@ -7,8 +7,12 @@ description = "Discord Rich Presence for Plex"
 license = "MIT"
 repository = "https://github.com/abarnes6/presence-for-plex"
 
+[features]
+default = ["tray"]
+tray = ["tray-icon", "crossbeam-channel", "image", "gtk"]
+
 [dependencies]
-tokio = { version = "1.49", features = ["rt-multi-thread", "sync", "time", "macros"] }
+tokio = { version = "1.49", features = ["rt-multi-thread", "sync", "time", "macros", "signal"] }
 tokio-util = "0.7"
 reqwest = { version = "0.13", features = ["json", "stream", "query"] }
 eventsource-client = "0.16"
@@ -21,9 +25,9 @@ log = "0.4"
 simplelog = "0.12"
 dirs = "6"
 fs2 = "0.4"
-tray-icon = "0.21"
-crossbeam-channel = "0.5"
-image = { version = "0.25", default-features = false, features = ["ico"] }
+tray-icon = { version = "0.21", optional = true }
+crossbeam-channel = { version = "0.5", optional = true }
+image = { version = "0.25", default-features = false, features = ["ico"], optional = true }
 open = "5.3"
 percent-encoding = "2.3"
 
@@ -31,7 +35,7 @@ percent-encoding = "2.3"
 windows-sys = { version = "0.61", features = ["Win32_UI_WindowsAndMessaging"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-gtk = "0.18"
+gtk = { version = "0.18", optional = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2-core-foundation = { version = "0.3", features = ["CFRunLoop", "CFDate"] }
