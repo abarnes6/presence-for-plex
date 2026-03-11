@@ -39,9 +39,10 @@ fn acquire_instance_lock() -> Option<File> {
 fn init_logging() {
     let path = Config::log_path();
     std::fs::create_dir_all(path.parent().unwrap()).ok();
-    let mut loggers: Vec<Box<dyn simplelog::SharedLogger>> = vec![SimpleLogger::new(LevelFilter::Debug, LogConfig::default())];
+    let level = std::env::var("RUST_LOG").ok().and_then(|s| s.parse().ok()).unwrap_or(LevelFilter::Info);
+    let mut loggers: Vec<Box<dyn simplelog::SharedLogger>> = vec![SimpleLogger::new(level, LogConfig::default())];
     if let Ok(file) = File::create(&path) {
-        loggers.push(WriteLogger::new(LevelFilter::Debug, LogConfig::default(), file));
+        loggers.push(WriteLogger::new(level, LogConfig::default(), file));
     }
     let _ = CombinedLogger::init(loggers);
     info!("Starting Presence for Plex - Log: {}", path.display());
