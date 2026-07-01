@@ -20,21 +20,39 @@ pub struct ServerInfo {
 }
 
 #[derive(Debug, Clone)]
-pub struct ServerConnection { pub uri: String }
+pub struct ServerConnection {
+    pub uri: String,
+}
 
 impl PlexAccount {
     pub fn new() -> Self {
-        Self { client: Client::builder().user_agent("PresenceForPlex/1.0").timeout(TIMEOUT).build().expect("HTTP client"), username: None }
+        Self {
+            client: Client::builder()
+                .user_agent("PresenceForPlex/1.0")
+                .timeout(TIMEOUT)
+                .build()
+                .expect("HTTP client"),
+            username: None,
+        }
     }
 
-    pub fn username(&self) -> Option<&str> { self.username.as_deref() }
+    pub fn username(&self) -> Option<&str> {
+        self.username.as_deref()
+    }
 
     pub async fn fetch_username(&mut self, token: &str) -> Option<String> {
-        let json: serde_json::Value = self.client.get(format!("{}/user", PLEX_API))
+        let json: serde_json::Value = self
+            .client
+            .get(format!("{}/user", PLEX_API))
             .header("Accept", "application/json")
             .header("X-Plex-Token", token)
             .header("X-Plex-Client-Identifier", APP_NAME)
-            .send().await.ok()?.json().await.ok()?;
+            .send()
+            .await
+            .ok()?
+            .json()
+            .await
+            .ok()?;
         let username = json["username"].as_str()?.to_string();
         info!("Logged in as: {}", username);
         self.username = Some(username.clone());
@@ -42,37 +60,73 @@ impl PlexAccount {
     }
 
     pub async fn request_pin(&self) -> Option<(u64, String)> {
-        let json: serde_json::Value = self.client.post(format!("{}/pins", PLEX_API))
+        let json: serde_json::Value = self
+            .client
+            .post(format!("{}/pins", PLEX_API))
             .header("Accept", "application/json")
             .header("X-Plex-Product", "Presence for Plex")
             .header("X-Plex-Client-Identifier", APP_NAME)
             .query(&[("strong", "true")])
-            .send().await.ok()?.json().await.ok()?;
+            .send()
+            .await
+            .ok()?
+            .json()
+            .await
+            .ok()?;
         Some((json["id"].as_u64()?, json["code"].as_str()?.to_string()))
     }
 
     pub async fn check_pin(&self, pin_id: u64) -> Option<String> {
-        let json: serde_json::Value = self.client.get(format!("{}/pins/{}", PLEX_API, pin_id))
+        let json: serde_json::Value = self
+            .client
+            .get(format!("{}/pins/{}", PLEX_API, pin_id))
             .header("Accept", "application/json")
             .header("X-Plex-Client-Identifier", APP_NAME)
-            .send().await.ok()?.json().await.ok()?;
-        json["authToken"].as_str().filter(|s| !s.is_empty()).map(String::from)
+            .send()
+            .await
+            .ok()?
+            .json()
+            .await
+            .ok()?;
+        json["authToken"]
+            .as_str()
+            .filter(|s| !s.is_empty())
+            .map(String::from)
     }
 
     pub async fn get_servers(&self, token: &str) -> Option<Vec<ServerInfo>> {
-        let resources: Vec<PlexResource> = self.client.get(format!("{}/resources", PLEX_API))
+        let resources: Vec<PlexResource> = self
+            .client
+            .get(format!("{}/resources", PLEX_API))
             .header("Accept", "application/json")
             .header("X-Plex-Token", token)
             .header("X-Plex-Client-Identifier", APP_NAME)
             .query(&[("includeHttps", "1"), ("includeRelay", "1")])
-            .send().await.ok()?.json().await.ok()?;
+            .send()
+            .await
+            .ok()?
+            .json()
+            .await
+            .ok()?;
 
-        Some(resources.into_iter()
-            .filter(|r| r.provides.contains("server") && !r.connections.is_empty())
-            .map(|r| {
-                info!("Server: {} ({} connections)", r.name, r.connections.len());
-                ServerInfo { name: r.name, access_token: r.access_token, connections: r.connections.into_iter().map(|c| ServerConnection { uri: c.uri }).collect() }
-            }).collect())
+        Some(
+            resources
+                .into_iter()
+                .filter(|r| r.provides.contains("server") && !r.connections.is_empty())
+                .map(|r| {
+                    info!("Server: {} ({} connections)", r.name, r.connections.len());
+                    ServerInfo {
+                        name: r.name,
+                        access_token: r.access_token,
+                        connections: r
+                            .connections
+                            .into_iter()
+                            .map(|c| ServerConnection { uri: c.uri })
+                            .collect(),
+                    }
+                })
+                .collect(),
+        )
     }
 }
 
@@ -87,4 +141,6 @@ struct PlexResource {
 }
 
 #[derive(Deserialize)]
-struct PlexConnection { uri: String }
+struct PlexConnection {
+    uri: String,
+}

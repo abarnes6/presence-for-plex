@@ -2,18 +2,29 @@ use crossbeam_channel::RecvTimeoutError;
 use image::GenericImageView;
 use std::time::Duration;
 use tokio::sync::mpsc::UnboundedSender;
-use tray_icon::{menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem}, Icon, TrayIconBuilder};
+use tray_icon::{
+    Icon, TrayIconBuilder,
+    menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem},
+};
 
 use crate::plex_server::PlaybackState;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TrayStatus { Idle, Playing, Paused, Buffering, NotAuthenticated }
+pub enum TrayStatus {
+    Idle,
+    Playing,
+    Paused,
+    Buffering,
+    NotAuthenticated,
+}
 
 impl TrayStatus {
     pub fn as_str(self) -> &'static str {
         match self {
-            Self::Idle => "Status: Idle", Self::Playing => "Status: Playing",
-            Self::Paused => "Status: Paused", Self::Buffering => "Status: Buffering",
+            Self::Idle => "Status: Idle",
+            Self::Playing => "Status: Playing",
+            Self::Paused => "Status: Paused",
+            Self::Buffering => "Status: Buffering",
             Self::NotAuthenticated => "Status: Not Authenticated",
         }
     }
@@ -21,12 +32,19 @@ impl TrayStatus {
 
 impl From<PlaybackState> for TrayStatus {
     fn from(s: PlaybackState) -> Self {
-        match s { PlaybackState::Playing => Self::Playing, PlaybackState::Paused => Self::Paused, PlaybackState::Buffering => Self::Buffering }
+        match s {
+            PlaybackState::Playing => Self::Playing,
+            PlaybackState::Paused => Self::Paused,
+            PlaybackState::Buffering => Self::Buffering,
+        }
     }
 }
 
 #[derive(Debug)]
-pub enum TrayCommand { Quit, Authenticate }
+pub enum TrayCommand {
+    Quit,
+    Authenticate,
+}
 
 #[cfg(target_os = "linux")]
 enum MenuTextUpdate {
@@ -50,7 +68,9 @@ impl TrayHandle {
         #[cfg(not(target_os = "linux"))]
         self.status_item.set_text(text);
         #[cfg(target_os = "linux")]
-        let _ = self.update_tx.send(MenuTextUpdate::Status(text.to_string()));
+        let _ = self
+            .update_tx
+            .send(MenuTextUpdate::Status(text.to_string()));
     }
 
     pub fn set_auth_text(&self, text: &str) {
@@ -61,10 +81,30 @@ impl TrayHandle {
     }
 }
 
-fn build_tray(tx: UnboundedSender<TrayCommand>, authenticated: bool) -> Option<(MenuItem, MenuItem, tray_icon::TrayIcon)> {
+fn build_tray(
+    tx: UnboundedSender<TrayCommand>,
+    authenticated: bool,
+) -> Option<(MenuItem, MenuItem, tray_icon::TrayIcon)> {
     let menu = Menu::new();
-    let status_item = MenuItem::new(if authenticated { TrayStatus::Idle } else { TrayStatus::NotAuthenticated }.as_str(), false, None);
-    let auth_item = MenuItem::new(if authenticated { "Reauthenticate" } else { "Authenticate with Plex" }, true, None);
+    let status_item = MenuItem::new(
+        if authenticated {
+            TrayStatus::Idle
+        } else {
+            TrayStatus::NotAuthenticated
+        }
+        .as_str(),
+        false,
+        None,
+    );
+    let auth_item = MenuItem::new(
+        if authenticated {
+            "Reauthenticate"
+        } else {
+            "Authenticate with Plex"
+        },
+        true,
+        None,
+    );
     let quit_item = MenuItem::new("Quit", true, None);
 
     menu.append(&status_item).ok()?;
@@ -76,7 +116,12 @@ fn build_tray(tx: UnboundedSender<TrayCommand>, authenticated: bool) -> Option<(
     let (w, h) = img.dimensions();
     let icon = Icon::from_rgba(img.to_rgba8().into_raw(), w, h).ok()?;
 
-    let tray = TrayIconBuilder::new().with_menu(Box::new(menu)).with_tooltip("Presence for Plex").with_icon(icon).build().ok()?;
+    let tray = TrayIconBuilder::new()
+        .with_menu(Box::new(menu))
+        .with_tooltip("Presence for Plex")
+        .with_icon(icon)
+        .build()
+        .ok()?;
 
     let (auth_id, quit_id) = (auth_item.id().clone(), quit_item.id().clone());
 
@@ -84,8 +129,13 @@ fn build_tray(tx: UnboundedSender<TrayCommand>, authenticated: bool) -> Option<(
         let recv = MenuEvent::receiver();
         loop {
             match recv.recv_timeout(Duration::from_millis(100)) {
-                Ok(e) if e.id == quit_id => { let _ = tx.send(TrayCommand::Quit); break; }
-                Ok(e) if e.id == auth_id => { let _ = tx.send(TrayCommand::Authenticate); }
+                Ok(e) if e.id == quit_id => {
+                    let _ = tx.send(TrayCommand::Quit);
+                    break;
+                }
+                Ok(e) if e.id == auth_id => {
+                    let _ = tx.send(TrayCommand::Authenticate);
+                }
                 Ok(_) => {}
                 Err(RecvTimeoutError::Timeout) if tx.is_closed() => break,
                 Err(RecvTimeoutError::Disconnected) => break,
@@ -130,12 +180,18 @@ pub fn setup(tx: UnboundedSender<TrayCommand>, authenticated: bool) -> Option<Tr
 
         gtk::main();
     });
-    if !ready_rx.recv().ok()? { return None; }
+    if !ready_rx.recv().ok()? {
+        return None;
+    }
     Some(TrayHandle { update_tx })
 }
 
 #[cfg(not(target_os = "linux"))]
 pub fn setup(tx: UnboundedSender<TrayCommand>, authenticated: bool) -> Option<TrayHandle> {
     let (status_item, auth_item, tray) = build_tray(tx, authenticated)?;
-    Some(TrayHandle { _tray: tray, status_item, auth_item })
+    Some(TrayHandle {
+        _tray: tray,
+        status_item,
+        auth_item,
+    })
 }
