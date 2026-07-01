@@ -60,13 +60,11 @@ impl Config {
             Ok(contents) => match serde_yml::from_str(&contents) {
                 Ok(config) => config,
                 Err(e) => {
-                    // Never overwrite a config we couldn't parse - move it aside
-                    // so the user's settings (and token) can be recovered.
                     log::error!("Failed to parse {}: {}", path.display(), e);
                     let backup = path.with_extension("yaml.bak");
                     match std::fs::rename(&path, &backup) {
-                        Ok(_) => log::warn!("Unparseable config backed up to {}", backup.display()),
-                        Err(e) => log::warn!("Could not back up config: {}", e),
+                        Ok(_) => log::warn!("Config backed up to {}", backup.display()),
+                        Err(e) => log::warn!("Config backup failed: {}", e),
                     }
                     Config::default()
                 }
@@ -90,7 +88,7 @@ impl Config {
         }
         let contents = serde_yml::to_string(self).map_err(std::io::Error::other)?;
         std::fs::write(&path, contents)?;
-        // The config holds the Plex token - keep it readable by the owner only.
+        // Contains the Plex token
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;

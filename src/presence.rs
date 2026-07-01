@@ -45,7 +45,7 @@ fn format_template(template: &str, info: &MediaInfo) -> String {
                 placeholder.push(ch);
             }
             if !closed {
-                // Unterminated placeholder - emit it verbatim
+                // Unterminated placeholder, emit verbatim
                 result.push('{');
                 result.push_str(&placeholder);
                 break;

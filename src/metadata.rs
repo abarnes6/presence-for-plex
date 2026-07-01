@@ -58,8 +58,7 @@ impl MetadataEnricher {
             }
         }
 
-        // For anime, fetch MAL ID for the link. Only the "anime" genre counts -
-        // "animation" would match Western cartoons and produce bogus MAL links.
+        // For anime, fetch MAL ID for the link ("animation" alone is not anime)
         let is_anime = info.genres.iter().any(|g| g.eq_ignore_ascii_case("anime"));
         if is_anime && info.media_type != MediaType::Track {
             self.fetch_mal_id(info).await;
@@ -161,7 +160,7 @@ impl MetadataEnricher {
             let mut c = cache.write().unwrap();
             c.retain(|_, e| e.timestamp.elapsed() < CACHE_TTL);
             if c.len() >= CACHE_CLEANUP_THRESHOLD {
-                // Everything is still fresh - evict the older half to cap growth
+                // Still full, evict the older half
                 let mut stamps: Vec<Instant> = c.values().map(|e| e.timestamp).collect();
                 stamps.sort();
                 let cutoff = stamps[stamps.len() / 2];

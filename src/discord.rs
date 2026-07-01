@@ -40,7 +40,7 @@ impl DiscordClient {
             .activity_type(p.activity_type.into())
             .status_display_type(display);
 
-        // Discord rejects presence strings shorter than 2 characters
+        // Discord rejects strings under 2 chars
         if p.details.chars().count() >= 2 { b = b.details(&p.details); }
         if p.state.chars().count() >= 2 { b = b.state(&p.state); }
 

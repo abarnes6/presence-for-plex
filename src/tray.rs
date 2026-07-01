@@ -103,7 +103,7 @@ pub fn setup(tx: UnboundedSender<TrayCommand>, authenticated: bool) -> Option<Tr
     let (update_tx, update_rx) = std::sync::mpsc::channel::<MenuTextUpdate>();
     std::thread::spawn(move || {
         if gtk::init().is_err() {
-            log::error!("Failed to initialize GTK - tray disabled");
+            log::error!("GTK init failed");
             ready_tx.send(false).ok();
             return;
         }

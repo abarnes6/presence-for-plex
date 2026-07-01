@@ -72,8 +72,8 @@ async fn main() {
 
     if std::env::args().any(|a| a == "--auth") {
         match run_auth().await {
-            Some(_) => info!("Authentication successful - token saved. Start the app normally to begin monitoring."),
-            None => error!("Authentication failed or timed out"),
+            Some(_) => info!("Token saved"),
+            None => error!("Auth failed or timed out"),
         }
         return;
     }
@@ -115,11 +115,10 @@ async fn main() {
     #[cfg(feature = "tray")]
     {
         if tray.is_none() {
-            warn!("System tray unavailable - running without tray (Ctrl+C to quit)");
+            warn!("Tray unavailable, Ctrl+C to quit");
             tokio::signal::ctrl_c().await.ok();
         } else {
-            // Windows/macOS need the UI event loop pumped from this thread; on Linux
-            // the tray runs its own GTK thread, so the tick is just a keepalive.
+            // Only Windows/macOS need the UI loop pumped from this thread
             let pump_period = if cfg!(any(windows, target_os = "macos")) { Duration::from_millis(16) } else { Duration::from_secs(3600) };
             let mut pump = tokio::time::interval(pump_period);
             let (auth_result_tx, mut auth_result_rx) = mpsc::channel::<Option<String>>(1);
@@ -142,7 +141,7 @@ async fn main() {
                                 sse_cancel = Some(spawn_monitoring(token, config.tmdb_token.clone(), &cancel, &media_tx));
                             }
                             None => {
-                                warn!("Plex authentication failed or timed out");
+                                warn!("Auth failed or timed out");
                                 if sse_cancel.is_none() && let Some(h) = tray.as_ref() { h.set_status_text(TrayStatus::NotAuthenticated.as_str()); }
                             }
                         }
@@ -174,16 +173,15 @@ async fn begin_monitoring(token: String, tmdb: Option<String>, tx: mpsc::Unbound
     let enricher = Arc::new(MetadataEnricher::new(tmdb));
     let mut account = PlexAccount::new();
 
-    // Server discovery can fail transiently (e.g. app starts before the network
-    // is up at login), so retry with backoff instead of giving up.
+    // Retry discovery, the network may not be up yet at login
     let mut delay = DISCOVERY_RETRY_INITIAL;
     let servers = loop {
         if account.username().is_none() && account.fetch_username(&token).await.is_none() {
-            warn!("Could not fetch Plex account info; retrying in {}s", delay.as_secs());
+            warn!("Account fetch failed, retrying in {}s", delay.as_secs());
         } else {
             match account.get_servers(&token).await {
                 Some(s) if !s.is_empty() => break s,
-                _ => warn!("No Plex servers found; retrying in {}s", delay.as_secs()),
+                _ => warn!("No servers found, retrying in {}s", delay.as_secs()),
             }
         }
         tokio::select! {
@@ -264,7 +262,7 @@ async fn run_auth() -> Option<String> {
     let account = PlexAccount::new();
     let (pin_id, code) = account.request_pin().await?;
     let url = format!("https://app.plex.tv/auth#?clientID={}&code={}&context%5Bdevice%5D%5Bproduct%5D=Presence%20for%20Plex", utf8_percent_encode(APP_NAME, NON_ALPHANUMERIC), utf8_percent_encode(&code, NON_ALPHANUMERIC));
-    println!("Open this URL to link your Plex account:\n{}", url);
+    println!("Open to authenticate:\n{}", url);
     if let Err(e) = open::that(&url) { warn!("Browser failed: {}", e); }
 
     let token = tokio::time::timeout(AUTH_TIMEOUT, async {

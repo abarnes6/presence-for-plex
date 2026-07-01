@@ -23,8 +23,8 @@ Config file locations:
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `plex_token` | – | Plex auth token (set automatically by the auth flow) |
-| `tmdb_token` | – | Optional personal TMDB API read token for artwork |
+| `plex_token` | unset | Plex auth token (set by the auth flow) |
+| `tmdb_token` | unset | Personal TMDB API read token for artwork |
 | `show_buttons` | `true` | Show IMDb/MyAnimeList link buttons |
 | `show_progress` | `true` | Show playback progress timestamps |
 | `show_artwork` | `true` | Show media artwork instead of the Plex logo |
@@ -47,19 +47,17 @@ Config file locations:
 
 ## Headless mode
 
-For servers or Docker-style setups you can build without the system tray (drops the GTK dependency on Linux):
+Build without the system tray (no GTK dependency on Linux):
 
 ```sh
 cargo build --release --no-default-features
 ```
 
-Since there is no tray menu in headless mode, authenticate once from the terminal:
+Authenticate once from the terminal, then start the app normally:
 
 ```sh
 presence-for-plex --auth
 ```
-
-This prints a Plex link URL, waits for you to approve it, and saves the token to the config file. Then start the app normally. (`--auth` also works in the tray build.)
 
 ## Troubleshooting
 
