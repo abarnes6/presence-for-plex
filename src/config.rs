@@ -56,16 +56,31 @@ impl Default for Config {
 impl Config {
     pub fn load() -> Self {
         let path = Self::config_path();
-        if path.exists() {
-            if let Ok(contents) = std::fs::read_to_string(&path) {
-                if let Ok(config) = serde_yml::from_str(&contents) {
-                    return config;
+        match std::fs::read_to_string(&path) {
+            Ok(contents) => match serde_yml::from_str(&contents) {
+                Ok(config) => config,
+                Err(e) => {
+                    // Never overwrite a config we couldn't parse - move it aside
+                    // so the user's settings (and token) can be recovered.
+                    log::error!("Failed to parse {}: {}", path.display(), e);
+                    let backup = path.with_extension("yaml.bak");
+                    match std::fs::rename(&path, &backup) {
+                        Ok(_) => log::warn!("Unparseable config backed up to {}", backup.display()),
+                        Err(e) => log::warn!("Could not back up config: {}", e),
+                    }
+                    Config::default()
                 }
+            },
+            Err(e) => {
+                let config = Config::default();
+                if e.kind() == std::io::ErrorKind::NotFound {
+                    let _ = config.save();
+                } else {
+                    log::warn!("Could not read {}: {}", path.display(), e);
+                }
+                config
             }
         }
-        let config = Config::default();
-        let _ = config.save();
-        config
     }
 
     pub fn save(&self) -> std::io::Result<()> {
@@ -73,8 +88,15 @@ impl Config {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        let contents = serde_yml::to_string(self).unwrap_or_default();
-        std::fs::write(&path, contents)
+        let contents = serde_yml::to_string(self).map_err(std::io::Error::other)?;
+        std::fs::write(&path, contents)?;
+        // The config holds the Plex token - keep it readable by the owner only.
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
+        }
+        Ok(())
     }
 
     fn config_path() -> PathBuf {
@@ -89,5 +111,36 @@ impl Config {
         dirs::config_dir()
             .unwrap_or_else(|| PathBuf::from("."))
             .join("presence-for-plex")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn defaults_roundtrip_through_yaml() {
+        let original = Config::default();
+        let yaml = serde_yml::to_string(&original).unwrap();
+        let parsed: Config = serde_yml::from_str(&yaml).unwrap();
+        assert_eq!(parsed.discord_client_id, original.discord_client_id);
+        assert_eq!(parsed.tv_state, original.tv_state);
+        assert_eq!(parsed.show_buttons, original.show_buttons);
+        assert_eq!(parsed.plex_token, original.plex_token);
+    }
+
+    #[test]
+    fn partial_config_fills_in_defaults() {
+        let parsed: Config = serde_yml::from_str("plex_token: abc123\nenable_music: false\n").unwrap();
+        assert_eq!(parsed.plex_token.as_deref(), Some("abc123"));
+        assert!(!parsed.enable_music);
+        assert!(parsed.enable_movies);
+        assert_eq!(parsed.discord_client_id, Config::default().discord_client_id);
+        assert_eq!(parsed.movie_details, Config::default().movie_details);
+    }
+
+    #[test]
+    fn invalid_yaml_fails_to_parse() {
+        assert!(serde_yml::from_str::<Config>("plex_token: [unclosed").is_err());
     }
 }
