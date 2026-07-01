@@ -129,11 +129,15 @@ mod tests {
 
     #[test]
     fn partial_config_fills_in_defaults() {
-        let parsed: Config = serde_yml::from_str("plex_token: abc123\nenable_music: false\n").unwrap();
+        let parsed: Config =
+            serde_yml::from_str("plex_token: abc123\nenable_music: false\n").unwrap();
         assert_eq!(parsed.plex_token.as_deref(), Some("abc123"));
         assert!(!parsed.enable_music);
         assert!(parsed.enable_movies);
-        assert_eq!(parsed.discord_client_id, Config::default().discord_client_id);
+        assert_eq!(
+            parsed.discord_client_id,
+            Config::default().discord_client_id
+        );
         assert_eq!(parsed.movie_details, Config::default().movie_details);
     }
 
