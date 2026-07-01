@@ -29,13 +29,16 @@ use tray::{TrayCommand, TrayStatus};
 
 const AUTH_TIMEOUT: Duration = Duration::from_secs(300);
 const AUTH_POLL_INTERVAL: Duration = Duration::from_secs(2);
+const DISCOVERY_RETRY_INITIAL: Duration = Duration::from_secs(5);
+const DISCOVERY_RETRY_MAX: Duration = Duration::from_secs(300);
 
-fn acquire_instance_lock() -> Option<File> {
-    let path = Config::app_dir().join("presence-for-plex.lock");
-    std::fs::create_dir_all(path.parent()?).ok();
-    let file = File::create(&path).ok()?;
-    file.try_lock_exclusive().ok()?;
-    Some(file)
+fn acquire_instance_lock() -> Result<File, String> {
+    let dir = Config::app_dir();
+    std::fs::create_dir_all(&dir).map_err(|e| format!("Cannot create {}: {}", dir.display(), e))?;
+    let path = dir.join("presence-for-plex.lock");
+    let file = File::create(&path).map_err(|e| format!("Cannot create lock file {}: {}", path.display(), e))?;
+    file.try_lock_exclusive().map_err(|_| "Another instance is already running".to_string())?;
+    Ok(file)
 }
 
 fn init_logging() {
@@ -50,14 +53,30 @@ fn init_logging() {
     info!("Starting Presence for Plex - Log: {}", path.display());
 }
 
+fn spawn_monitoring(token: String, tmdb: Option<String>, cancel: &CancellationToken, media_tx: &mpsc::UnboundedSender<MediaUpdate>) -> CancellationToken {
+    let c = cancel.child_token();
+    let monitor_cancel = c.clone();
+    let tx = media_tx.clone();
+    tokio::spawn(async move { begin_monitoring(token, tmdb, tx, monitor_cancel).await });
+    c
+}
+
 #[tokio::main]
 async fn main() {
     let _lock = match acquire_instance_lock() {
-        Some(f) => f,
-        None => { eprintln!("Another instance running"); return; }
+        Ok(f) => f,
+        Err(e) => { eprintln!("{}", e); return; }
     };
 
     init_logging();
+
+    if std::env::args().any(|a| a == "--auth") {
+        match run_auth().await {
+            Some(_) => info!("Token saved"),
+            None => error!("Auth failed or timed out"),
+        }
+        return;
+    }
 
     let config = Arc::new(Config::load());
     let cancel = CancellationToken::new();
@@ -74,14 +93,10 @@ async fn main() {
     discord.connect();
     let discord = Arc::new(Mutex::new(discord));
 
-    let mut sse_cancel = config.plex_token.as_ref().map(|token| {
-        let c = cancel.child_token();
-        let tx = media_tx.clone();
-        let tmdb = config.tmdb_token.clone();
-        let t = token.clone();
-        tokio::spawn(async move { begin_monitoring(t, tmdb, tx, c).await });
-        cancel.child_token()
-    });
+    #[cfg(feature = "tray")]
+    let mut sse_cancel = config.plex_token.clone().map(|token| spawn_monitoring(token, config.tmdb_token.clone(), &cancel, &media_tx));
+    #[cfg(not(feature = "tray"))]
+    let _sse_cancel = config.plex_token.clone().map(|token| spawn_monitoring(token, config.tmdb_token.clone(), &cancel, &media_tx));
 
     #[cfg(feature = "tray")]
     tokio::spawn({
@@ -99,56 +114,81 @@ async fn main() {
 
     #[cfg(feature = "tray")]
     {
-    let mut pump = tokio::time::interval(Duration::from_millis(16));
-    let (auth_result_tx, mut auth_result_rx) = mpsc::channel::<(String, Option<String>)>(1);
-    let mut auth_in_progress = false;
-    loop {
-        tokio::select! {
-            biased;
-            _ = pump.tick() => {
-                #[cfg(windows)]
-                pump_messages();
-                #[cfg(target_os = "macos")]
-                pump_macos();
-            }
-            Some((token, tmdb)) = auth_result_rx.recv() => {
-                auth_in_progress = false;
-                if let Some(h) = tray.as_ref() { h.set_auth_text("Reauthenticate"); h.set_status_text(TrayStatus::Idle.as_str()); }
-                if let Some(old) = sse_cancel.as_ref() { old.cancel(); }
-                let c = cancel.child_token();
-                sse_cancel = Some(c.clone());
-                let tx = media_tx.clone();
-                tokio::spawn(async move { begin_monitoring(token, tmdb, tx, c).await });
-            }
-            Some(status) = status_rx.recv() => { if let Some(h) = tray.as_ref() { h.set_status_text(status.as_str()); } }
-            msg = tray_rx.recv() => match msg {
-                Some(TrayCommand::Quit) => { cancel.cancel(); discord.lock().await.disconnect(); break; }
-                Some(TrayCommand::Authenticate) if !auth_in_progress => {
-                    auth_in_progress = true;
-                    let auth_tx = auth_result_tx.clone();
-                    let tmdb = config.tmdb_token.clone();
-                    tokio::spawn(async move { if let Some(r) = run_auth(tmdb).await { let _ = auth_tx.send(r).await; } });
+        if tray.is_none() {
+            warn!("Tray unavailable, Ctrl+C to quit");
+            tokio::signal::ctrl_c().await.ok();
+        } else {
+            // Only Windows/macOS need the UI loop pumped from this thread
+            let pump_period = if cfg!(any(windows, target_os = "macos")) { Duration::from_millis(16) } else { Duration::from_secs(3600) };
+            let mut pump = tokio::time::interval(pump_period);
+            let (auth_result_tx, mut auth_result_rx) = mpsc::channel::<Option<String>>(1);
+            let mut auth_in_progress = false;
+            loop {
+                tokio::select! {
+                    biased;
+                    _ = pump.tick() => {
+                        #[cfg(windows)]
+                        pump_messages();
+                        #[cfg(target_os = "macos")]
+                        pump_macos();
+                    }
+                    Some(result) = auth_result_rx.recv() => {
+                        auth_in_progress = false;
+                        match result {
+                            Some(token) => {
+                                if let Some(h) = tray.as_ref() { h.set_auth_text("Reauthenticate"); h.set_status_text(TrayStatus::Idle.as_str()); }
+                                if let Some(old) = sse_cancel.as_ref() { old.cancel(); }
+                                sse_cancel = Some(spawn_monitoring(token, config.tmdb_token.clone(), &cancel, &media_tx));
+                            }
+                            None => {
+                                warn!("Auth failed or timed out");
+                                if sse_cancel.is_none() && let Some(h) = tray.as_ref() { h.set_status_text(TrayStatus::NotAuthenticated.as_str()); }
+                            }
+                        }
+                    }
+                    Some(status) = status_rx.recv() => { if let Some(h) = tray.as_ref() { h.set_status_text(status.as_str()); } }
+                    Some(msg) = tray_rx.recv() => match msg {
+                        TrayCommand::Quit => break,
+                        TrayCommand::Authenticate if !auth_in_progress => {
+                            auth_in_progress = true;
+                            let auth_tx = auth_result_tx.clone();
+                            tokio::spawn(async move { let _ = auth_tx.send(run_auth().await).await; });
+                        }
+                        _ => {}
+                    }
                 }
-                _ => {}
             }
         }
-    }
     }
 
     #[cfg(not(feature = "tray"))]
     tokio::signal::ctrl_c().await.ok();
 
+    cancel.cancel();
+    discord.lock().await.disconnect();
     info!("Shutting down");
 }
 
 async fn begin_monitoring(token: String, tmdb: Option<String>, tx: mpsc::UnboundedSender<MediaUpdate>, cancel: CancellationToken) {
     let enricher = Arc::new(MetadataEnricher::new(tmdb));
     let mut account = PlexAccount::new();
-    account.fetch_username(&token).await;
 
-    let servers = match account.get_servers(&token).await {
-        Some(s) if !s.is_empty() => s,
-        _ => { warn!("No Plex servers found"); return; }
+    // Retry discovery, the network may not be up yet at login
+    let mut delay = DISCOVERY_RETRY_INITIAL;
+    let servers = loop {
+        if account.username().is_none() && account.fetch_username(&token).await.is_none() {
+            warn!("Account fetch failed, retrying in {}s", delay.as_secs());
+        } else {
+            match account.get_servers(&token).await {
+                Some(s) if !s.is_empty() => break s,
+                _ => warn!("No servers found, retrying in {}s", delay.as_secs()),
+            }
+        }
+        tokio::select! {
+            _ = cancel.cancelled() => return,
+            _ = tokio::time::sleep(delay) => {}
+        }
+        delay = (delay * 2).min(DISCOVERY_RETRY_MAX);
     };
 
     let username = account.username().map(String::from);
@@ -214,14 +254,15 @@ fn pump_messages() {
 #[cfg(target_os = "macos")]
 fn pump_macos() {
     use objc2_core_foundation::{CFRunLoop, kCFRunLoopDefaultMode};
-    CFRunLoop::run_in_mode(unsafe { kCFRunLoopDefaultMode.as_deref() }, 0.0, false);
+    CFRunLoop::run_in_mode(unsafe { kCFRunLoopDefaultMode }, 0.0, false);
 }
 
-async fn run_auth(tmdb: Option<String>) -> Option<(String, Option<String>)> {
+async fn run_auth() -> Option<String> {
     info!("Starting Plex auth");
     let account = PlexAccount::new();
     let (pin_id, code) = account.request_pin().await?;
     let url = format!("https://app.plex.tv/auth#?clientID={}&code={}&context%5Bdevice%5D%5Bproduct%5D=Presence%20for%20Plex", utf8_percent_encode(APP_NAME, NON_ALPHANUMERIC), utf8_percent_encode(&code, NON_ALPHANUMERIC));
+    println!("Open to authenticate:\n{}", url);
     if let Err(e) = open::that(&url) { warn!("Browser failed: {}", e); }
 
     let token = tokio::time::timeout(AUTH_TIMEOUT, async {
@@ -232,5 +273,5 @@ async fn run_auth(tmdb: Option<String>) -> Option<(String, Option<String>)> {
     cfg.plex_token = Some(token.clone());
     if let Err(e) = cfg.save() { error!("Config save failed: {}", e); }
     info!("Auth complete");
-    Some((token, tmdb))
+    Some(token)
 }

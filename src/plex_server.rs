@@ -46,6 +46,33 @@ pub struct MediaInfo {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum MediaType { Movie, Episode, Track }
 
+#[cfg(test)]
+impl MediaInfo {
+    pub fn test_stub(media_type: MediaType) -> Self {
+        Self {
+            title: "Title".into(),
+            media_type,
+            show_name: None,
+            season: None,
+            episode: None,
+            artist: None,
+            album: None,
+            year: None,
+            genres: Vec::new(),
+            duration_ms: 0,
+            view_offset_ms: 0,
+            state: PlaybackState::Playing,
+            imdb_id: None,
+            tmdb_id: None,
+            mal_id: None,
+            art_url: None,
+            rating_key: None,
+            grandparent_key: None,
+            key: None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum PlaybackState { Playing, Paused, Buffering }
 
@@ -366,4 +393,134 @@ struct ItemMetadata {
     #[serde(rename = "grandparentKey")]
     grandparent_key: Option<String>,
     key: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn playing_info(rating_key: &str, offset: u64) -> MediaInfo {
+        let mut info = MediaInfo::test_stub(MediaType::Movie);
+        info.rating_key = Some(rating_key.to_string());
+        info.view_offset_ms = offset;
+        info
+    }
+
+    #[test]
+    fn tracker_detects_duplicate_progress_updates() {
+        let mut t = PlaybackTracker::default();
+        t.set(playing_info("1", 1000), "http://server");
+        // Same item/state with offset within the seek threshold is a duplicate
+        assert!(t.is_duplicate("1", PlaybackState::Playing, 1000));
+        assert!(t.is_duplicate("1", PlaybackState::Playing, 20_000));
+    }
+
+    #[test]
+    fn tracker_treats_seek_as_new_update() {
+        let mut t = PlaybackTracker::default();
+        t.set(playing_info("1", 1000), "http://server");
+        assert!(!t.is_duplicate("1", PlaybackState::Playing, 1000 + SEEK_THRESHOLD_MS + 1));
+    }
+
+    #[test]
+    fn tracker_treats_state_change_or_new_item_as_new_update() {
+        let mut t = PlaybackTracker::default();
+        t.set(playing_info("1", 1000), "http://server");
+        assert!(!t.is_duplicate("1", PlaybackState::Paused, 1000));
+        assert!(!t.is_duplicate("2", PlaybackState::Playing, 1000));
+    }
+
+    #[test]
+    fn tracker_is_empty_by_default() {
+        let t = PlaybackTracker::default();
+        assert!(!t.is_duplicate("1", PlaybackState::Playing, 0));
+    }
+
+    #[test]
+    fn tracker_update_applies_state_and_offset() {
+        let mut t = PlaybackTracker::default();
+        t.set(playing_info("1", 1000), "http://server");
+        t.update(PlaybackState::Paused, 5000);
+        let info = t.info.as_ref().unwrap();
+        assert_eq!(info.state, PlaybackState::Paused);
+        assert_eq!(info.view_offset_ms, 5000);
+    }
+
+    #[test]
+    fn tracker_clears_only_for_matching_server() {
+        let mut t = PlaybackTracker::default();
+        t.set(playing_info("1", 0), "http://a");
+        assert!(!t.clear_if_server("http://b"));
+        assert!(t.info.is_some());
+        assert!(t.clear_if_server("http://a"));
+        assert!(t.info.is_none());
+    }
+
+    #[test]
+    fn parse_metadata_maps_episode_fields() {
+        let meta: ItemMetadata = serde_json::from_str(r#"{
+            "title": "The One Where It Works",
+            "type": "episode",
+            "duration": 1320000,
+            "year": 1994,
+            "grandparentTitle": "Friends",
+            "parentIndex": 1,
+            "index": 2,
+            "parentTitle": "Season 1",
+            "Guid": [{"id": "imdb://tt0583459"}, {"id": "tmdb://123"}],
+            "Genre": [{"tag": "Comedy"}],
+            "grandparentKey": "/library/metadata/100"
+        }"#).unwrap();
+
+        let info = PlexServer::parse_metadata(meta, "42", PlaybackState::Playing, 5000).unwrap();
+        assert_eq!(info.media_type, MediaType::Episode);
+        assert_eq!(info.title, "The One Where It Works");
+        assert_eq!(info.show_name.as_deref(), Some("Friends"));
+        assert_eq!(info.season, Some(1));
+        assert_eq!(info.episode, Some(2));
+        assert_eq!(info.imdb_id.as_deref(), Some("tt0583459"));
+        assert_eq!(info.tmdb_id.as_deref(), Some("123"));
+        assert_eq!(info.genres, vec!["Comedy".to_string()]);
+        assert_eq!(info.duration_ms, 1320000);
+        assert_eq!(info.view_offset_ms, 5000);
+        assert_eq!(info.rating_key.as_deref(), Some("42"));
+        assert_eq!(info.grandparent_key.as_deref(), Some("/library/metadata/100"));
+    }
+
+    #[test]
+    fn parse_metadata_maps_track_fields() {
+        let meta: ItemMetadata = serde_json::from_str(r#"{
+            "title": "Song",
+            "type": "track",
+            "grandparentTitle": "Artist",
+            "parentTitle": "Album"
+        }"#).unwrap();
+
+        let info = PlexServer::parse_metadata(meta, "7", PlaybackState::Paused, 0).unwrap();
+        assert_eq!(info.media_type, MediaType::Track);
+        assert_eq!(info.artist.as_deref(), Some("Artist"));
+        assert_eq!(info.album.as_deref(), Some("Album"));
+        assert_eq!(info.duration_ms, 0);
+    }
+
+    #[test]
+    fn parse_metadata_rejects_unknown_types() {
+        let meta: ItemMetadata = serde_json::from_str(r#"{"title": "Photo", "type": "photo"}"#).unwrap();
+        assert!(PlexServer::parse_metadata(meta, "1", PlaybackState::Playing, 0).is_none());
+    }
+
+    #[test]
+    fn sse_notification_parses_plex_payload() {
+        let notif: SseNotification = serde_json::from_str(r#"{
+            "PlaySessionStateNotification": {
+                "state": "playing",
+                "ratingKey": "123",
+                "viewOffset": 60000
+            }
+        }"#).unwrap();
+        let playing = notif.play_session_state.unwrap();
+        assert_eq!(playing.state, "playing");
+        assert_eq!(playing.rating_key, "123");
+        assert_eq!(playing.view_offset, Some(60000));
+    }
 }

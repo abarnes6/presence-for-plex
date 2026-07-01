@@ -13,7 +13,23 @@ A lightweight Discord Rich Presence client for Plex. Shows what you're watching 
 
 ## Configuration
 
-Config file: `~/.config/presence-for-plex/config.yaml` (Windows: `%APPDATA%\presence-for-plex\config.yaml`)
+Config file locations:
+
+- Linux: `~/.config/presence-for-plex/config.yaml`
+- macOS: `~/Library/Application Support/presence-for-plex/config.yaml`
+- Windows: `%APPDATA%\presence-for-plex\config.yaml`
+
+### Options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `plex_token` | unset | Plex auth token (set by the auth flow) |
+| `tmdb_token` | unset | Personal TMDB API read token for artwork |
+| `show_buttons` | `true` | Show IMDb/MyAnimeList link buttons |
+| `show_progress` | `true` | Show playback progress timestamps |
+| `show_artwork` | `true` | Show media artwork instead of the Plex logo |
+| `enable_movies` / `enable_tv_shows` / `enable_music` | `true` | Toggle presence per media type |
+| `tv_details`, `tv_state`, `tv_image_text`, `movie_*`, `music_*` | see defaults | Display templates (see variables below) |
 
 ### Template Variables
 
@@ -29,11 +45,26 @@ Config file: `~/.config/presence-for-plex/config.yaml` (Windows: `%APPDATA%\pres
 | `{artist}` | Music artist |
 | `{album}` | Album name |
 
+## Headless mode
+
+Build without the system tray (no GTK dependency on Linux):
+
+```sh
+cargo build --release --no-default-features
+```
+
+Authenticate once from the terminal, then start the app normally:
+
+```sh
+presence-for-plex --auth
+```
+
 ## Troubleshooting
 
-Check the log file:
-- Windows: `%APPDATA%\presence-for-plex\log.txt`
-- macOS/Linux: `~/.config/presence-for-plex/log.txt`
+Check the log file (`presence-for-plex.log`):
+- Linux: `~/.config/presence-for-plex/presence-for-plex.log`
+- macOS: `~/Library/Application Support/presence-for-plex/presence-for-plex.log`
+- Windows: `%APPDATA%\presence-for-plex\presence-for-plex.log`
 
 ## FAQ
 

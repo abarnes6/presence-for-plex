@@ -102,7 +102,11 @@ pub fn setup(tx: UnboundedSender<TrayCommand>, authenticated: bool) -> Option<Tr
     let (ready_tx, ready_rx) = std::sync::mpsc::sync_channel(1);
     let (update_tx, update_rx) = std::sync::mpsc::channel::<MenuTextUpdate>();
     std::thread::spawn(move || {
-        gtk::init().expect("Failed to initialize GTK");
+        if gtk::init().is_err() {
+            log::error!("GTK init failed");
+            ready_tx.send(false).ok();
+            return;
+        }
         let result = build_tray(tx, authenticated);
         if result.is_none() {
             ready_tx.send(false).ok();

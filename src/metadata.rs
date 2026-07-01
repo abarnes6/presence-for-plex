@@ -58,8 +58,8 @@ impl MetadataEnricher {
             }
         }
 
-        // For anime, fetch MAL ID for the link
-        let is_anime = info.genres.iter().any(|g| matches!(g.to_lowercase().as_str(), "anime" | "animation"));
+        // For anime, fetch MAL ID for the link ("animation" alone is not anime)
+        let is_anime = info.genres.iter().any(|g| g.eq_ignore_ascii_case("anime"));
         if is_anime && info.media_type != MediaType::Track {
             self.fetch_mal_id(info).await;
         }
@@ -85,8 +85,10 @@ impl MetadataEnricher {
             MediaType::Episode => {
                 // Try season-specific artwork first, fall back to show artwork
                 let season = info.season.unwrap_or(1);
-                self.fetch_tmdb_images(&format!("/tv/{}/season/{}/images", tmdb_id, season)).await
-                    .or(self.fetch_tmdb_images(&format!("/tv/{}/images", tmdb_id)).await)
+                match self.fetch_tmdb_images(&format!("/tv/{}/season/{}/images", tmdb_id, season)).await {
+                    Some(url) => Some(url),
+                    None => self.fetch_tmdb_images(&format!("/tv/{}/images", tmdb_id)).await,
+                }
             }
             _ => return false,
         };
@@ -113,7 +115,7 @@ impl MetadataEnricher {
             return;
         }
 
-        let url = format!("{}?q={}&limit=1", JIKAN_API, utf8_percent_encode(&cache_key, NON_ALPHANUMERIC));
+        let url = format!("{}?q={}&limit=1", JIKAN_API, utf8_percent_encode(title, NON_ALPHANUMERIC));
 
         let mal_id = async {
             let resp = self.client.get(&url).send().await.ok()?;
@@ -152,9 +154,17 @@ impl MetadataEnricher {
 
     fn cleanup_cache(&self) {
         for cache in [&self.art_cache, &self.mal_cache] {
+            if cache.read().unwrap().len() < CACHE_CLEANUP_THRESHOLD {
+                continue;
+            }
             let mut c = cache.write().unwrap();
+            c.retain(|_, e| e.timestamp.elapsed() < CACHE_TTL);
             if c.len() >= CACHE_CLEANUP_THRESHOLD {
-                c.retain(|_, e| e.timestamp.elapsed() < CACHE_TTL);
+                // Still full, evict the older half
+                let mut stamps: Vec<Instant> = c.values().map(|e| e.timestamp).collect();
+                stamps.sort();
+                let cutoff = stamps[stamps.len() / 2];
+                c.retain(|_, e| e.timestamp > cutoff);
             }
         }
     }
@@ -190,3 +200,64 @@ struct JikanAnime { mal_id: u64 }
 struct MbSearch { releases: Vec<MbRelease> }
 #[derive(Deserialize)]
 struct MbRelease { id: String }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn enricher() -> MetadataEnricher {
+        MetadataEnricher::new(None)
+    }
+
+    #[test]
+    fn cache_key_for_track_uses_artist_and_album() {
+        let mut info = MediaInfo::test_stub(MediaType::Track);
+        info.artist = Some("Artist".into());
+        info.album = Some("Album".into());
+        assert_eq!(enricher().cache_key(&info), "mb:Artist:Album");
+    }
+
+    #[test]
+    fn cache_key_for_episode_prefers_tmdb_id_and_season() {
+        let mut info = MediaInfo::test_stub(MediaType::Episode);
+        info.tmdb_id = Some("42".into());
+        info.season = Some(3);
+        assert_eq!(enricher().cache_key(&info), "tmdb:42:s3");
+    }
+
+    #[test]
+    fn cache_key_for_episode_falls_back_to_show_name() {
+        let mut info = MediaInfo::test_stub(MediaType::Episode);
+        info.show_name = Some("Some Show".into());
+        assert_eq!(enricher().cache_key(&info), "title:Some Show:s1");
+    }
+
+    #[test]
+    fn cache_key_for_movie_falls_back_to_title_and_year() {
+        let mut info = MediaInfo::test_stub(MediaType::Movie);
+        info.title = "Some Movie".into();
+        info.year = Some(1999);
+        assert_eq!(enricher().cache_key(&info), "title:Some Movie:1999");
+    }
+
+    #[test]
+    fn art_cache_stores_and_expires_nothing_when_fresh() {
+        let e = enricher();
+        e.set_art_cached("k", Some("url".into()));
+        assert_eq!(e.get_art_cached("k"), Some(Some("url".into())));
+        // Negative results are cached too
+        e.set_art_cached("miss", None);
+        assert_eq!(e.get_art_cached("miss"), Some(None));
+        assert_eq!(e.get_art_cached("absent"), None);
+    }
+
+    #[test]
+    fn cleanup_caps_cache_size_even_when_entries_are_fresh() {
+        let e = enricher();
+        for i in 0..CACHE_CLEANUP_THRESHOLD {
+            e.set_art_cached(&format!("k{}", i), None);
+        }
+        e.cleanup_cache();
+        assert!(e.art_cache.read().unwrap().len() < CACHE_CLEANUP_THRESHOLD);
+    }
+}
