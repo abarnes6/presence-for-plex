@@ -256,7 +256,7 @@ fn pump_messages() {
 #[cfg(target_os = "macos")]
 fn pump_macos() {
     use objc2_core_foundation::{CFRunLoop, kCFRunLoopDefaultMode};
-    CFRunLoop::run_in_mode(unsafe { kCFRunLoopDefaultMode.as_deref() }, 0.0, false);
+    CFRunLoop::run_in_mode(unsafe { kCFRunLoopDefaultMode }, 0.0, false);
 }
 
 async fn run_auth() -> Option<String> {
