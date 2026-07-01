@@ -7,7 +7,7 @@ use tray_icon::{
     menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem},
 };
 
-use crate::plex_server::PlaybackState;
+use crate::media::PlaybackState;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TrayStatus {
@@ -165,7 +165,7 @@ pub fn setup(tx: UnboundedSender<TrayCommand>, authenticated: bool) -> Option<Tr
         let (status_item, auth_item, _tray) = result.unwrap();
         ready_tx.send(true).ok();
 
-        // Process text updates from main thread via glib idle callbacks
+        // Menu items may only be touched from the GTK thread
         let status = status_item.clone();
         let auth = auth_item.clone();
         gtk::glib::timeout_add_local(Duration::from_millis(50), move || {

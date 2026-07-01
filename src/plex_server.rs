@@ -7,82 +7,13 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::{RwLock, mpsc};
 
+use crate::media::{MediaInfo, MediaType, MediaUpdate, PlaybackState};
 use crate::metadata::MetadataEnricher;
 use crate::plex_account::{APP_NAME, ServerConnection};
 
 const SSE_RECONNECT_DELAY: Duration = Duration::from_secs(5);
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 const SEEK_THRESHOLD_MS: u64 = 30_000;
-
-#[derive(Debug, Clone)]
-pub enum MediaUpdate {
-    Playing(Box<MediaInfo>),
-    Stopped,
-}
-
-#[derive(Debug, Clone)]
-pub struct MediaInfo {
-    pub title: String,
-    pub media_type: MediaType,
-    pub show_name: Option<String>,
-    pub season: Option<u32>,
-    pub episode: Option<u32>,
-    pub artist: Option<String>,
-    pub album: Option<String>,
-    pub year: Option<u32>,
-    pub genres: Vec<String>,
-    pub duration_ms: u64,
-    pub view_offset_ms: u64,
-    pub state: PlaybackState,
-    pub imdb_id: Option<String>,
-    pub tmdb_id: Option<String>,
-    pub mal_id: Option<String>,
-    pub art_url: Option<String>,
-    pub rating_key: Option<String>,
-    grandparent_key: Option<String>,
-    key: Option<String>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum MediaType {
-    Movie,
-    Episode,
-    Track,
-}
-
-#[cfg(test)]
-impl MediaInfo {
-    pub fn test_stub(media_type: MediaType) -> Self {
-        Self {
-            title: "Title".into(),
-            media_type,
-            show_name: None,
-            season: None,
-            episode: None,
-            artist: None,
-            album: None,
-            year: None,
-            genres: Vec::new(),
-            duration_ms: 0,
-            view_offset_ms: 0,
-            state: PlaybackState::Playing,
-            imdb_id: None,
-            tmdb_id: None,
-            mal_id: None,
-            art_url: None,
-            rating_key: None,
-            grandparent_key: None,
-            key: None,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum PlaybackState {
-    Playing,
-    Paused,
-    Buffering,
-}
 
 pub struct PlexServer {
     name: String,
@@ -167,7 +98,7 @@ impl PlexServer {
         info!("Monitoring server: {}", self.name);
         loop {
             for conn in &self.connections {
-                let _ = self.try_connection(&conn.uri, &tx, &enricher).await;
+                self.try_connection(&conn.uri, &tx, &enricher).await;
             }
             tokio::time::sleep(SSE_RECONNECT_DELAY).await;
         }
@@ -178,17 +109,21 @@ impl PlexServer {
         uri: &str,
         tx: &mpsc::UnboundedSender<MediaUpdate>,
         enricher: &Arc<MetadataEnricher>,
-    ) -> Result<(), ()> {
+    ) {
         let url = format!("{}/:/eventsource/notifications?filters=playing", uri);
-        let client = es::ClientBuilder::for_url(&url)
-            .map_err(|_| ())?
-            .header("Accept", "text/event-stream")
-            .map_err(|_| ())?
-            .header("X-Plex-Token", &self.access_token)
-            .map_err(|_| ())?
-            .header("X-Plex-Client-Identifier", APP_NAME)
-            .map_err(|_| ())?
-            .build();
+        let Ok(builder) = es::ClientBuilder::for_url(&url) else {
+            return;
+        };
+        let Ok(builder) = builder.header("Accept", "text/event-stream") else {
+            return;
+        };
+        let Ok(builder) = builder.header("X-Plex-Token", &self.access_token) else {
+            return;
+        };
+        let Ok(builder) = builder.header("X-Plex-Client-Identifier", APP_NAME) else {
+            return;
+        };
+        let client = builder.build();
 
         let mut stream = Box::pin(client.stream());
         let tracker = RwLock::new(PlaybackTracker::default());
@@ -211,7 +146,6 @@ impl PlexServer {
         if opened && tracker.write().await.clear_if_server(uri) {
             let _ = tx.send(MediaUpdate::Stopped);
         }
-        Err(())
     }
 
     async fn handle_message(

@@ -1,6 +1,6 @@
 use crate::config::Config;
 use crate::discord::{ActivityType, Button, Presence};
-use crate::plex_server::{MediaInfo, MediaType};
+use crate::media::{MediaInfo, MediaType};
 
 const DEFAULT_IMAGE: &str = "plex_logo";
 

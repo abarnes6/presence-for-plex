@@ -2,6 +2,7 @@
 
 mod config;
 mod discord;
+mod media;
 mod metadata;
 mod plex_account;
 mod plex_server;
@@ -11,12 +12,12 @@ mod tray;
 
 use config::Config;
 use discord::DiscordClient;
-use fs2::FileExt;
 use log::{error, info, warn};
+use media::{MediaType, MediaUpdate};
 use metadata::MetadataEnricher;
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use plex_account::{APP_NAME, PlexAccount};
-use plex_server::{MediaType, MediaUpdate, PlexServer};
+use plex_server::PlexServer;
 use presence::build_presence;
 use simplelog::{CombinedLogger, Config as LogConfig, LevelFilter, SimpleLogger, WriteLogger};
 use std::fs::File;
@@ -25,52 +26,12 @@ use std::time::Duration;
 use tokio::sync::{Mutex, mpsc};
 use tokio_util::sync::CancellationToken;
 #[cfg(feature = "tray")]
-use tray::{TrayCommand, TrayStatus};
+use tray::{TrayCommand, TrayHandle, TrayStatus};
 
 const AUTH_TIMEOUT: Duration = Duration::from_secs(300);
 const AUTH_POLL_INTERVAL: Duration = Duration::from_secs(2);
 const DISCOVERY_RETRY_INITIAL: Duration = Duration::from_secs(5);
 const DISCOVERY_RETRY_MAX: Duration = Duration::from_secs(300);
-
-fn acquire_instance_lock() -> Result<File, String> {
-    let dir = Config::app_dir();
-    std::fs::create_dir_all(&dir).map_err(|e| format!("Cannot create {}: {}", dir.display(), e))?;
-    let path = dir.join("presence-for-plex.lock");
-    let file = File::create(&path)
-        .map_err(|e| format!("Cannot create lock file {}: {}", path.display(), e))?;
-    file.try_lock_exclusive()
-        .map_err(|_| "Another instance is already running".to_string())?;
-    Ok(file)
-}
-
-fn init_logging() {
-    let path = Config::log_path();
-    std::fs::create_dir_all(path.parent().unwrap()).ok();
-    let level = std::env::var("RUST_LOG")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(LevelFilter::Info);
-    let mut loggers: Vec<Box<dyn simplelog::SharedLogger>> =
-        vec![SimpleLogger::new(level, LogConfig::default())];
-    if let Ok(file) = File::create(&path) {
-        loggers.push(WriteLogger::new(level, LogConfig::default(), file));
-    }
-    let _ = CombinedLogger::init(loggers);
-    info!("Starting Presence for Plex - Log: {}", path.display());
-}
-
-fn spawn_monitoring(
-    token: String,
-    tmdb: Option<String>,
-    cancel: &CancellationToken,
-    media_tx: &mpsc::UnboundedSender<MediaUpdate>,
-) -> CancellationToken {
-    let c = cancel.child_token();
-    let monitor_cancel = c.clone();
-    let tx = media_tx.clone();
-    tokio::spawn(async move { begin_monitoring(token, tmdb, tx, monitor_cancel).await });
-    c
-}
 
 #[tokio::main]
 async fn main() {
@@ -94,12 +55,12 @@ async fn main() {
 
     let config = Arc::new(Config::load());
     let cancel = CancellationToken::new();
-
     let (media_tx, media_rx) = mpsc::unbounded_channel::<MediaUpdate>();
+
     #[cfg(feature = "tray")]
-    let (tray_tx, mut tray_rx) = mpsc::unbounded_channel::<TrayCommand>();
+    let (tray_tx, tray_rx) = mpsc::unbounded_channel::<TrayCommand>();
     #[cfg(feature = "tray")]
-    let (status_tx, mut status_rx) = mpsc::unbounded_channel::<TrayStatus>();
+    let (status_tx, status_rx) = mpsc::unbounded_channel::<TrayStatus>();
     #[cfg(feature = "tray")]
     let tray = tray::setup(tray_tx, config.plex_token.is_some());
 
@@ -108,89 +69,147 @@ async fn main() {
     let discord = Arc::new(Mutex::new(discord));
 
     #[cfg(feature = "tray")]
-    let mut sse_cancel = config
-        .plex_token
-        .clone()
-        .map(|token| spawn_monitoring(token, config.tmdb_token.clone(), &cancel, &media_tx));
+    let media_task = handle_media(
+        media_rx,
+        Arc::clone(&discord),
+        Arc::clone(&config),
+        status_tx,
+    );
     #[cfg(not(feature = "tray"))]
-    let _sse_cancel = config
+    let media_task = handle_media(media_rx, Arc::clone(&discord), Arc::clone(&config));
+    tokio::spawn(media_task);
+
+    let sse_cancel = config
         .plex_token
         .clone()
         .map(|token| spawn_monitoring(token, config.tmdb_token.clone(), &cancel, &media_tx));
 
     #[cfg(feature = "tray")]
-    tokio::spawn({
-        let discord = Arc::clone(&discord);
-        let config = Arc::clone(&config);
-        async move { handle_media(media_rx, discord, config, status_tx).await }
-    });
+    run_tray(
+        tray, tray_rx, status_rx, sse_cancel, &config, &cancel, &media_tx,
+    )
+    .await;
 
     #[cfg(not(feature = "tray"))]
-    tokio::spawn({
-        let discord = Arc::clone(&discord);
-        let config = Arc::clone(&config);
-        async move { handle_media(media_rx, discord, config).await }
-    });
-
-    #[cfg(feature = "tray")]
     {
-        if tray.is_none() {
-            warn!("Tray unavailable, Ctrl+C to quit");
-            tokio::signal::ctrl_c().await.ok();
-        } else {
-            // Only Windows/macOS need the UI loop pumped from this thread
-            let pump_period = if cfg!(any(windows, target_os = "macos")) {
-                Duration::from_millis(16)
-            } else {
-                Duration::from_secs(3600)
-            };
-            let mut pump = tokio::time::interval(pump_period);
-            let (auth_result_tx, mut auth_result_rx) = mpsc::channel::<Option<String>>(1);
-            let mut auth_in_progress = false;
-            loop {
-                tokio::select! {
-                    biased;
-                    _ = pump.tick() => {
-                        #[cfg(windows)]
-                        pump_messages();
-                        #[cfg(target_os = "macos")]
-                        pump_macos();
-                    }
-                    Some(result) = auth_result_rx.recv() => {
-                        auth_in_progress = false;
-                        match result {
-                            Some(token) => {
-                                if let Some(h) = tray.as_ref() { h.set_auth_text("Reauthenticate"); h.set_status_text(TrayStatus::Idle.as_str()); }
-                                if let Some(old) = sse_cancel.as_ref() { old.cancel(); }
-                                sse_cancel = Some(spawn_monitoring(token, config.tmdb_token.clone(), &cancel, &media_tx));
-                            }
-                            None => {
-                                warn!("Auth failed or timed out");
-                                if sse_cancel.is_none() && let Some(h) = tray.as_ref() { h.set_status_text(TrayStatus::NotAuthenticated.as_str()); }
-                            }
-                        }
-                    }
-                    Some(status) = status_rx.recv() => { if let Some(h) = tray.as_ref() { h.set_status_text(status.as_str()); } }
-                    Some(msg) = tray_rx.recv() => match msg {
-                        TrayCommand::Quit => break,
-                        TrayCommand::Authenticate if !auth_in_progress => {
-                            auth_in_progress = true;
-                            let auth_tx = auth_result_tx.clone();
-                            tokio::spawn(async move { let _ = auth_tx.send(run_auth().await).await; });
-                        }
-                        _ => {}
-                    }
-                }
-            }
-        }
+        let _ = sse_cancel;
+        tokio::signal::ctrl_c().await.ok();
     }
-
-    #[cfg(not(feature = "tray"))]
-    tokio::signal::ctrl_c().await.ok();
 
     cancel.cancel();
     discord.lock().await.disconnect();
     info!("Shutting down");
+}
+
+fn acquire_instance_lock() -> Result<File, String> {
+    let dir = Config::app_dir();
+    std::fs::create_dir_all(&dir).map_err(|e| format!("Cannot create {}: {}", dir.display(), e))?;
+    let path = dir.join("presence-for-plex.lock");
+    let file = File::create(&path)
+        .map_err(|e| format!("Cannot create lock file {}: {}", path.display(), e))?;
+    file.try_lock()
+        .map_err(|_| "Another instance is already running".to_string())?;
+    Ok(file)
+}
+
+fn init_logging() {
+    let path = Config::log_path();
+    std::fs::create_dir_all(path.parent().unwrap()).ok();
+    let level = std::env::var("RUST_LOG")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(LevelFilter::Info);
+    let mut loggers: Vec<Box<dyn simplelog::SharedLogger>> =
+        vec![SimpleLogger::new(level, LogConfig::default())];
+    if let Ok(file) = File::create(&path) {
+        loggers.push(WriteLogger::new(level, LogConfig::default(), file));
+    }
+    let _ = CombinedLogger::init(loggers);
+    info!("Starting Presence for Plex - Log: {}", path.display());
+}
+
+#[cfg(feature = "tray")]
+async fn run_tray(
+    tray: Option<TrayHandle>,
+    mut tray_rx: mpsc::UnboundedReceiver<TrayCommand>,
+    mut status_rx: mpsc::UnboundedReceiver<TrayStatus>,
+    mut sse_cancel: Option<CancellationToken>,
+    config: &Config,
+    cancel: &CancellationToken,
+    media_tx: &mpsc::UnboundedSender<MediaUpdate>,
+) {
+    let Some(tray) = tray else {
+        warn!("Tray unavailable, Ctrl+C to quit");
+        tokio::signal::ctrl_c().await.ok();
+        return;
+    };
+
+    // Only Windows/macOS need the UI loop pumped from this thread
+    let pump_period = if cfg!(any(windows, target_os = "macos")) {
+        Duration::from_millis(16)
+    } else {
+        Duration::from_secs(3600)
+    };
+    let mut pump = tokio::time::interval(pump_period);
+    let (auth_tx, mut auth_rx) = mpsc::channel::<Option<String>>(1);
+    let mut auth_in_progress = false;
+
+    loop {
+        tokio::select! {
+            biased;
+            _ = pump.tick() => {
+                #[cfg(windows)]
+                pump_messages();
+                #[cfg(target_os = "macos")]
+                pump_macos();
+            }
+            Some(token) = auth_rx.recv() => {
+                auth_in_progress = false;
+                match token {
+                    Some(token) => {
+                        tray.set_auth_text("Reauthenticate");
+                        tray.set_status_text(TrayStatus::Idle.as_str());
+                        if let Some(old) = sse_cancel.take() {
+                            old.cancel();
+                        }
+                        sse_cancel =
+                            Some(spawn_monitoring(token, config.tmdb_token.clone(), cancel, media_tx));
+                    }
+                    None => {
+                        warn!("Auth failed or timed out");
+                        if sse_cancel.is_none() {
+                            tray.set_status_text(TrayStatus::NotAuthenticated.as_str());
+                        }
+                    }
+                }
+            }
+            Some(status) = status_rx.recv() => tray.set_status_text(status.as_str()),
+            Some(cmd) = tray_rx.recv() => match cmd {
+                TrayCommand::Quit => break,
+                TrayCommand::Authenticate if !auth_in_progress => {
+                    auth_in_progress = true;
+                    let auth_tx = auth_tx.clone();
+                    tokio::spawn(async move {
+                        let _ = auth_tx.send(run_auth().await).await;
+                    });
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
+fn spawn_monitoring(
+    token: String,
+    tmdb: Option<String>,
+    cancel: &CancellationToken,
+    media_tx: &mpsc::UnboundedSender<MediaUpdate>,
+) -> CancellationToken {
+    let c = cancel.child_token();
+    let monitor_cancel = c.clone();
+    let tx = media_tx.clone();
+    tokio::spawn(async move { begin_monitoring(token, tmdb, tx, monitor_cancel).await });
+    c
 }
 
 async fn begin_monitoring(
@@ -235,47 +254,18 @@ async fn begin_monitoring(
     }
 }
 
-#[cfg(feature = "tray")]
 async fn handle_media(
     mut rx: mpsc::UnboundedReceiver<MediaUpdate>,
     discord: Arc<Mutex<DiscordClient>>,
     config: Arc<Config>,
-    status_tx: mpsc::UnboundedSender<TrayStatus>,
+    #[cfg(feature = "tray")] status_tx: mpsc::UnboundedSender<TrayStatus>,
 ) {
     while let Some(update) = rx.recv().await {
         match update {
             MediaUpdate::Playing(info) => {
+                #[cfg(feature = "tray")]
                 let _ = status_tx.send(TrayStatus::from(info.state));
-                let enabled = match info.media_type {
-                    MediaType::Movie => config.enable_movies,
-                    MediaType::Episode => config.enable_tv_shows,
-                    MediaType::Track => config.enable_music,
-                };
-                if enabled {
-                    let mut d = discord.lock().await;
-                    if !d.is_connected() {
-                        d.connect();
-                    }
-                    d.update(&build_presence(&info, &config));
-                }
-            }
-            MediaUpdate::Stopped => {
-                let _ = status_tx.send(TrayStatus::Idle);
-                discord.lock().await.clear();
-            }
-        }
-    }
-}
 
-#[cfg(not(feature = "tray"))]
-async fn handle_media(
-    mut rx: mpsc::UnboundedReceiver<MediaUpdate>,
-    discord: Arc<Mutex<DiscordClient>>,
-    config: Arc<Config>,
-) {
-    while let Some(update) = rx.recv().await {
-        match update {
-            MediaUpdate::Playing(info) => {
                 let enabled = match info.media_type {
                     MediaType::Movie => config.enable_movies,
                     MediaType::Episode => config.enable_tv_shows,
@@ -290,6 +280,9 @@ async fn handle_media(
                 }
             }
             MediaUpdate::Stopped => {
+                #[cfg(feature = "tray")]
+                let _ = status_tx.send(TrayStatus::Idle);
+
                 discord.lock().await.clear();
             }
         }

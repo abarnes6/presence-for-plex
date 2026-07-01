@@ -24,7 +24,6 @@ discord-rich-presence = "1.1"
 log = "0.4"
 simplelog = "0.12"
 dirs = "6"
-fs2 = "0.4"
 tray-icon = { version = "0.21", optional = true }
 crossbeam-channel = { version = "0.5", optional = true }
 image = { version = "0.25", default-features = false, features = ["ico"], optional = true }

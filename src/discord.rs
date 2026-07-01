@@ -2,8 +2,9 @@ use discord_rich_presence::{DiscordIpc, DiscordIpcClient, activity};
 use log::{error, info};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::plex_server::PlaybackState;
+use crate::media::PlaybackState;
 
+// Timestamps this far out render as a frozen clock in Discord
 const PAUSED_OFFSET: i64 = 9999 * 3600;
 
 pub struct DiscordClient {
