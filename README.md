@@ -24,6 +24,7 @@ Config file locations:
 | Option | Default | Description |
 |--------|---------|-------------|
 | `plex_token` | unset | Plex auth token (set by the auth flow) |
+| `client_identifier` | auto-generated | Per-install Plex client identifier (managed automatically) |
 | `tmdb_token` | unset | Personal TMDB API read token for artwork |
 | `show_buttons` | `true` | Show IMDb/MyAnimeList link buttons |
 | `show_progress` | `true` | Show playback progress timestamps |

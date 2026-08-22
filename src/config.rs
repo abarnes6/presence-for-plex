@@ -1,7 +1,9 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+use crate::media::MediaType;
+
+#[derive(Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
     pub discord_client_id: String,
@@ -10,13 +12,15 @@ pub struct Config {
     pub show_artwork: bool,
 
     pub plex_token: Option<String>,
+    // Per-install X-Plex-Client-Identifier; generated on first run. Plex ties
+    // pin claims to this value, so it must not be a constant shared by every install.
+    pub client_identifier: Option<String>,
     pub enable_movies: bool,
     pub enable_tv_shows: bool,
     pub enable_music: bool,
 
     pub tmdb_token: Option<String>,
 
-    // Format templates
     pub tv_details: String,
     pub tv_state: String,
     pub tv_image_text: String,
@@ -28,6 +32,12 @@ pub struct Config {
     pub music_image_text: String,
 }
 
+pub struct Templates<'a> {
+    pub details: &'a str,
+    pub state: &'a str,
+    pub image_text: &'a str,
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -36,6 +46,7 @@ impl Default for Config {
             show_progress: true,
             show_artwork: true,
             plex_token: None,
+            client_identifier: None,
             enable_movies: true,
             enable_tv_shows: true,
             enable_music: true,
@@ -81,11 +92,51 @@ impl Config {
         }
     }
 
-    pub fn save(&self) -> std::io::Result<()> {
-        let path = Self::config_path();
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
+    pub fn enables(&self, media: MediaType) -> bool {
+        match media {
+            MediaType::Movie => self.enable_movies,
+            MediaType::Episode => self.enable_tv_shows,
+            MediaType::Track => self.enable_music,
         }
+    }
+
+    pub fn templates(&self, media: MediaType) -> Templates<'_> {
+        match media {
+            MediaType::Episode => Templates {
+                details: &self.tv_details,
+                state: &self.tv_state,
+                image_text: &self.tv_image_text,
+            },
+            MediaType::Movie => Templates {
+                details: &self.movie_details,
+                state: &self.movie_state,
+                image_text: &self.movie_image_text,
+            },
+            MediaType::Track => Templates {
+                details: &self.music_details,
+                state: &self.music_state,
+                image_text: &self.music_image_text,
+            },
+        }
+    }
+
+    /// A fresh identifier is saved immediately so pin auth and API calls
+    /// agree on it across restarts.
+    pub fn ensure_client_identifier(&mut self) -> String {
+        if let Some(ref id) = self.client_identifier {
+            return id.clone();
+        }
+        let id = uuid::Uuid::new_v4().to_string();
+        self.client_identifier = Some(id.clone());
+        if let Err(e) = self.save() {
+            log::warn!("Could not persist client identifier: {}", e);
+        }
+        id
+    }
+
+    pub fn save(&self) -> std::io::Result<()> {
+        Self::ensure_app_dir()?;
+        let path = Self::config_path();
         let contents = serde_yml::to_string(self).map_err(std::io::Error::other)?;
         std::fs::write(&path, contents)?;
         // Contains the Plex token
@@ -109,6 +160,12 @@ impl Config {
         dirs::config_dir()
             .unwrap_or_else(|| PathBuf::from("."))
             .join("presence-for-plex")
+    }
+
+    pub fn ensure_app_dir() -> std::io::Result<PathBuf> {
+        let dir = Self::app_dir();
+        std::fs::create_dir_all(&dir)?;
+        Ok(dir)
     }
 }
 

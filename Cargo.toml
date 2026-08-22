@@ -1,6 +1,6 @@
 [package]
 name = "presence-for-plex"
-version = "0.5.0"
+version = "0.6.0"
 edition = "2024"
 authors = ["abarnes6"]
 description = "Discord Rich Presence for Plex"
@@ -29,6 +29,7 @@ crossbeam-channel = { version = "0.5", optional = true }
 image = { version = "0.25", default-features = false, features = ["ico"], optional = true }
 open = "5.3"
 percent-encoding = "2.3"
+uuid = { version = "1", features = ["v4"] }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_UI_WindowsAndMessaging"] }

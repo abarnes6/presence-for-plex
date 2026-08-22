@@ -1,7 +1,37 @@
+/// Identifies one playback session so updates and stops can be matched up:
+/// a stop may only clear the presence it belongs to.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct SessionId {
+    pub server: String,
+    pub key: String,
+}
+
 #[derive(Debug, Clone)]
 pub enum MediaUpdate {
-    Playing(Box<MediaInfo>),
-    Stopped,
+    Playing(SessionId, Box<MediaInfo>),
+    Stopped(SessionId),
+    /// A monitoring task for this server ended without the chance to send
+    /// individual stops (cancellation, reauth); its sessions are unknowable.
+    ServerGone(String),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AppStatus {
+    Idle,
+    Playing,
+    Paused,
+    Buffering,
+    NotAuthenticated,
+}
+
+impl From<PlaybackState> for AppStatus {
+    fn from(s: PlaybackState) -> Self {
+        match s {
+            PlaybackState::Playing => Self::Playing,
+            PlaybackState::Paused => Self::Paused,
+            PlaybackState::Buffering => Self::Buffering,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -38,8 +68,8 @@ pub struct MediaInfo {
     pub art_url: Option<String>,
     pub rating_key: Option<String>,
     // Plex library keys for follow-up metadata requests
-    pub(crate) grandparent_key: Option<String>,
-    pub(crate) key: Option<String>,
+    pub grandparent_key: Option<String>,
+    pub key: Option<String>,
 }
 
 #[cfg(test)]

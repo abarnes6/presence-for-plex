@@ -1,17 +1,23 @@
 use eventsource_client::{self as es, Client as EsClient, SSE};
 use futures_util::TryStreamExt;
-use log::info;
+use log::{debug, info, warn};
 use reqwest::Client;
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::sync::{RwLock, mpsc};
+use tokio::sync::mpsc;
 
-use crate::media::{MediaInfo, MediaType, MediaUpdate, PlaybackState};
+use crate::error::NetError;
+use crate::media::{MediaInfo, MediaType, MediaUpdate, PlaybackState, SessionId};
 use crate::metadata::MetadataEnricher;
-use crate::plex_account::{APP_NAME, ServerConnection};
+use crate::plex_account::ServerConnection;
 
 const SSE_RECONNECT_DELAY: Duration = Duration::from_secs(5);
+const SSE_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+// Plex sends keepalive comments every few seconds; silence far beyond that
+// means the connection died even if TCP never noticed (sleep/wake, NAT expiry).
+const SSE_READ_TIMEOUT: Duration = Duration::from_secs(90);
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 const SEEK_THRESHOLD_MS: u64 = 30_000;
 
@@ -20,54 +26,43 @@ pub struct PlexServer {
     connections: Vec<ServerConnection>,
     access_token: String,
     username: Option<String>,
+    client_id: String,
     client: Client,
 }
 
+/// Sessions this connection has admitted, keyed by Plex sessionKey
+/// (ratingKey when absent).
 #[derive(Default)]
 struct PlaybackTracker {
-    info: Option<MediaInfo>,
-    server: Option<String>,
-    last_update: Option<Instant>,
+    sessions: HashMap<String, TrackedSession>,
 }
 
-impl PlaybackTracker {
-    fn is_duplicate(&self, rating_key: &str, state: PlaybackState, offset: u64) -> bool {
-        let Some(ref info) = self.info else {
-            return false;
-        };
-        if info.rating_key.as_deref() != Some(rating_key) || info.state != state {
+struct TrackedSession {
+    info: MediaInfo,
+    last_update: Instant,
+}
+
+impl TrackedSession {
+    fn is_duplicate(&self, state: PlaybackState, offset: u64) -> bool {
+        if self.info.state != state {
             return false;
         }
-        let Some(last) = self.last_update else {
-            return false;
+        // Extrapolating a frozen (paused/buffering) offset would misread
+        // repeated notifications as seeks.
+        let expected = if self.info.state == PlaybackState::Playing {
+            self.info
+                .view_offset_ms
+                .saturating_add(self.last_update.elapsed().as_millis() as u64)
+        } else {
+            self.info.view_offset_ms
         };
-        let expected = info
-            .view_offset_ms
-            .saturating_add(last.elapsed().as_millis() as u64);
         expected.abs_diff(offset) <= SEEK_THRESHOLD_MS
     }
 
     fn update(&mut self, state: PlaybackState, offset: u64) {
-        if let Some(ref mut info) = self.info {
-            info.state = state;
-            info.view_offset_ms = offset;
-            self.last_update = Some(Instant::now());
-        }
-    }
-
-    fn set(&mut self, info: MediaInfo, server: &str) {
-        self.info = Some(info);
-        self.server = Some(server.to_string());
-        self.last_update = Some(Instant::now());
-    }
-
-    fn clear_if_server(&mut self, server: &str) -> bool {
-        if self.server.as_deref() == Some(server) {
-            *self = Self::default();
-            true
-        } else {
-            false
-        }
+        self.info.state = state;
+        self.info.view_offset_ms = offset;
+        self.last_update = Instant::now();
     }
 }
 
@@ -77,12 +72,14 @@ impl PlexServer {
         connections: Vec<ServerConnection>,
         access_token: String,
         username: Option<String>,
+        client_id: String,
     ) -> Self {
         Self {
             name,
             connections,
             access_token,
             username,
+            client_id,
             client: Client::builder()
                 .user_agent("PresenceForPlex/1.0")
                 .build()
@@ -92,16 +89,48 @@ impl PlexServer {
 
     pub async fn start_monitoring(
         self,
-        tx: mpsc::UnboundedSender<MediaUpdate>,
+        tx: &mpsc::UnboundedSender<MediaUpdate>,
         enricher: Arc<MetadataEnricher>,
     ) {
         info!("Monitoring server: {}", self.name);
         loop {
             for conn in &self.connections {
-                self.try_connection(&conn.uri, &tx, &enricher).await;
+                self.try_connection(&conn.uri, tx, &enricher).await;
             }
             tokio::time::sleep(SSE_RECONNECT_DELAY).await;
         }
+    }
+
+    fn session_id(&self, key: String) -> SessionId {
+        SessionId {
+            server: self.name.clone(),
+            key,
+        }
+    }
+
+    fn build_sse_client(&self, url: &str) -> Result<impl EsClient, Box<es::Error>> {
+        Ok(es::ClientBuilder::for_url(url)?
+            .header("Accept", "text/event-stream")?
+            .header("X-Plex-Token", &self.access_token)?
+            .header("X-Plex-Client-Identifier", &self.client_id)?
+            .connect_timeout(SSE_CONNECT_TIMEOUT)
+            .read_timeout(SSE_READ_TIMEOUT)
+            .build())
+    }
+
+    fn get(&self, url: String) -> reqwest::RequestBuilder {
+        self.client
+            .get(url)
+            .header("Accept", "application/json")
+            .header("X-Plex-Token", &self.access_token)
+            .header("X-Plex-Client-Identifier", &self.client_id)
+            .timeout(REQUEST_TIMEOUT)
+    }
+
+    async fn fetch_first_item(&self, url: String) -> Result<Option<ItemMetadata>, NetError> {
+        let resp = self.get(url).send().await?;
+        let meta: Response<ItemMetadata> = resp.error_for_status()?.json().await?;
+        Ok(meta.media_container.metadata.into_iter().next())
     }
 
     async fn try_connection(
@@ -111,40 +140,54 @@ impl PlexServer {
         enricher: &Arc<MetadataEnricher>,
     ) {
         let url = format!("{}/:/eventsource/notifications?filters=playing", uri);
-        let Ok(builder) = es::ClientBuilder::for_url(&url) else {
-            return;
+        let client = match self.build_sse_client(&url) {
+            Ok(client) => client,
+            Err(e) => {
+                warn!("SSE setup failed for {}: {}", uri, e);
+                return;
+            }
         };
-        let Ok(builder) = builder.header("Accept", "text/event-stream") else {
-            return;
-        };
-        let Ok(builder) = builder.header("X-Plex-Token", &self.access_token) else {
-            return;
-        };
-        let Ok(builder) = builder.header("X-Plex-Client-Identifier", APP_NAME) else {
-            return;
-        };
-        let client = builder.build();
 
         let mut stream = Box::pin(client.stream());
-        let tracker = RwLock::new(PlaybackTracker::default());
-        let mut opened = false;
+        let mut tracker = PlaybackTracker::default();
 
-        while let Ok(Some(event)) = stream.try_next().await {
-            match event {
-                SSE::Connected(_) => {
-                    opened = true;
+        loop {
+            match stream.try_next().await {
+                Ok(Some(SSE::Connected(_))) => {
                     info!("SSE connected: {}", uri);
+                    // The client also reconnects internally after some errors;
+                    // sessions from before the gap may have died without a stop
+                    // event. Live ones are re-admitted by Plex's periodic
+                    // notifications within seconds.
+                    self.drain_sessions(&mut tracker, tx);
                 }
-                SSE::Event(ev) => {
-                    self.handle_message(&ev.data, uri, tx, enricher, &tracker)
+                Ok(Some(SSE::Event(ev))) => {
+                    self.handle_message(&ev.data, uri, tx, enricher, &mut tracker)
                         .await
                 }
-                SSE::Comment(_) => {}
+                Ok(Some(SSE::Comment(_))) => {}
+                Ok(None) => {
+                    info!("SSE stream ended: {}", uri);
+                    break;
+                }
+                Err(e) => {
+                    warn!("SSE stream error on {}: {}", uri, e);
+                    break;
+                }
             }
         }
 
-        if opened && tracker.write().await.clear_if_server(uri) {
-            let _ = tx.send(MediaUpdate::Stopped);
+        // Playback state is unknowable while disconnected
+        self.drain_sessions(&mut tracker, tx);
+    }
+
+    fn drain_sessions(
+        &self,
+        tracker: &mut PlaybackTracker,
+        tx: &mpsc::UnboundedSender<MediaUpdate>,
+    ) {
+        for key in std::mem::take(&mut tracker.sessions).into_keys() {
+            let _ = tx.send(MediaUpdate::Stopped(self.session_id(key)));
         }
     }
 
@@ -154,7 +197,7 @@ impl PlexServer {
         uri: &str,
         tx: &mpsc::UnboundedSender<MediaUpdate>,
         enricher: &Arc<MetadataEnricher>,
-        tracker: &RwLock<PlaybackTracker>,
+        tracker: &mut PlaybackTracker,
     ) {
         let Ok(notif) = serde_json::from_str::<SseNotification>(data) else {
             return;
@@ -163,11 +206,14 @@ impl PlexServer {
             return;
         };
 
+        let session_key = playing
+            .session_key
+            .clone()
+            .unwrap_or_else(|| playing.rating_key.clone());
+
         if playing.state == "stopped" {
-            let mut t = tracker.write().await;
-            if t.info.is_some() {
-                *t = PlaybackTracker::default();
-                let _ = tx.send(MediaUpdate::Stopped);
+            if tracker.sessions.remove(&session_key).is_some() {
+                let _ = tx.send(MediaUpdate::Stopped(self.session_id(session_key)));
             }
             return;
         }
@@ -178,38 +224,61 @@ impl PlexServer {
             "buffering" => PlaybackState::Buffering,
             _ => return,
         };
-        let offset = playing.view_offset.unwrap_or(0);
 
+        if let Some(t) = tracker.sessions.get_mut(&session_key)
+            && t.info.rating_key.as_deref() == Some(playing.rating_key.as_str())
         {
-            let mut t = tracker.write().await;
-            if t.info.as_ref().and_then(|i| i.rating_key.as_deref()) == Some(&playing.rating_key) {
-                if t.is_duplicate(&playing.rating_key, state, offset) {
-                    return;
-                }
-                t.update(state, offset);
-                if let Some(ref info) = t.info {
-                    let _ = tx.send(MediaUpdate::Playing(Box::new(info.clone())));
-                }
+            // A missing offset means "unchanged", not "back to the start"
+            let offset = playing.view_offset.unwrap_or(t.info.view_offset_ms);
+            if t.is_duplicate(state, offset) {
                 return;
             }
-        }
-
-        // For server owners, verify this session belongs to them
-        if self.username.is_some() && !self.is_own_session(uri, &playing.rating_key).await {
+            t.update(state, offset);
+            let _ = tx.send(MediaUpdate::Playing(
+                self.session_id(session_key),
+                Box::new(t.info.clone()),
+            ));
             return;
         }
 
-        let Some(mut info) = self
+        // Owner check for new sessions only; a tracked session that switched
+        // items (e.g. the next episode) was vetted when admitted
+        if !tracker.sessions.contains_key(&session_key)
+            && self.username.is_some()
+            && !self.is_own_session(uri, &playing.rating_key).await
+        {
+            return;
+        }
+
+        let offset = playing.view_offset.unwrap_or(0);
+        let mut info = match self
             .fetch_metadata(uri, &playing.rating_key, state, offset)
             .await
-        else {
-            return;
+        {
+            Ok(Some(info)) => info,
+            Ok(None) => return, // unsupported media type
+            Err(e) => {
+                warn!(
+                    "Metadata fetch for item {} on {} failed: {}",
+                    playing.rating_key, uri, e
+                );
+                return;
+            }
         };
         info!("Now playing: {} ({:?})", info.title, info.state);
         enricher.enrich(&mut info).await;
 
-        tracker.write().await.set(info.clone(), uri);
-        let _ = tx.send(MediaUpdate::Playing(Box::new(info)));
+        tracker.sessions.insert(
+            session_key.clone(),
+            TrackedSession {
+                info: info.clone(),
+                last_update: Instant::now(),
+            },
+        );
+        let _ = tx.send(MediaUpdate::Playing(
+            self.session_id(session_key),
+            Box::new(info),
+        ));
     }
 
     async fn is_own_session(&self, uri: &str, rating_key: &str) -> bool {
@@ -217,32 +286,33 @@ impl PlexServer {
             return true;
         };
 
-        let Ok(resp) = self
-            .client
-            .get(format!("{}/status/sessions", uri))
-            .header("Accept", "application/json")
-            .header("X-Plex-Token", &self.access_token)
-            .header("X-Plex-Client-Identifier", APP_NAME)
-            .timeout(REQUEST_TIMEOUT)
-            .send()
-            .await
-        else {
-            return false;
-        };
+        let result: Result<bool, NetError> = async {
+            let resp = self.get(format!("{}/status/sessions", uri)).send().await?;
 
-        // 403 means shared user (not owner) - they only receive their own session notifications
-        if resp.status() == reqwest::StatusCode::FORBIDDEN {
-            return true;
+            // 403 means shared user (not owner) - they only receive their own
+            // session notifications
+            if resp.status() == reqwest::StatusCode::FORBIDDEN {
+                return Ok(true);
+            }
+
+            let sessions: Response<SessionMetadata> = resp.error_for_status()?.json().await?;
+            Ok(sessions.media_container.metadata.iter().any(|m| {
+                m.rating_key.as_deref() == Some(rating_key)
+                    && m.user.as_ref().map(|u| &u.title) == Some(username)
+            }))
         }
+        .await;
 
-        let Ok(sessions) = resp.json::<SessionsResponse>().await else {
-            return false;
-        };
-
-        sessions.media_container.metadata.iter().any(|m| {
-            m.rating_key.as_deref() == Some(rating_key)
-                && m.user.as_ref().map(|u| &u.title) == Some(username)
-        })
+        match result {
+            Ok(own) => own,
+            Err(e) => {
+                warn!(
+                    "Session ownership check on {} failed (session ignored): {}",
+                    uri, e
+                );
+                false
+            }
+        }
     }
 
     async fn fetch_metadata(
@@ -251,24 +321,17 @@ impl PlexServer {
         rating_key: &str,
         state: PlaybackState,
         view_offset: u64,
-    ) -> Option<MediaInfo> {
-        let resp = self
-            .client
-            .get(format!("{}/library/metadata/{}", uri, rating_key))
-            .header("Accept", "application/json")
-            .header("X-Plex-Token", &self.access_token)
-            .header("X-Plex-Client-Identifier", APP_NAME)
-            .timeout(REQUEST_TIMEOUT)
-            .send()
-            .await
-            .ok()?;
+    ) -> Result<Option<MediaInfo>, NetError> {
+        let url = format!("{}/library/metadata/{}", uri, rating_key);
+        let Some(meta) = self.fetch_first_item(url).await? else {
+            return Err(NetError::Parse("empty metadata container".into()));
+        };
 
-        let meta_resp: MetadataResponse = resp.json().await.ok()?;
-        let meta = meta_resp.media_container.metadata.into_iter().next()?;
-
-        let mut info = Self::parse_metadata(meta, rating_key, state, view_offset)?;
+        let Some(mut info) = Self::parse_metadata(meta, rating_key, state, view_offset) else {
+            return Ok(None);
+        };
         self.enrich_external_ids(uri, &mut info).await;
-        Some(info)
+        Ok(Some(info))
     }
 
     async fn enrich_external_ids(&self, uri: &str, info: &mut MediaInfo) {
@@ -279,33 +342,21 @@ impl PlexServer {
         };
         let Some(key) = key else { return };
 
-        let Some(resp) = self
-            .client
-            .get(format!("{}{}", uri, key))
-            .header("Accept", "application/json")
-            .header("X-Plex-Token", &self.access_token)
-            .header("X-Plex-Client-Identifier", APP_NAME)
-            .timeout(REQUEST_TIMEOUT)
-            .send()
-            .await
-            .ok()
-        else {
-            return;
-        };
-
-        let Ok(meta) = resp.json::<MetadataResponse>().await else {
-            return;
-        };
-        let Some(item) = meta.media_container.metadata.into_iter().next() else {
-            return;
-        };
-
-        for guid in &item.guids {
-            if let Some(id) = guid.id.strip_prefix("imdb://") {
-                info.imdb_id = Some(id.to_string());
-            } else if let Some(id) = guid.id.strip_prefix("tmdb://") {
-                info.tmdb_id = Some(id.to_string());
+        let item = match self.fetch_first_item(format!("{}{}", uri, key)).await {
+            Ok(Some(item)) => item,
+            Ok(None) => return,
+            Err(e) => {
+                debug!("External id lookup for {} failed (best effort): {}", key, e);
+                return;
             }
+        };
+
+        let (imdb, tmdb) = external_ids(&item.guids);
+        if let Some(id) = imdb {
+            info.imdb_id = Some(id);
+        }
+        if let Some(id) = tmdb {
+            info.tmdb_id = Some(id);
         }
 
         if info.media_type == MediaType::Episode {
@@ -326,12 +377,7 @@ impl PlexServer {
             _ => return None,
         };
 
-        let (imdb_id, tmdb_id) = meta.guids.iter().fold((None, None), |(imdb, tmdb), g| {
-            (
-                imdb.or_else(|| g.id.strip_prefix("imdb://").map(String::from)),
-                tmdb.or_else(|| g.id.strip_prefix("tmdb://").map(String::from)),
-            )
-        });
+        let (imdb_id, tmdb_id) = external_ids(&meta.guids);
 
         Some(MediaInfo {
             title: meta.title,
@@ -357,6 +403,16 @@ impl PlexServer {
     }
 }
 
+fn external_ids(guids: &[GuidTag]) -> (Option<String>, Option<String>) {
+    let find = |scheme: &str| {
+        guids
+            .iter()
+            .find_map(|g| g.id.strip_prefix(scheme))
+            .map(String::from)
+    };
+    (find("imdb://"), find("tmdb://"))
+}
+
 #[derive(Deserialize)]
 struct SseNotification {
     #[serde(rename = "PlaySessionStateNotification")]
@@ -370,19 +426,40 @@ struct PlaySessionState {
     rating_key: String,
     #[serde(rename = "viewOffset")]
     view_offset: Option<u64>,
+    #[serde(
+        rename = "sessionKey",
+        default,
+        deserialize_with = "de_opt_string_or_num"
+    )]
+    session_key: Option<String>,
+}
+
+/// Plex is inconsistent about whether sessionKey is a JSON string or number.
+fn de_opt_string_or_num<'de, D: Deserializer<'de>>(d: D) -> Result<Option<String>, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum V {
+        S(String),
+        N(u64),
+    }
+    Ok(Option::<V>::deserialize(d)?.map(|v| match v {
+        V::S(s) => s,
+        V::N(n) => n.to_string(),
+    }))
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "PascalCase")]
-struct SessionsResponse {
-    media_container: MediaContainer,
+struct Response<T> {
+    media_container: Container<T>,
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "PascalCase")]
-struct MediaContainer {
-    #[serde(default)]
-    metadata: Vec<SessionMetadata>,
+struct Container<T> {
+    // plain #[serde(default)] would add a `T: Default` bound
+    #[serde(default = "Vec::new")]
+    metadata: Vec<T>,
 }
 
 #[derive(Deserialize)]
@@ -409,19 +486,6 @@ struct GenreTag {
 }
 
 #[derive(Deserialize)]
-#[serde(rename_all = "PascalCase")]
-struct MetadataResponse {
-    media_container: MetadataContainer,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "PascalCase")]
-struct MetadataContainer {
-    #[serde(default)]
-    metadata: Vec<ItemMetadata>,
-}
-
-#[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ItemMetadata {
     title: String,
@@ -437,7 +501,6 @@ struct ItemMetadata {
     guids: Vec<GuidTag>,
     #[serde(rename = "Genre", default)]
     genres: Vec<GenreTag>,
-    #[serde(rename = "grandparentKey")]
     grandparent_key: Option<String>,
     key: Option<String>,
 }
@@ -453,54 +516,64 @@ mod tests {
         info
     }
 
-    #[test]
-    fn tracker_detects_duplicate_progress_updates() {
-        let mut t = PlaybackTracker::default();
-        t.set(playing_info("1", 1000), "http://server");
-        // Same item/state with offset within the seek threshold is a duplicate
-        assert!(t.is_duplicate("1", PlaybackState::Playing, 1000));
-        assert!(t.is_duplicate("1", PlaybackState::Playing, 20_000));
+    fn tracked(rating_key: &str, offset: u64, state: PlaybackState) -> TrackedSession {
+        let mut info = playing_info(rating_key, offset);
+        info.state = state;
+        TrackedSession {
+            info,
+            last_update: Instant::now(),
+        }
     }
 
     #[test]
-    fn tracker_treats_seek_as_new_update() {
-        let mut t = PlaybackTracker::default();
-        t.set(playing_info("1", 1000), "http://server");
-        assert!(!t.is_duplicate("1", PlaybackState::Playing, 1000 + SEEK_THRESHOLD_MS + 1));
+    fn session_detects_duplicate_progress_updates() {
+        let t = tracked("1", 1000, PlaybackState::Playing);
+        // Same state with offset within the seek threshold is a duplicate
+        assert!(t.is_duplicate(PlaybackState::Playing, 1000));
+        assert!(t.is_duplicate(PlaybackState::Playing, 20_000));
     }
 
     #[test]
-    fn tracker_treats_state_change_or_new_item_as_new_update() {
-        let mut t = PlaybackTracker::default();
-        t.set(playing_info("1", 1000), "http://server");
-        assert!(!t.is_duplicate("1", PlaybackState::Paused, 1000));
-        assert!(!t.is_duplicate("2", PlaybackState::Playing, 1000));
+    fn session_treats_seek_as_new_update() {
+        let t = tracked("1", 1000, PlaybackState::Playing);
+        assert!(!t.is_duplicate(PlaybackState::Playing, 1000 + SEEK_THRESHOLD_MS + 1));
     }
 
     #[test]
-    fn tracker_is_empty_by_default() {
-        let t = PlaybackTracker::default();
-        assert!(!t.is_duplicate("1", PlaybackState::Playing, 0));
+    fn session_treats_state_change_as_new_update() {
+        let t = tracked("1", 1000, PlaybackState::Playing);
+        assert!(!t.is_duplicate(PlaybackState::Paused, 1000));
     }
 
     #[test]
-    fn tracker_update_applies_state_and_offset() {
-        let mut t = PlaybackTracker::default();
-        t.set(playing_info("1", 1000), "http://server");
+    fn paused_session_does_not_drift() {
+        // While paused the expected offset is frozen: identical repeats stay
+        // duplicates no matter how much wall-clock time passes.
+        let mut t = tracked("1", 1000, PlaybackState::Paused);
+        t.last_update = Instant::now() - Duration::from_secs(120);
+        assert!(t.is_duplicate(PlaybackState::Paused, 1000));
+    }
+
+    #[test]
+    fn session_update_applies_state_and_offset() {
+        let mut t = tracked("1", 1000, PlaybackState::Playing);
         t.update(PlaybackState::Paused, 5000);
-        let info = t.info.as_ref().unwrap();
-        assert_eq!(info.state, PlaybackState::Paused);
-        assert_eq!(info.view_offset_ms, 5000);
+        assert_eq!(t.info.state, PlaybackState::Paused);
+        assert_eq!(t.info.view_offset_ms, 5000);
     }
 
     #[test]
-    fn tracker_clears_only_for_matching_server() {
-        let mut t = PlaybackTracker::default();
-        t.set(playing_info("1", 0), "http://a");
-        assert!(!t.clear_if_server("http://b"));
-        assert!(t.info.is_some());
-        assert!(t.clear_if_server("http://a"));
-        assert!(t.info.is_none());
+    fn tracker_tracks_sessions_independently() {
+        let mut tracker = PlaybackTracker::default();
+        tracker
+            .sessions
+            .insert("s1".into(), tracked("1", 0, PlaybackState::Playing));
+        tracker
+            .sessions
+            .insert("s2".into(), tracked("2", 0, PlaybackState::Paused));
+        assert!(tracker.sessions.remove("s3").is_none());
+        assert!(tracker.sessions.remove("s1").is_some());
+        assert!(tracker.sessions.contains_key("s2"));
     }
 
     #[test]
@@ -573,7 +646,8 @@ mod tests {
             "PlaySessionStateNotification": {
                 "state": "playing",
                 "ratingKey": "123",
-                "viewOffset": 60000
+                "viewOffset": 60000,
+                "sessionKey": "7"
             }
         }"#,
         )
@@ -582,5 +656,24 @@ mod tests {
         assert_eq!(playing.state, "playing");
         assert_eq!(playing.rating_key, "123");
         assert_eq!(playing.view_offset, Some(60000));
+        assert_eq!(playing.session_key.as_deref(), Some("7"));
+    }
+
+    #[test]
+    fn sse_notification_accepts_numeric_or_missing_session_key() {
+        let notif: SseNotification = serde_json::from_str(
+            r#"{"PlaySessionStateNotification": {"state": "playing", "ratingKey": "1", "sessionKey": 7}}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            notif.play_session_state.unwrap().session_key.as_deref(),
+            Some("7")
+        );
+
+        let notif: SseNotification = serde_json::from_str(
+            r#"{"PlaySessionStateNotification": {"state": "playing", "ratingKey": "1"}}"#,
+        )
+        .unwrap();
+        assert_eq!(notif.play_session_state.unwrap().session_key, None);
     }
 }

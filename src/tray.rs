@@ -7,40 +7,8 @@ use tray_icon::{
     menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem},
 };
 
-use crate::media::PlaybackState;
+use crate::media::AppStatus;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TrayStatus {
-    Idle,
-    Playing,
-    Paused,
-    Buffering,
-    NotAuthenticated,
-}
-
-impl TrayStatus {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Idle => "Status: Idle",
-            Self::Playing => "Status: Playing",
-            Self::Paused => "Status: Paused",
-            Self::Buffering => "Status: Buffering",
-            Self::NotAuthenticated => "Status: Not Authenticated",
-        }
-    }
-}
-
-impl From<PlaybackState> for TrayStatus {
-    fn from(s: PlaybackState) -> Self {
-        match s {
-            PlaybackState::Playing => Self::Playing,
-            PlaybackState::Paused => Self::Paused,
-            PlaybackState::Buffering => Self::Buffering,
-        }
-    }
-}
-
-#[derive(Debug)]
 pub enum TrayCommand {
     Quit,
     Authenticate,
@@ -48,8 +16,8 @@ pub enum TrayCommand {
 
 #[cfg(target_os = "linux")]
 enum MenuTextUpdate {
-    Status(String),
-    Auth(String),
+    Status(&'static str),
+    Auth(&'static str),
 }
 
 pub struct TrayHandle {
@@ -63,21 +31,39 @@ pub struct TrayHandle {
     update_tx: std::sync::mpsc::Sender<MenuTextUpdate>,
 }
 
+fn status_label(status: AppStatus) -> &'static str {
+    match status {
+        AppStatus::Idle => "Status: Idle",
+        AppStatus::Playing => "Status: Playing",
+        AppStatus::Paused => "Status: Paused",
+        AppStatus::Buffering => "Status: Buffering",
+        AppStatus::NotAuthenticated => "Status: Not Authenticated",
+    }
+}
+
+fn auth_label(authenticated: bool) -> &'static str {
+    if authenticated {
+        "Reauthenticate"
+    } else {
+        "Authenticate with Plex"
+    }
+}
+
 impl TrayHandle {
-    pub fn set_status_text(&self, text: &str) {
+    pub fn set_status(&self, status: AppStatus) {
+        let text = status_label(status);
         #[cfg(not(target_os = "linux"))]
         self.status_item.set_text(text);
         #[cfg(target_os = "linux")]
-        let _ = self
-            .update_tx
-            .send(MenuTextUpdate::Status(text.to_string()));
+        let _ = self.update_tx.send(MenuTextUpdate::Status(text));
     }
 
-    pub fn set_auth_text(&self, text: &str) {
+    pub fn set_authenticated(&self, authenticated: bool) {
+        let text = auth_label(authenticated);
         #[cfg(not(target_os = "linux"))]
         self.auth_item.set_text(text);
         #[cfg(target_os = "linux")]
-        let _ = self.update_tx.send(MenuTextUpdate::Auth(text.to_string()));
+        let _ = self.update_tx.send(MenuTextUpdate::Auth(text));
     }
 }
 
@@ -87,24 +73,15 @@ fn build_tray(
 ) -> Option<(MenuItem, MenuItem, tray_icon::TrayIcon)> {
     let menu = Menu::new();
     let status_item = MenuItem::new(
-        if authenticated {
-            TrayStatus::Idle
+        status_label(if authenticated {
+            AppStatus::Idle
         } else {
-            TrayStatus::NotAuthenticated
-        }
-        .as_str(),
+            AppStatus::NotAuthenticated
+        }),
         false,
         None,
     );
-    let auth_item = MenuItem::new(
-        if authenticated {
-            "Reauthenticate"
-        } else {
-            "Authenticate with Plex"
-        },
-        true,
-        None,
-    );
+    let auth_item = MenuItem::new(auth_label(authenticated), true, None);
     let quit_item = MenuItem::new("Quit", true, None);
 
     menu.append(&status_item).ok()?;
@@ -157,12 +134,10 @@ pub fn setup(tx: UnboundedSender<TrayCommand>, authenticated: bool) -> Option<Tr
             ready_tx.send(false).ok();
             return;
         }
-        let result = build_tray(tx, authenticated);
-        if result.is_none() {
+        let Some((status_item, auth_item, _tray)) = build_tray(tx, authenticated) else {
             ready_tx.send(false).ok();
             return;
-        }
-        let (status_item, auth_item, _tray) = result.unwrap();
+        };
         ready_tx.send(true).ok();
 
         // Menu items may only be touched from the GTK thread
@@ -171,8 +146,8 @@ pub fn setup(tx: UnboundedSender<TrayCommand>, authenticated: bool) -> Option<Tr
         gtk::glib::timeout_add_local(Duration::from_millis(50), move || {
             while let Ok(update) = update_rx.try_recv() {
                 match update {
-                    MenuTextUpdate::Status(text) => status.set_text(&text),
-                    MenuTextUpdate::Auth(text) => auth.set_text(&text),
+                    MenuTextUpdate::Status(text) => status.set_text(text),
+                    MenuTextUpdate::Auth(text) => auth.set_text(text),
                 }
             }
             gtk::glib::ControlFlow::Continue
