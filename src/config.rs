@@ -18,6 +18,9 @@ pub struct Config {
     pub show_buttons: bool,
     pub show_progress: bool,
     pub show_artwork: bool,
+    /// Hiding the tray leaves no way to quit but Ctrl+C, so it is only ever
+    /// turned off deliberately: from the tray menu, or by editing this file.
+    pub show_tray: bool,
 
     pub plex_token: Option<String>,
     // Per-install X-Plex-Client-Identifier; generated on first run. Plex ties
@@ -53,6 +56,7 @@ impl Default for Config {
             show_buttons: true,
             show_progress: true,
             show_artwork: true,
+            show_tray: true,
             plex_token: None,
             client_identifier: None,
             enable_movies: true,
@@ -78,10 +82,10 @@ impl Config {
         match std::fs::read_to_string(&path) {
             Ok(contents) => match serde_yml::from_str::<Config>(&contents) {
                 Ok(mut config) => {
-                    if config.retire_dead_client_id() {
-                        if let Err(e) = config.save() {
-                            log::warn!("Could not persist Discord client id: {}", e);
-                        }
+                    if config.retire_dead_client_id()
+                        && let Err(e) = config.save()
+                    {
+                        log::warn!("Could not persist Discord client id: {}", e);
                     }
                     config
                 }
@@ -178,7 +182,7 @@ impl Config {
         Ok(())
     }
 
-    fn config_path() -> PathBuf {
+    pub fn config_path() -> PathBuf {
         Self::app_dir().join("config.yaml")
     }
 
@@ -221,6 +225,7 @@ mod tests {
         assert_eq!(parsed.plex_token.as_deref(), Some("abc123"));
         assert!(!parsed.enable_music);
         assert!(parsed.enable_movies);
+        assert!(parsed.show_tray);
         assert_eq!(
             parsed.discord_client_id,
             Config::default().discord_client_id

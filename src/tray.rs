@@ -12,23 +12,25 @@ use crate::media::AppStatus;
 pub enum TrayCommand {
     Quit,
     Authenticate,
+    HideTray,
 }
 
 #[cfg(target_os = "linux")]
-enum MenuTextUpdate {
+enum TrayUpdate {
     Status(&'static str),
     Auth(&'static str),
+    Hide,
 }
 
 pub struct TrayHandle {
     #[cfg(not(target_os = "linux"))]
-    _tray: tray_icon::TrayIcon,
+    tray: tray_icon::TrayIcon,
     #[cfg(not(target_os = "linux"))]
     status_item: MenuItem,
     #[cfg(not(target_os = "linux"))]
     auth_item: MenuItem,
     #[cfg(target_os = "linux")]
-    update_tx: std::sync::mpsc::Sender<MenuTextUpdate>,
+    update_tx: std::sync::mpsc::Sender<TrayUpdate>,
 }
 
 fn status_label(status: AppStatus) -> &'static str {
@@ -55,7 +57,7 @@ impl TrayHandle {
         #[cfg(not(target_os = "linux"))]
         self.status_item.set_text(text);
         #[cfg(target_os = "linux")]
-        let _ = self.update_tx.send(MenuTextUpdate::Status(text));
+        let _ = self.update_tx.send(TrayUpdate::Status(text));
     }
 
     pub fn set_authenticated(&self, authenticated: bool) {
@@ -63,7 +65,18 @@ impl TrayHandle {
         #[cfg(not(target_os = "linux"))]
         self.auth_item.set_text(text);
         #[cfg(target_os = "linux")]
-        let _ = self.update_tx.send(MenuTextUpdate::Auth(text));
+        let _ = self.update_tx.send(TrayUpdate::Auth(text));
+    }
+
+    /// Removes the icon for the rest of this run; `show_tray` in the config
+    /// keeps it away on the next start.
+    pub fn hide(&self) {
+        #[cfg(not(target_os = "linux"))]
+        if let Err(e) = self.tray.set_visible(false) {
+            log::warn!("Could not hide tray icon: {}", e);
+        }
+        #[cfg(target_os = "linux")]
+        let _ = self.update_tx.send(TrayUpdate::Hide);
     }
 }
 
@@ -82,11 +95,13 @@ fn build_tray(
         None,
     );
     let auth_item = MenuItem::new(auth_label(authenticated), true, None);
+    let hide_item = MenuItem::new("Hide Tray Icon", true, None);
     let quit_item = MenuItem::new("Quit", true, None);
 
     menu.append(&status_item).ok()?;
     menu.append(&PredefinedMenuItem::separator()).ok()?;
     menu.append(&auth_item).ok()?;
+    menu.append(&hide_item).ok()?;
     menu.append(&quit_item).ok()?;
 
     let img = image::load_from_memory(include_bytes!("../assets/icon.ico")).ok()?;
@@ -100,7 +115,11 @@ fn build_tray(
         .build()
         .ok()?;
 
-    let (auth_id, quit_id) = (auth_item.id().clone(), quit_item.id().clone());
+    let (auth_id, hide_id, quit_id) = (
+        auth_item.id().clone(),
+        hide_item.id().clone(),
+        quit_item.id().clone(),
+    );
 
     std::thread::spawn(move || {
         let recv = MenuEvent::receiver();
@@ -112,6 +131,9 @@ fn build_tray(
                 }
                 Ok(e) if e.id == auth_id => {
                     let _ = tx.send(TrayCommand::Authenticate);
+                }
+                Ok(e) if e.id == hide_id => {
+                    let _ = tx.send(TrayCommand::HideTray);
                 }
                 Ok(_) => {}
                 Err(RecvTimeoutError::Timeout) if tx.is_closed() => break,
@@ -127,14 +149,14 @@ fn build_tray(
 #[cfg(target_os = "linux")]
 pub fn setup(tx: UnboundedSender<TrayCommand>, authenticated: bool) -> Option<TrayHandle> {
     let (ready_tx, ready_rx) = std::sync::mpsc::sync_channel(1);
-    let (update_tx, update_rx) = std::sync::mpsc::channel::<MenuTextUpdate>();
+    let (update_tx, update_rx) = std::sync::mpsc::channel::<TrayUpdate>();
     std::thread::spawn(move || {
         if gtk::init().is_err() {
             log::error!("GTK init failed");
             ready_tx.send(false).ok();
             return;
         }
-        let Some((status_item, auth_item, _tray)) = build_tray(tx, authenticated) else {
+        let Some((status_item, auth_item, tray)) = build_tray(tx, authenticated) else {
             ready_tx.send(false).ok();
             return;
         };
@@ -146,8 +168,14 @@ pub fn setup(tx: UnboundedSender<TrayCommand>, authenticated: bool) -> Option<Tr
         gtk::glib::timeout_add_local(Duration::from_millis(50), move || {
             while let Ok(update) = update_rx.try_recv() {
                 match update {
-                    MenuTextUpdate::Status(text) => status.set_text(text),
-                    MenuTextUpdate::Auth(text) => auth.set_text(text),
+                    TrayUpdate::Status(text) => status.set_text(text),
+                    TrayUpdate::Auth(text) => auth.set_text(text),
+                    TrayUpdate::Hide => {
+                        if let Err(e) = tray.set_visible(false) {
+                            log::warn!("Could not hide tray icon: {}", e);
+                        }
+                        return gtk::glib::ControlFlow::Break;
+                    }
                 }
             }
             gtk::glib::ControlFlow::Continue
@@ -165,7 +193,7 @@ pub fn setup(tx: UnboundedSender<TrayCommand>, authenticated: bool) -> Option<Tr
 pub fn setup(tx: UnboundedSender<TrayCommand>, authenticated: bool) -> Option<TrayHandle> {
     let (status_item, auth_item, tray) = build_tray(tx, authenticated)?;
     Some(TrayHandle {
-        _tray: tray,
+        tray,
         status_item,
         auth_item,
     })

@@ -76,7 +76,16 @@ async fn main() {
     #[cfg(feature = "tray")]
     let (tray_tx, tray_rx) = mpsc::unbounded_channel::<TrayCommand>();
     #[cfg(feature = "tray")]
-    let tray = tray::setup(tray_tx, config.plex_token.is_some());
+    let tray = if config.show_tray {
+        let tray = tray::setup(tray_tx, config.plex_token.is_some());
+        if tray.is_none() {
+            warn!("Tray icon unavailable");
+        }
+        tray
+    } else {
+        info!("Tray icon disabled (show_tray: false)");
+        None
+    };
     #[cfg(not(feature = "tray"))]
     drop(status_rx); // no consumer without a tray; dropped so sends stay no-ops
 
@@ -163,7 +172,10 @@ async fn run_tray(
     ctx: &MonitorContext,
 ) {
     let Some(tray) = tray else {
-        warn!("Tray unavailable, Ctrl+C to quit");
+        // Nothing consumes status updates without a tray; dropping the
+        // receiver turns the sends into no-ops instead of a growing queue.
+        drop(status_rx);
+        info!("Running without a tray icon, Ctrl+C to quit");
         tokio::signal::ctrl_c().await.ok();
         return;
     };
@@ -203,6 +215,18 @@ async fn run_tray(
             Some(status) = status_rx.recv() => tray.set_status(status),
             Some(cmd) = tray_rx.recv() => match cmd {
                 TrayCommand::Quit => break,
+                TrayCommand::HideTray => {
+                    let mut cfg = Config::load();
+                    cfg.show_tray = false;
+                    if let Err(e) = cfg.save() {
+                        error!("Could not save config: {}", e);
+                    }
+                    tray.hide();
+                    info!(
+                        "Tray icon hidden. Set show_tray: true in {} and restart to bring it back; Ctrl+C to quit",
+                        Config::config_path().display()
+                    );
+                }
                 TrayCommand::Authenticate if !auth_in_progress => {
                     auth_in_progress = true;
                     let auth_tx = auth_tx.clone();
