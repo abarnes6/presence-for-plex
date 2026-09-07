@@ -23,8 +23,8 @@ serde_yml = "0.0.12"
 discord-rich-presence = "1.1"
 log = "0.4"
 simplelog = "0.12"
-dirs = "6"
-tray-icon = { version = "0.21", optional = true }
+dirs = "7"
+tray-icon = { version = "0.24", optional = true, default-features = false, features = ["gtk"] }
 crossbeam-channel = { version = "0.5", optional = true }
 image = { version = "0.25", default-features = false, features = ["ico"], optional = true }
 open = "5.3"

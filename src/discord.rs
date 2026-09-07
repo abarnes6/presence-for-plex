@@ -1,5 +1,6 @@
 use discord_rich_presence::{DiscordIpc, DiscordIpcClient, activity};
 use log::{debug, error, info, warn};
+use serde_json::json;
 use std::sync::mpsc;
 use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -9,6 +10,10 @@ use crate::presence::{ActivityType, Presence};
 
 // Timestamps this far out render as a frozen clock in Discord
 const PAUSED_OFFSET: i64 = 9999 * 3600;
+
+// Opcodes in Discord's IPC framing
+const OP_FRAME: u32 = 1;
+const OP_CLOSE: u32 = 2;
 
 enum Command {
     Update(Presence),
@@ -70,7 +75,7 @@ impl Connection {
         if self.connected {
             return true;
         }
-        match self.client.connect() {
+        match handshake(&mut self.client) {
             Ok(_) => {
                 info!("Connected to Discord");
                 self.connected = true;
@@ -128,6 +133,27 @@ fn actor(client_id: &str, rx: &mpsc::Receiver<Command>) {
         }
     }
     conn.disconnect();
+}
+
+/// `DiscordIpcClient::connect` reads the handshake reply and discards it, so a
+/// rejected client id looks like a healthy connection until the first write
+/// fails with a bare "failed to write to IPC socket". Handshake by hand instead
+/// and report what Discord actually said.
+fn handshake(client: &mut DiscordIpcClient) -> Result<(), String> {
+    let client_id = client.get_client_id().to_string();
+    client.connect_ipc().map_err(|e| e.to_string())?;
+    client
+        .send(json!({ "v": 1, "client_id": client_id }), 0)
+        .map_err(|e| e.to_string())?;
+    match client.recv().map_err(|e| e.to_string())? {
+        (OP_FRAME, _) => Ok(()),
+        (OP_CLOSE, payload) => Err(format!(
+            "Discord rejected client id {}: {}",
+            client_id,
+            payload["message"].as_str().unwrap_or("connection closed")
+        )),
+        (op, _) => Err(format!("unexpected handshake opcode {}", op)),
+    }
 }
 
 fn secs(ms: u64) -> i64 {

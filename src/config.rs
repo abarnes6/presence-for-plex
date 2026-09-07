@@ -3,6 +3,14 @@ use std::path::PathBuf;
 
 use crate::media::MediaType;
 
+/// Discord application backing the rich presence.
+const DISCORD_CLIENT_ID: &str = "1546505850435149985";
+
+/// Applications that no longer exist. Discord answers their handshake with an
+/// "Invalid Client ID" close frame, so installs carrying one in their saved
+/// config must be moved forward or presence never updates again.
+const RETIRED_CLIENT_IDS: [&str; 1] = ["1359742002618564618"];
+
 #[derive(Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
@@ -41,7 +49,7 @@ pub struct Templates<'a> {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            discord_client_id: "1359742002618564618".to_string(),
+            discord_client_id: DISCORD_CLIENT_ID.to_string(),
             show_buttons: true,
             show_progress: true,
             show_artwork: true,
@@ -68,8 +76,15 @@ impl Config {
     pub fn load() -> Self {
         let path = Self::config_path();
         match std::fs::read_to_string(&path) {
-            Ok(contents) => match serde_yml::from_str(&contents) {
-                Ok(config) => config,
+            Ok(contents) => match serde_yml::from_str::<Config>(&contents) {
+                Ok(mut config) => {
+                    if config.retire_dead_client_id() {
+                        if let Err(e) = config.save() {
+                            log::warn!("Could not persist Discord client id: {}", e);
+                        }
+                    }
+                    config
+                }
                 Err(e) => {
                     log::error!("Failed to parse {}: {}", path.display(), e);
                     let backup = path.with_extension("yaml.bak");
@@ -90,6 +105,21 @@ impl Config {
                 config
             }
         }
+    }
+
+    /// The client id is written into every install's config on first run, so a
+    /// new default alone would never reach existing users.
+    fn retire_dead_client_id(&mut self) -> bool {
+        if !RETIRED_CLIENT_IDS.contains(&self.discord_client_id.as_str()) {
+            return false;
+        }
+        log::info!(
+            "Discord application {} was retired; switching to {}",
+            self.discord_client_id,
+            DISCORD_CLIENT_ID
+        );
+        self.discord_client_id = DISCORD_CLIENT_ID.to_string();
+        true
     }
 
     pub fn enables(&self, media: MediaType) -> bool {
@@ -196,6 +226,21 @@ mod tests {
             Config::default().discord_client_id
         );
         assert_eq!(parsed.movie_details, Config::default().movie_details);
+    }
+
+    #[test]
+    fn retired_client_id_is_replaced() {
+        let mut config: Config =
+            serde_yml::from_str("discord_client_id: '1359742002618564618'\n").unwrap();
+        assert!(config.retire_dead_client_id());
+        assert_eq!(config.discord_client_id, DISCORD_CLIENT_ID);
+    }
+
+    #[test]
+    fn current_client_id_is_left_alone() {
+        let mut config = Config::default();
+        assert!(!config.retire_dead_client_id());
+        assert_eq!(config.discord_client_id, DISCORD_CLIENT_ID);
     }
 
     #[test]
